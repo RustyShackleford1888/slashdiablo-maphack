@@ -557,6 +557,7 @@ void Maphack::OnAutomapDraw() {
 						if (enchantText.length() > 0)
 							Drawing::Texthook::Draw(automapLoc.x, automapLoc.y - 14, Drawing::Center, 6, White, enchantText);
 						Drawing::Crosshook::Draw(automapLoc.x, automapLoc.y, color);
+						/* Drawing::Boxhook::Draw(automapLoc.x - 1, automapLoc.y - 1, 2, 2, color, Drawing::BTHighlight); */
 						if (lineColor != -1) {
 							Drawing::Linehook::Draw(MyPos.x, MyPos.y, automapLoc.x, automapLoc.y, lineColor);
 						}

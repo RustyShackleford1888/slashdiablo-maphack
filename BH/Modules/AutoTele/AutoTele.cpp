@@ -9,11 +9,13 @@ int waypoints[] = {119,157,156,323,288,402,324,237,238,398,496,511,494};
 int CSID = 0;
 int CS[] = {392, 394, 396, 255};
 
-
 using namespace Drawing;
 
 void AutoTele::OnLoad() {
+	crossType = Crosshook::NormalCrossType;
 	LoadConfig();
+
+	Crosshook::cross_type = &crossType;
 
 	std::map<string, bool>* bnetBools (BH::BnetBools);
 	std::map<string, bool>* gamefilterBools(BH::GamefilterBools);
@@ -60,6 +62,16 @@ void AutoTele::OnLoad() {
 	new Colorhook(settingsTab, 250, 87, &Colors[4], "Prev");
 
 	new Colorhook(settingsTab, 250, 102, &Colors[5], "Other Extra");
+
+	// this should be in the same order as the CrossTypes enum
+	vector<string> options;
+	options.push_back("Normal");
+	options.push_back("Diamond");
+	options.push_back("Dot");
+	options.push_back("Rectangle");
+	options.push_back("x");
+	options.push_back("X");
+	new Combohook(settingsTab, 250, 115, 120, &crossType, options);
 }
 
 void AutoTele::LoadConfig() {
@@ -79,6 +91,9 @@ void AutoTele::LoadConfig() {
 	BH::config->ReadInt("Other Color", Colors[2]);
 	BH::config->ReadInt("WP Color", Colors[3]);
 	BH::config->ReadInt("Prev Color", Colors[4]);
+	BH::config->ReadInt("Other Extra Color", Colors[5]);
+
+	BH::config->ReadInt("CrossType", crossType);
 }
 
 void AutoTele::OnAutomapDraw() {

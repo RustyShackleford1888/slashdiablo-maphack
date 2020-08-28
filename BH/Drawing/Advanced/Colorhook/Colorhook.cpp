@@ -129,9 +129,7 @@ void Colorhook::OnDraw() {
 			D2GFX_DrawRectangle(boxX1, boxY1, boxX2, boxY2, n, 5);
 		}
 		//Draw the +ish symbol showing the currently hovered color
-		CHAR szLines[][2] = { 0,-2, 4,-4, 8,-2, 4,0, 8,2, 4,4, 0,2, -4,4, -8,2, -4,0, -8,-2, -4,-4, 0,-2 };
-		for (unsigned int x = 0; x < 12; x++)
-			D2GFX_DrawLine(457 + szLines[x][0], 380 + szLines[x][1], 457 + szLines[x + 1][0], 380 + szLines[x + 1][1], curColor, -1);
+		Crosshook::Draw(457, 380, curColor);
 		//Draw instructions
 		Texthook::Draw(320, 384, false, 0, White, "Left Click - Select");
 		Texthook::Draw(320, 368, false, 0, White, "Right Click - Close");
