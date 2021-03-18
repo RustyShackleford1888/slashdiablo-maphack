@@ -9,7 +9,7 @@
 #include <time.h>
 #include <iomanip>
 #include <numeric>
-#include <experimental/filesystem>
+#include <filesystem>
 
 using namespace Drawing;
 
@@ -869,7 +869,7 @@ void ScreenInfo::OnGameExit() {
 }
 
 void ScreenInfo::WriteRunTrackerData() {
-	namespace fs = std::experimental::filesystem;
+	namespace fs = std::filesystem;
 	fs::path path(ReplaceAutomapTokens(szSavePath));
 	bool exist = fs::exists(path);
 
