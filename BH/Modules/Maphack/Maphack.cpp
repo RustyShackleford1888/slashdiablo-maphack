@@ -233,8 +233,8 @@ void Maphack::OnLoad() {
 
 	new Texthook(settingsTab, 80, 3, "Toggles");
 	unsigned int Y = 0;
-	int keyhook_x = 150;
-	int col2_x = 250;
+	int keyhook_x = 195;
+	int col2_x = 270;
 	new Checkhook(settingsTab, 4, (Y += 15), &Toggles["Auto Reveal"].state, "Auto Reveal");
 	new Keyhook(settingsTab, keyhook_x, (Y + 2), &Toggles["Auto Reveal"].toggle, "");
 
