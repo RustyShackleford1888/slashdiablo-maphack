@@ -63,7 +63,6 @@ class Item : public Module {
 		static unsigned int pingLevelSetting;
 		static unsigned int trackerPingLevelSetting;
 		static int statRangeColor;
-		static LPVOID pItemBuf;
 
 		void ResetPatches();
 	public:
@@ -114,14 +113,6 @@ void PermShowItemsPatch1_ASM();
 void PermShowItemsPatch2_ASM();
 void PermShowItemsPatch3_ASM();
 void PermShowItemsPatch4_ASM();
-
-void ShowMoreItemsItemsPatch1_ASM();
-void ShowMoreItemsItemsPatch2_ASM();
-void ShowMoreItemsItemsPatch3_ASM();
-void ShowMoreItemsItemsPatch4_ASM();
-void ShowMoreItemsItemsPatch5_ASM();
-void ShowMoreItemsItemsPatch6_ASM();
-void ShowMoreItemsItemsPatch7_ASM();
 
 struct UnitItemInfo;
 int CreateUnitItemInfo(UnitItemInfo *uInfo, UnitAny *item);
