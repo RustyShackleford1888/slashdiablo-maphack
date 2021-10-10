@@ -15,6 +15,9 @@
 #define EXCEPTION_INVALID_ITEM_TYPE		5
 #define EXCEPTION_INVALID_GOLD_TYPE		6
 
+#define PLAYER_CLASSIC 0
+#define PLAYER_XP 1
+
 #define DEAD_COLOR        0xdead
 #define UNDEFINED_COLOR   0xbeef
 
@@ -239,6 +242,16 @@ private:
 	bool EvaluateInternalFromPacket(ItemInfo *info, Condition *arg1, Condition *arg2);
 };
 
+class PlayerTypeCondition : public Condition
+{
+public:
+	PlayerTypeCondition(unsigned int m) : mode(m) { conditionType = CT_Operand; };
+private:
+	unsigned int mode;
+	bool EvaluateInternal(UnitItemInfo* uInfo, Condition* arg1, Condition* arg2);
+	bool EvaluateInternalFromPacket(ItemInfo* info, Condition* arg1, Condition* arg2);
+};
+
 class QualityCondition : public Condition
 {
 public:
@@ -256,6 +269,17 @@ public:
 private:
 	bool EvaluateInternal(UnitItemInfo *uInfo, Condition *arg1, Condition *arg2);
 	bool EvaluateInternalFromPacket(ItemInfo *info, Condition *arg1, Condition *arg2);
+};
+
+class QualityIdCondition : public Condition
+{
+public:
+	QualityIdCondition(unsigned int quality, unsigned int id) : quality(quality), id(id){ conditionType = CT_Operand; };
+private:
+	unsigned int quality;
+	unsigned int id;
+	bool EvaluateInternal(UnitItemInfo* uInfo, Condition* arg1, Condition* arg2);
+	bool EvaluateInternalFromPacket(ItemInfo* info, Condition* arg1, Condition* arg2);
 };
 
 class GemLevelCondition : public Condition
@@ -483,6 +507,28 @@ private:
 	bool EvaluateInternalFromPacket(ItemInfo *info, Condition *arg1, Condition *arg2);
 };
 
+class PartialCondition : public Condition
+{
+public:
+	PartialCondition(BYTE op, int target_count, vector<string> tokens)
+		: operation(op), target_count(target_count) {
+		for (auto token : tokens) {
+			make_count_subrule(token);	
+		}
+		conditionType = CT_Operand;
+	};
+	
+	// make_count_subrule calls BuildConditon, which creates new Conditions. We free these here.
+	~PartialCondition();
+private:
+	BYTE operation;
+	const int target_count;
+	vector<Rule> rules; // TODO: should be const, but Rule::Evalate needs to be modified
+	void make_count_subrule(string token);
+	bool EvaluateInternal(UnitItemInfo *uInfo, Condition *arg1, Condition *arg2);
+	bool EvaluateInternalFromPacket(ItemInfo *info, Condition *arg1, Condition *arg2);
+};
+
 class ItemPriceCondition : public Condition
 {
 public:
@@ -554,6 +600,7 @@ struct Action {
 	int pxColor;
 	int lineColor;
 	int notifyColor;
+	bool noTracking;
 	unsigned int pingLevel;
 	Action() :
 		colorOnMap(UNDEFINED_COLOR),
@@ -564,6 +611,7 @@ struct Action {
 		notifyColor(UNDEFINED_COLOR),
 		pingLevel(0),
 		stopProcessing(true),
+		noTracking(false),
 		name(""),
 		description("") {}
 };
@@ -675,10 +723,12 @@ extern ItemNameLookupCache item_name_cache;
 extern MapActionLookupCache map_action_cache;
 extern IgnoreLookupCache do_not_block_cache;
 extern IgnoreLookupCache ignore_cache;
+extern map<string, string> condition_group;
 
 namespace ItemDisplay {
 	void InitializeItemRules();
 	void UninitializeItemRules();
+	bool UntestedSettingsUsed();
 }
 StatProperties *GetStatProperties(unsigned int stat);
 void BuildAction(string *str, Action *act);

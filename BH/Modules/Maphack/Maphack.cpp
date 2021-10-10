@@ -11,6 +11,7 @@
 #include "../Item/ItemDisplay.h"
 #include "../Item/Item.h"
 #include "../../AsyncDrawBuffer.h"
+#include "../ScreenInfo/ScreenInfo.h"
 
 #pragma optimize( "", off)
 
@@ -22,6 +23,15 @@ Patch* shakePatch = new Patch(Call, D2CLIENT, { 0x442A2, 0x452F2 }, (int)Shake_I
 Patch* monsterNamePatch = new Patch(Call, D2WIN, { 0x13550, 0x140E0 }, (int)HoverObject_Interception, 5);
 Patch* cpuPatch = new Patch(NOP, D2CLIENT, { 0x3CB7C, 0x2770C }, 0, 9);
 Patch* fpsPatch = new Patch(NOP, D2CLIENT, { 0x44E51, 0x45EA1 }, 0, 8);
+
+Patch* skipNpcMessages1 = new Patch(Call, D2CLIENT, { 0x4BB07, 0x7EB87 }, (int)NPCQuestMessageStartPatch_ASM, 6);
+Patch* skipNpcMessages2 = new Patch(Call, D2CLIENT, { 0x48BD6, 0x7B4C6 }, (int)NPCQuestMessageEndPatch1_ASM, 8);
+Patch* skipNpcMessages3 = new Patch(Call, D2CLIENT, { 0x4819F, 0x7A9CF }, (int)NPCQuestMessageEndPatch2_ASM, 5);
+Patch* skipNpcMessages4 = new Patch(Call, D2CLIENT, { 0x7E9B7, 0x77737 }, (int)NPCMessageLoopPatch_ASM, 6);
+
+static BOOL fSkipMessageReq = 0;
+static DWORD mSkipMessageTimer = 0;
+static DWORD mSkipQuestMessage = 1;
 
 DrawDirective automapDraw(true, 5);
 
@@ -59,6 +69,7 @@ void Maphack::ReadConfig() {
 	BH::config->ReadInt("Manaburn Monster Color", mbMonColor);
 
 	BH::config->ReadKey("Reload Config", "VK_NUMPAD0", reloadConfig);
+	BH::config->ReadToggle("Show Settings", "VK_NUMPAD8", true, Toggles["Show Settings"]);
 
 	BH::config->ReadAssoc("Missile Color", missileColors);
 	BH::config->ReadAssoc("Monster Color", monsterColors);
@@ -146,6 +157,8 @@ void Maphack::ReadConfig() {
 	BH::config->ReadToggle("Monster Enchantments", "None", true, Toggles["Monster Enchantments"]);
 	BH::config->ReadToggle("Apply CPU Patch", "None", true, Toggles["Apply CPU Patch"]);
 	BH::config->ReadToggle("Apply FPS Patch", "None", true, Toggles["Apply FPS Patch"]);
+	BH::config->ReadToggle("Show Automap On Join", "None", false, Toggles["Show Automap On Join"]);
+	BH::config->ReadToggle("Skip NPC Quest Messages", "None", true, Toggles["Skip NPC Quest Messages"]);
 
 	BH::config->ReadInt("Minimap Max Ghost", automapDraw.maxGhost);
 }
@@ -197,6 +210,18 @@ void Maphack::ResetPatches() {
 		fpsPatch->Install();
 	else
 		fpsPatch->Remove();
+
+	if (Toggles["Skip NPC Quest Messages"].state) {
+		skipNpcMessages1->Install();
+		skipNpcMessages2->Install();
+		skipNpcMessages3->Install();
+		skipNpcMessages4->Install();
+	} else {
+		skipNpcMessages1->Remove();
+		skipNpcMessages2->Remove();
+		skipNpcMessages3->Remove();
+		skipNpcMessages4->Remove();
+	}
 }
 
 void Maphack::OnLoad() {
@@ -249,6 +274,12 @@ void Maphack::OnLoad() {
 	new Checkhook(settingsTab, 4, (Y += 15), &Toggles["Apply FPS Patch"].state, "FPS Patch (SP Only)");
 	new Keyhook(settingsTab, keyhook_x, (Y + 2), &Toggles["Apply FPS Patch"].toggle, "");
 
+	new Checkhook(settingsTab, 4, (Y += 15), &Toggles["Show Automap On Join"].state, "Show Automap On Join");
+	new Keyhook(settingsTab, keyhook_x, (Y + 2), &Toggles["Show Automap On Join"].toggle, "");
+
+	new Checkhook(settingsTab, 4, (Y += 15), &Toggles["Skip NPC Quest Messages"].state, "Skip NPC Quest Messages");
+	new Keyhook(settingsTab, keyhook_x, (Y + 2), &Toggles["Skip NPC Quest Messages"].toggle, "");
+
 	new Texthook(settingsTab, col2_x + 5, 3, "Missile Colors");
 
 	new Colorhook(settingsTab, col2_x, 17, &missileColors["Player"], "Player");
@@ -299,11 +330,16 @@ void Maphack::OnUnload() {
 	weatherPatch->Remove();
 	infraPatch->Remove();
 	shakePatch->Remove();
+	skipNpcMessages1->Remove();
+	skipNpcMessages2->Remove();
+	skipNpcMessages3->Remove();
+	skipNpcMessages4->Remove();
 }
 
 void Maphack::OnLoop() {
 	//// Remove or install patchs based on state.
 	ResetPatches();
+	BH::settingsUI->SetVisible(Toggles["Show Settings"].state);
 
 	// Get the player unit for area information.
 	UnitAny* unit = D2CLIENT_GetPlayerUnit();
@@ -389,6 +425,9 @@ void Maphack::OnDraw() {
 									start_pos += 3;
 								}
 								PrintText(ItemColorFromQuality(unit->pItemData->dwQuality), "%s", itemName.c_str());
+								if (!action.noTracking && !IsTown(GetPlayerArea()) && action.pingLevel <= Item::GetTrackerPingLevel()) {
+									ScreenInfo::AddDrop(unit);
+								}
 								//PrintText(ItemColorFromQuality(unit->pItemData->dwQuality), "%s %x", itemName.c_str(), dwFlags);
 								break;
 							}
@@ -644,6 +683,7 @@ void Maphack::OnAutomapDraw() {
 void Maphack::OnGameJoin() {
 	ResetRevealed();
 	automapLevels.clear();
+	*p_D2CLIENT_AutomapOn = Toggles["Show Automap On Join"].state;
 }
 
 void Squelch(DWORD Id, BYTE button) {
@@ -1065,6 +1105,65 @@ void __declspec(naked) HoverObject_Interception()
 		ret
 	}
 }
+
+//credits to https://github.com/jieaido/d2hackmap/blob/master/SkipNpcMessage.cpp
+void  __declspec(naked) NPCMessageLoopPatch_ASM()
+{
+	__asm {
+		test eax, eax
+		jne noje
+		mov eax, [mSkipQuestMessage]
+		cmp eax, 0
+		je oldje
+		cmp[fSkipMessageReq], 0
+		je oldje
+		add[mSkipMessageTimer], 1
+		cmp[mSkipMessageTimer], eax
+		jle oldje
+		mov[mSkipMessageTimer], 0
+		mov eax, 1
+		ret
+	oldje :
+		xor eax, eax
+		add dword ptr[esp], 0xB9  // 0F84B8000000
+	noje :
+		ret
+	}
+}
+
+void __declspec(naked) NPCQuestMessageStartPatch_ASM()
+{
+	__asm {
+		mov[fSkipMessageReq], 1
+		mov[mSkipMessageTimer], 0
+		//oldcode:
+		mov ecx, dword ptr[esi + 0x0C]
+		movzx edx, di
+		ret
+	}
+}
+
+void __declspec(naked) NPCQuestMessageEndPatch1_ASM()
+{
+	__asm {
+		mov[fSkipMessageReq], 0
+		//oldcode:
+		mov eax, dword ptr[esp + 0x24]
+		mov ecx, dword ptr[esp + 0x20]
+		ret
+	}
+}
+
+void __declspec(naked) NPCQuestMessageEndPatch2_ASM()
+{
+	__asm {
+		mov[fSkipMessageReq], 0
+		//oldcode:
+		mov edx, 1
+		ret
+	}
+}
+
 
 
 #pragma optimize( "", on)

@@ -5,7 +5,11 @@
 #include "../Item/ItemDisplay.h"
 #include "../../MPQReader.h"
 #include "../../D2Version.h"
+#include "../../D2Helpers.h"
 #include <time.h>
+#include <iomanip>
+#include <numeric>
+#include <filesystem>
 
 using namespace Drawing;
 
@@ -24,16 +28,45 @@ void ScreenInfo::OnLoad() {
 	d2VersionText->SetFont(1);
 
 	if (BH::cGuardLoaded) {
-		Texthook* cGuardText = new Texthook(Perm, 790, 23, "ÿc4cGuard Loaded");
+		Texthook* cGuardText = new Texthook(Perm, 790, 23, "ï¿½c4cGuard Loaded");
 		cGuardText->SetAlignment(Right);
 	}
 	gameTimer = GetTickCount();
+	nTotalGames = 0;
+	szGamesToLevel = "N/A";
+	szTimeToLevel = "N/A";
+	szLastXpGainPer = "N/A";
+	szLastXpGainPer = "N/A";
+	szLastGameTime = "N/A";
+	automap["GAMESTOLVL"] = szGamesToLevel;
+	automap["TIMETOLVL"] = szTimeToLevel;
+	automap["LASTXPPERCENT"] = szLastXpGainPer;
+	automap["LASTXPPERSEC"] = szLastXpPerSec;
+	automap["LASTGAMETIME"] = szLastGameTime;
+	automap["SESSIONGAMECOUNT"] = to_string(nTotalGames);
 }
 
 void ScreenInfo::LoadConfig() {
 	BH::config->ReadToggle("Experience Meter", "VK_NUMPAD7", false, Toggles["Experience Meter"]);
 
 	BH::config->ReadArray("AutomapInfo", automapInfo);
+	
+	BH::config->ReadToggle("Run Details On Join", "None", false, Toggles["Run Details On Join"]);
+	BH::config->ReadToggle("Save Run Details", "None", false, Toggles["Save Run Details"]);
+	BH::config->ReadString("Save Run Details Location", szSavePath);
+
+	runDetailsColumns.clear();
+	BH::config->ReadMapList("Run Details", runDetailsColumns);
+
+	const string delimiter = ",";
+	szColumnHeader = accumulate(runDetailsColumns.begin(), runDetailsColumns.end(), string(),
+		[delimiter](const string& s, const pair<const string, const string>& p) {
+		return s + (s.empty() ? string() : delimiter) + p.first;
+	});
+	szColumnData = accumulate(runDetailsColumns.begin(), runDetailsColumns.end(), string(),
+		[delimiter](const string& s, const pair<const string, const string>& p) {
+		return s + (s.empty() ? string() : delimiter) + p.second;
+	});
 
 	BH::config->ReadAssoc("Skill Warning", SkillWarnings);
 	SkillWarningMap.clear();
@@ -56,7 +89,7 @@ void ScreenInfo::MpqLoaded() {
 
 void ScreenInfo::OnGameJoin() {
 	BnetData* pInfo = (*p_D2LAUNCH_BnData);
-	UnitAny *unit = D2CLIENT_GetPlayerUnit();
+	UnitAny* unit = D2CLIENT_GetPlayerUnit();
 	if (unit) {
 		std::string title = (std::string)"Diablo II - ";
 		if (strlen(pInfo->szAccountName) > 0) {
@@ -68,10 +101,117 @@ void ScreenInfo::OnGameJoin() {
 		}
 	}
 
+	if (bFailedToWrite) {
+		bFailedToWrite = false;
+		string path = ReplaceAutomapTokens(szSavePath);
+		for (int i = 0; i < 5; i++) {
+			PrintText(Red, "FILE \"%s\" IS LOCKED BY ANOTHER PROCESS! LAST RUN DATA WAS NOT SAVED!", ReplaceAutomapTokens(szSavePath));
+		}
+	}
+
 	gameTimer = GetTickCount();
 	UnitAny* pUnit = D2CLIENT_GetPlayerUnit();
 	startExperience = (int)D2COMMON_GetUnitStat(pUnit, STAT_EXP, 0);
+	if (currentPlayer.compare(0, 16, pUnit->pPlayerData->szName) != 0) {
+		szGamesToLevel = "N/A";
+		szTimeToLevel = "N/A";
+		szLastXpGainPer = "N/A";
+		szLastXpPerSec = "N/A";
+		szLastGameTime = "N/A";
+	}
+	fill_n(aPlayerCountAverage, 8, 0);
+
+	BnetData* pData = (*p_D2LAUNCH_BnData);
+
+	char* szDiff[3] = { "Normal", "Nightmare", "Hell" };
+	currentPlayer = string(pUnit->pPlayerData->szName);
 	startLevel = (int)D2COMMON_GetUnitStat(pUnit, STAT_LEVEL, 0);
+	double startPctExp = ((double)startExperience - ExpByLevel[startLevel - 1]) / (ExpByLevel[startLevel] - ExpByLevel[startLevel - 1]) * 100.0;
+
+	time_t t
+		= chrono::system_clock::to_time_t(chrono::system_clock::now());
+
+	string path = ReplaceAutomapTokens(szSavePath);
+
+	automap["JOINDATE"] = FormatTime(t, "%F");
+	automap["JOINTIME"] = FormatTime(t, "%T%z");
+	automap["CHARLEVEL"] = to_string(startLevel);
+	automap["CHARLEVELPERCENT"] = to_string(static_cast<double>(startLevel) + (startPctExp / 100.0));
+	automap["CHARXPPERCENT"] = to_string(startPctExp);
+	automap["CHARXP"] = to_string(startExperience);
+	automap["GAMENAME"] = pData->szGameName;
+	string runname = SimpleGameName(pData->szGameName);
+	automap["RUNNAME"] = runname;
+	if (runcounter.find(runname) == runcounter.end()) {
+		runcounter[runname] = 0;
+	}
+	automap["GAMEPASS"] = pData->szGamePass;
+	automap["GAMEDESC"] = pData->szGameDesc;
+	automap["GAMEIP"] = pData->szGameIP;
+	automap["GAMEDIFF"] = szDiff[D2CLIENT_GetDifficulty()];
+	automap["ACCOUNTNAME"] = pData->szAccountName;
+	automap["CHARNAME"] = pUnit->pPlayerData->szName;
+	automap["SESSIONGAMECOUNT"] = to_string(++nTotalGames);
+
+	/*
+	string p = ReplaceAutomapTokens(szSavePath);
+	cRunData = new Config(p + ".dat");
+	if (!cRunData->Parse()) {
+		cRunData->SetConfigName(p + ".dat");
+		std::ofstream os;
+		os.open(cRunData->GetConfigName(), std::ios_base::out);
+		os << endl;
+		os.close();
+	}
+	cRunData->ReadAssoc(pUnit->pPlayerData->szName, runs);
+	if (runs.find(runname) == runs.end()) {
+		runs[runname] = 0;
+		std::ofstream os;
+		os.open(cRunData->GetConfigName(), std::ios_base::app);
+		os << pUnit->pPlayerData->szName << "[" << runname << "]: 0" << endl;
+		os.close();
+		cRunData->Parse();
+		cRunData->ReadAssoc(pUnit->pPlayerData->szName, runs);
+	}
+	runs[runname]++;
+	*/
+	runcounter[runname]++;
+
+	if (!Toggles["Run Details On Join"].state) {
+		return;
+	}
+	if (runname.length() > 0) {
+		//mp
+		PrintText(Orange, "%d games played this session.", nTotalGames);
+		PrintText(Orange, "%d \"%s\" games played this session.", runcounter[runname], runname.c_str());
+		//PrintText(Orange, "%d \"%s\" games played total.", runs[runname], runname.c_str());
+	} else {
+		//sp
+		PrintText(Orange, "%d games played this session.", nTotalGames);
+		PrintText(Orange, "%d single player games played this session.", runcounter[runname]);
+		//PrintText(Orange, "%d single player games played on this character.", runs[runname], runname.c_str());
+	}
+}
+
+int	ScreenInfo::GetPlayerCount() {
+	int i = 0;
+	for (RosterUnit* pRoster = *p_D2CLIENT_PlayerUnitList; pRoster; pRoster = pRoster->pNext)
+		++i;
+	return i;
+}
+
+string ScreenInfo::SimpleGameName(const string& gameName) {
+	std::smatch match;
+	if (regex_search(gameName, match, regex("^(.*?)(\\d+)$")) && match.size() == 3) {
+		return match.format("$1");
+	}
+	return gameName;
+}
+
+string ScreenInfo::FormatTime(time_t t, const char* format) {
+	stringstream ss;
+	ss << put_time(std::localtime(&t), format);
+	return ss.str();
 }
 
 void ScreenInfo::OnKey(bool up, BYTE key, LPARAM lParam, bool* block) {
@@ -181,7 +321,9 @@ void ScreenInfo::OnDraw() {
 	}
 
 	for (std::deque<StateWarning*>::iterator it = CurrentWarnings.begin(); it != CurrentWarnings.end(); ++it) {
-		Texthook::Draw(400, 30 * (yOffset++), Center, 3, Red, "%s has expired!", (*it)->name.c_str());
+		unsigned int posX = *p_D2CLIENT_ScreenSizeX / 2;
+		unsigned int posY = *p_D2CLIENT_ScreenSizeY / 2 + 34 * yOffset++;
+		Texthook::Draw(posX, posY, Center, 3, Red, "%s has expired!", (*it)->name.c_str());
 	}
 
 	// It's a kludge to peek into other modules for config info, but it just seems silly to
@@ -210,63 +352,38 @@ void ScreenInfo::OnDraw() {
 			if (ms > 2000) {
 				warningTicks = ticks;
 			} else if (ms > 500) {
-				Texthook::Draw(400, 30 * (yOffset++), Center, 3, Red, "%s Quest Active", bossNames[warning]);
+				Texthook::Draw(*p_D2CLIENT_ScreenSizeX / 2, 30,
+						Center, 3, Red, "%s Quest Active", bossNames[warning]);
 			}
 		}
 	}
 
-	if (Toggles["Experience Meter"].state) {
-		drawExperienceInfo();
-	}
-}
-
-void ScreenInfo::drawExperienceInfo(){
 	UnitAny* pUnit = D2CLIENT_GetPlayerUnit();
-	int nTime = ((GetTickCount() - gameTimer) / 1000);
-	DWORD cExp = (DWORD)D2COMMON_GetUnitStat(pUnit, STAT_EXP, 0);
-	if (startExperience == 0){ startExperience = cExp; }
+	currentExperience = (int)D2COMMON_GetUnitStat(pUnit, STAT_EXP, 0);
+	currentLevel = (int)D2COMMON_GetUnitStat(pUnit, STAT_LEVEL, 0);
 
-	int cLevel = (int)D2COMMON_GetUnitStat(pUnit, STAT_LEVEL, 0);
-	if (startLevel == 0) { startLevel = cLevel; }
+	endTimer = ((GetTickCount() - gameTimer) / 1000);
+	if (startLevel == 0) { startLevel = currentLevel; }
 
 	char sExp[255] = { 0 };
 	double oldPctExp = ((double)startExperience - ExpByLevel[startLevel - 1]) / (ExpByLevel[startLevel] - ExpByLevel[startLevel - 1]) * 100.0;
-	double pExp = ((double)cExp - ExpByLevel[cLevel - 1]) / (ExpByLevel[cLevel] - ExpByLevel[cLevel - 1]) * 100.0;
-	double expGainPct = pExp - oldPctExp;
-	if (cLevel > startLevel){
-		expGainPct = (100 - oldPctExp) + pExp + ((cLevel - startLevel) - 1) * 100;
+	double pExp = ((double)currentExperience - ExpByLevel[currentLevel - 1]) / (ExpByLevel[currentLevel] - ExpByLevel[currentLevel - 1]) * 100.0;
+	currentExpGainPct = pExp - oldPctExp;
+	if (currentLevel > startLevel) {
+		currentExpGainPct = (100 - oldPctExp) + pExp + ((currentLevel - startLevel) - 1) * 100;
 	}
-	double expPerSecond = nTime > 0 ? (cExp - startExperience) / (double)nTime : 0;
-	char* unit = "";
-	if (expPerSecond > 1E9){
-		expPerSecond /= 1E9;
-		unit = "B";
-	}
-	else if (expPerSecond > 1E6){
-		expPerSecond /= 1E6;
-		unit = "M";
-	}
-	else if (expPerSecond > 1E3){
-		expPerSecond /= 1E3;
-		unit = "K";
-	}
-	sprintf_s(sExp, "%00.2f%% (%s%00.2f%%) [%s%.2f%s/s]", pExp, expGainPct >= 0 ? "+" : "", expGainPct, expPerSecond >= 0 ? "+" : "", expPerSecond, unit);
+	currentExpPerSecond = endTimer > 0 ? (currentExperience - startExperience) / (double)endTimer : 0;
+	char xpPerSec[32];
+	FormattedXPPerSec(xpPerSec, currentExpPerSecond);
 
-	Texthook::Draw((*p_D2CLIENT_ScreenSizeX / 2) - 100, *p_D2CLIENT_ScreenSizeY - 60, Center, 6, White, "%s", sExp);
-}
+	if (Toggles["Experience Meter"].state) {
+		sprintf_s(sExp, "%00.2f%% (%s%00.2f%%) [%s]", pExp, currentExpGainPct >= 0 ? "+" : "", currentExpGainPct, xpPerSec);
+		Texthook::Draw((*p_D2CLIENT_ScreenSizeX / 2) - 100, *p_D2CLIENT_ScreenSizeY - 60, Center, 6, White, "%s", sExp);
+	}
 
-void ScreenInfo::OnAutomapDraw() {
-	GameStructInfo* pInfo = (*p_D2CLIENT_GameInfo);
-	BnetData* pData = (*p_D2LAUNCH_BnData);
-	UnitAny* pUnit = D2CLIENT_GetPlayerUnit();
-	char* szDiff[3] = {"Normal", "Nightmare", "Hell"};
-	if (!pInfo || !pData || !pUnit)
-		return;
-	int y = 6+(BH::cGuardLoaded?16:0);
-
+	
 	char gameTime[20];
-	int nTime = ((GetTickCount() - gameTimer) / 1000);
-	sprintf_s(gameTime, 20, "%.2d:%.2d:%.2d", nTime/3600, (nTime/60)%60, nTime%60);
+	sprintf_s(gameTime, 20, "%.2d:%.2d:%.2d", endTimer / 3600, (endTimer / 60) % 60, endTimer % 60);
 
 	time_t tTime;
 	time(&tTime);
@@ -279,44 +396,80 @@ void ScreenInfo::OnAutomapDraw() {
 	// will crash when you attempt to open the map (which calls OnAutomapDraw function). We need to get the player unit
 	// again after calling this function. It may be a good idea in general not to store the return value of
 	// GetPlayerUnit.
-	char *level = UnicodeToAnsi(D2CLIENT_GetLevelName(pUnit->pPath->pRoom1->pRoom2->pLevel->dwLevelNo));
+	char* level = UnicodeToAnsi(D2CLIENT_GetLevelName(pUnit->pPath->pRoom1->pRoom2->pLevel->dwLevelNo));
 	pUnit = D2CLIENT_GetPlayerUnit();
 	if (!pUnit) return;
 
 	CHAR szPing[10] = "";
 	sprintf_s(szPing, sizeof(szPing), "%d", *p_D2CLIENT_Ping);
 
-	AutomapReplace automap[] = {
-		{"GAMENAME", pData->szGameName},
-		{"GAMEPASS", pData->szGamePass},
-		{"GAMEIP", pData->szGameIP},
-		{"GAMEDIFF", szDiff[D2CLIENT_GetDifficulty()]},
-		{"ACCOUNTNAME", pData->szAccountName},
-		{"CHARNAME", pUnit->pPlayerData->szName},
-		{"LEVEL", level},
-		{"PING", szPing},
-		{"GAMETIME", gameTime},
-		{"REALTIME", szTime}
-	};
+	automap["CURRENTCHARLEVEL"] = to_string(currentLevel);
+	automap["CURRENTCHARLEVELPERCENT"] = to_string(static_cast<double>(currentLevel) + (pExp / 100.0));
+	automap["CURRENTCHARXPPERCENT"] = to_string(pExp);
+	automap["CURRENTCHARXP"] = to_string(currentExperience);
+	automap["LEVEL"] = level;
+	automap["PING"] = szPing;
+	automap["GAMETIME"] = gameTime;
+	automap["REALTIME"] = szTime;
+	aPlayerCountAverage[GetPlayerCount() - 1]++;
+
+	delete [] level;
+	
+}
+
+void ScreenInfo::FormattedXPPerSec(char* buffer, double xpPerSec) {
+	char* unit = "";
+	if (xpPerSec > 1E9) {
+		xpPerSec /= 1E9;
+		unit = "B";
+	}
+	else if (xpPerSec > 1E6) {
+		xpPerSec /= 1E6;
+		unit = "M";
+	}
+	else if (xpPerSec > 1E3) {
+		xpPerSec /= 1E3;
+		unit = "K";
+	}
+	sprintf(buffer, "%s%.2f%s/s", xpPerSec >= 0 ? "+" : "", xpPerSec, unit);
+}
+
+std::string ScreenInfo::ReplaceAutomapTokens(std::string& v) {
+	std::string result;
+	result.assign(v.c_str());
+
+	for (auto const& am : automap) {
+		if (result.find("%" + am.first + "%") == string::npos)
+			continue;
+		if (am.second.length() == 0)
+			result.replace(result.find("%" + am.first + "%"), am.first.length() + 2, "");
+		else
+			result.replace(result.find("%" + am.first + "%"), am.first.length() + 2, am.second);
+	}
+	return result;
+}
+
+void ScreenInfo::OnAutomapDraw() {
+	int y = 6+(BH::cGuardLoaded?16:0);
 
 	for (vector<string>::iterator it = automapInfo.begin(); it < automapInfo.end(); it++) {
-		string key;
-		key.assign(*it);
-		for (int n = 0; n < sizeof(automap) / sizeof(automap[0]); n++) {
-			if (key.find("%" + automap[n].key + "%") == string::npos)
-				continue;
-			if (automap[n].value.length() == 0)
-				key = "";
-			else
-				key.replace(key.find("%" + automap[n].key + "%"), automap[n].key.length() + 2, automap[n].value);
-		}
+		string key = ReplaceAutomapTokens(*it);
 		if (key.length() > 0) {
 			Texthook::Draw(*p_D2CLIENT_ScreenSizeX - 10, y, Right,0,Gold,"%s", key.c_str());
 			y += 16;
 		}
 	}
+}
 
-	delete [] level;
+void ScreenInfo::AddDrop(UnitAny* pItem) {
+	ScreenInfo::AddDrop(GetItemName(pItem), pItem->pItemPath->dwPosX, pItem->pItemPath->dwPosY);
+}
+
+void ScreenInfo::AddDrop(const string& name, unsigned int x, unsigned int y) {
+	size_t h = 0;
+	hash_combine(h, hash<string>{}(name));
+	hash_combine(h, hash<long>{}(x << 8 | y));
+	BH::drops[h] = name;
 }
 
 void ScreenInfo::OnGamePacketRecv(BYTE* packet, bool* block) {
@@ -392,10 +545,88 @@ void ScreenInfo::OnGamePacketRecv(BYTE* packet, bool* block) {
 }
 
 void ScreenInfo::OnGameExit() {
+	DWORD xpGained = (currentExperience - startExperience);
+	double gamesToLevel = (ExpByLevel[currentLevel] - currentExperience) / (1.0 * xpGained);
+	double lastExpGainPct = currentExpGainPct;
+	double lastExpPerSecond = currentExpPerSecond;
+	int lastGameLength = endTimer;
+	int timeToLevel = gamesToLevel * lastGameLength;
+
+	char buffer[128];
+	sprintf_s(buffer, sizeof(buffer), "%.2f", gamesToLevel);
+	szGamesToLevel = string(buffer);
+
+	sprintf_s(buffer, sizeof(buffer), "%d:%.2d:%.2d", timeToLevel / 3600, (timeToLevel / 60) % 60, timeToLevel % 60);
+	szTimeToLevel = string(buffer);
+
+	sprintf_s(buffer, sizeof(buffer), "%s%00.2f%%", lastExpGainPct >= 0 ? "+" : "", lastExpGainPct);
+	szLastXpGainPer = string(buffer);
+
+	FormattedXPPerSec(buffer, lastExpPerSecond);
+	szLastXpPerSec = string(buffer);
+
+	sprintf_s(buffer, sizeof(buffer), "%.2d:%.2d:%.2d", lastGameLength / 3600, (lastGameLength / 60) % 60, lastGameLength % 60);
+	szLastGameTime = string(buffer);
+
+	const string delimiter = ", ";
+	string drops = accumulate(BH::drops.begin(), BH::drops.end(), string(),
+	[delimiter](const string& s, const pair<const size_t, string>& p) {
+		return s + (s.empty() ? string() : delimiter) + p.second;
+	});
+	BH::drops.clear();
+
+	drops = regex_replace(drops, regex("\xFF" "c."), "");
+	drops = regex_replace(drops, regex("\n"), " ");
+
+	automap["GAMESTOLVL"] = szGamesToLevel;
+	automap["TIMETOLVL"] = szTimeToLevel;
+	automap["LASTXPGAINED"] = to_string(xpGained);
+	automap["LASTXPPERCENTGAINED"] = szLastXpGainPer;
+	automap["LASTXPPERSEC"] = szLastXpPerSec;
+	automap["LASTXPPERSECLONG"] = to_string(lastExpPerSecond);
+	automap["LASTGAMETIME"] = szLastGameTime;
+	automap["LASTGAMETIMESEC"] = to_string(lastGameLength);
+	automap["DROPS"] = regex_replace(drops, regex("\xFF" "c."), "");
+
+	int idx = 0;
+	for (int i = 0; i < 8; i++) {
+		if (aPlayerCountAverage[i] > aPlayerCountAverage[idx]) {
+			idx = i;
+		}
+	}
+	automap["AVGPLAYERCOUNT"] = to_string(idx + 1);
+
 	MephistoBlocked = false;
 	DiabloBlocked = false;
 	BaalBlocked = false;
 	ReceivedQuestPacket = false;
+
+	if (Toggles["Save Run Details"].state) {
+		WriteRunTrackerData();
+	}
+	/*
+	cRunData->Write();
+	delete cRunData;
+	*/
+}
+
+void ScreenInfo::WriteRunTrackerData() {
+	namespace fs = std::filesystem;
+	fs::path path(ReplaceAutomapTokens(szSavePath));
+	bool exist = fs::exists(path);
+
+	fs::create_directories(path.parent_path());
+
+	std::ofstream os;
+	os.open(path, std::ios_base::app);
+	if (os.fail()) {
+		bFailedToWrite = true;
+		return;
+	}
+	if (!exist) {
+		os << ReplaceAutomapTokens(szColumnHeader) << endl; 
+	}
+	os << ReplaceAutomapTokens(szColumnData) << endl;
 }
 
 

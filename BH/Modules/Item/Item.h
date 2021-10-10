@@ -44,6 +44,7 @@
 */
 
 #pragma once
+#include <unordered_set>
 #include "../Module.h"
 #include "../../Constants.h"
 #include "../../Config.h"
@@ -54,11 +55,15 @@ struct UnitAny;
 class Item : public Module {
 	private:
 		static map<std::string, Toggle> Toggles;
+		static unordered_set<string> no_ilvl_codes;
 		unsigned int showPlayer;
 		static UnitAny* viewingUnit;
 		Drawing::UITab* settingsTab;
 		static unsigned int filterLevelSetting;
 		static unsigned int pingLevelSetting;
+		static unsigned int trackerPingLevelSetting;
+
+		void ResetPatches();
 	public:
 
 		Item() : Module("Item") {};
@@ -67,13 +72,14 @@ class Item : public Module {
 		void OnUnload();
 
 		void LoadConfig();
+		void LoadNoIlvlCodes();
 		void DrawSettings();
 
 		void OnGameJoin();
 
 		void OnLoop();
 		void OnKey(bool up, BYTE key, LPARAM lParam, bool* block);
-		void OnLeftClick(bool up, int x, int y, bool* block);
+		void OnLeftClick(bool up, unsigned int x, unsigned int y, bool* block);
 		std::map<string, Toggle>* GetToggles() { return &Toggles; }
 
 		static void __fastcall ItemNamePatch(wchar_t *name, UnitAny *item);
@@ -82,10 +88,15 @@ class Item : public Module {
 		static BOOL __stdcall OnDamagePropertyBuild(UnitAny* pItem, DamageStats* pDmgStats, int nStat, wchar_t* wOut);
 		static void __stdcall OnPropertyBuild(wchar_t* wOut, int nStat, UnitAny* pItem, int nStatParam);
 
+		static BOOL PermShowItemsPatch1();
+		static BOOL PermShowItemsPatch2();
+		static BOOL PermShowItemsPatch3();
+
 		static UnitAny* GetViewUnit();
 
 		static unsigned int GetFilterLevel() { return filterLevelSetting; }
 		static unsigned int GetPingLevel() { return pingLevelSetting; }
+		static unsigned int GetTrackerPingLevel() { return trackerPingLevelSetting >= 0 ? trackerPingLevelSetting : pingLevelSetting; }
 
 };
 
@@ -96,6 +107,12 @@ void GetItemPropertyString_Interception();
 void ViewInventoryPatch1_ASM();
 void ViewInventoryPatch2_ASM();
 void ViewInventoryPatch3_ASM();
+
+void PermShowItemsPatch1_ASM();
+void PermShowItemsPatch2_ASM();
+void PermShowItemsPatch3_ASM();
+void PermShowItemsPatch4_ASM();
+
 struct UnitItemInfo;
 int CreateUnitItemInfo(UnitItemInfo *uInfo, UnitAny *item);
 
