@@ -49,7 +49,7 @@ void ScreenInfo::OnLoad() {
 	automap["LASTGAMETIME"] = szLastGameTime;
 	automap["SESSIONGAMECOUNT"] = to_string(nTotalGames);
 
-	mpqH = D2WIN_LoadMpq(5000, "BH.dll", "test.mpq", "test", 0, 0);
+	mpqH = D2WIN_LoadMpq(5000, "BH.dll", "buffs.mpq", "buffs", 0, 0);
 	if (mpqH) {
 		cf = D2WIN_LoadCellFile("data\\global\\ui\\spells\\buffs24", 0);
 		//buffs
