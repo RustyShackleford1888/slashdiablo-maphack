@@ -38,4 +38,3 @@ Release/*
 /.vs/*
 /BH.VC.db
 /out/*
-!BH.dll
