@@ -48,19 +48,6 @@ void ScreenInfo::OnLoad() {
 	automap["LASTXPPERSEC"] = szLastXpPerSec;
 	automap["LASTGAMETIME"] = szLastGameTime;
 	automap["SESSIONGAMECOUNT"] = to_string(nTotalGames);
-
-	mpqH = D2WIN_LoadMpq(5000, "BH.dll", "buffs.mpq", "buffs", 0, 0);
-	if (mpqH) {
-		cf = D2WIN_LoadCellFile("data\\global\\ui\\spells\\buffs24", 0);
-		//buffs
-		buffs = { STATE_QUICKNESS,STATE_FADE,STATE_CLOAKED,STATE_VENOMCLAWS,STATE_SHOUT,STATE_BATTLEORDERS,STATE_BATTLECOMMAND,STATE_OAKSAGE,STATE_CYCLONEARMOR,STATE_HURRICANE,STATE_BONEARMOR,STATE_HOLYSHIELD,STATE_FROZENARMOR,STATE_SHIVERARMOR,STATE_CHILLINGARMOR,STATE_ENCHANT,STATE_ENERGYSHIELD,STATE_THUNDERSTORM,
-		//auras
-		STATE_MIGHT, STATE_PRAYER, STATE_RESISTFIRE, STATE_HOLYFIRE, STATE_THORNS, STATE_DEFIANCE, STATE_RESISTCOLD, STATE_BLESSEDAIM, STATE_STAMINA, STATE_RESISTLIGHT, STATE_CONCENTRATION, STATE_HOLYWIND, STATE_CLEANSING, STATE_HOLYSHOCK, STATE_SANCTUARY, STATE_MEDITATION, STATE_FANATICISM, STATE_REDEMPTION, STATE_CONVICTION, STATE_RESISTALL,
-		//debuffs
-		STATE_AMPLIFYDAMAGE, STATE_WEAKEN, STATE_DECREPIFY, STATE_LOWERRESIST };
-		manageConv = false;
-		manageBuffs = true;
-	}
 }
 
 void ScreenInfo::LoadConfig() {
@@ -116,6 +103,19 @@ void ScreenInfo::OnGameJoin() {
 		if (!SetWindowText(D2GFX_GetHwnd(), title.c_str())) {
 			printf("Failed setting window text, error: %d\n\n", GetLastError());
 		}
+	}
+	mpqH = D2WIN_LoadMpq(5000, "BH.dll", "buffs.mpq", "buffs", 0, 0);
+	if (mpqH) {
+		cf = D2WIN_LoadCellFile("data\\global\\ui\\spells\\buffs24", 0);
+		//buffs
+		buffs = { STATE_QUICKNESS,STATE_FADE,STATE_CLOAKED,STATE_VENOMCLAWS,STATE_SHOUT,STATE_BATTLEORDERS,STATE_BATTLECOMMAND,STATE_OAKSAGE,STATE_CYCLONEARMOR,STATE_HURRICANE,STATE_BONEARMOR,STATE_HOLYSHIELD,STATE_FROZENARMOR,STATE_SHIVERARMOR,STATE_CHILLINGARMOR,STATE_ENCHANT,STATE_ENERGYSHIELD,STATE_THUNDERSTORM,
+			//auras
+			STATE_MIGHT, STATE_PRAYER, STATE_RESISTFIRE, STATE_HOLYFIRE, STATE_THORNS, STATE_DEFIANCE, STATE_RESISTCOLD, STATE_BLESSEDAIM, STATE_STAMINA, STATE_RESISTLIGHT, STATE_CONCENTRATION, STATE_HOLYWIND, STATE_CLEANSING, STATE_HOLYSHOCK, STATE_SANCTUARY, STATE_MEDITATION, STATE_FANATICISM, STATE_REDEMPTION, STATE_CONVICTION, STATE_RESISTALL,
+			//debuffs
+			STATE_AMPLIFYDAMAGE, STATE_WEAKEN, STATE_DECREPIFY, STATE_LOWERRESIST };
+		manageConv = false;
+		manageBuffs = true;
+		activeBuffs = {};
 	}
 
 	if (bFailedToWrite) {
@@ -192,8 +192,7 @@ void ScreenInfo::OnGameJoin() {
 	}
 	runs[runname]++;
 	*/
-	runcounter[runname]++;
-	activeBuffs = {};
+	runcounter[runname]++;	
 
 	if (!Toggles["Run Details On Join"].state) {
 		return;
@@ -464,7 +463,8 @@ void ScreenInfo::OnDraw() {
 			int x = activeBuffs[i].isBuff ? buffX : debuffX;
 			int y = activeBuffs[i].isBuff ? buffY : debuffY;
 			int col = activeBuffs[i].isBuff ? 3 : 1; //3=Blue, 1=Red;
-			D2GFX_DrawCellContextEx(&buffContext, x, y, -1, DRAW_MODE_NORMAL, col);
+			D2GFX_DrawCellContextEx(&buffContext, x, y, -1, DRAW_MODE_NORMAL, White);
+
 			if (activeBuffs[i].isBuff) {
 				buffX += cf->cells[0]->width + 1;
 				totalBuffs++;
