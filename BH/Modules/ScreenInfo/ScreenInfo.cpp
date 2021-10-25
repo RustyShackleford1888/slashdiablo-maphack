@@ -114,9 +114,9 @@ void ScreenInfo::OnGameJoin() {
 			//debuffs
 			STATE_AMPLIFYDAMAGE, STATE_WEAKEN, STATE_DECREPIFY, STATE_LOWERRESIST };
 		manageConv = false;
-		manageBuffs = true;
-		activeBuffs = {};
+		manageBuffs = true;		
 	}
+	activeBuffs = {};
 
 	if (bFailedToWrite) {
 		bFailedToWrite = false;
@@ -463,7 +463,7 @@ void ScreenInfo::OnDraw() {
 			int x = activeBuffs[i].isBuff ? buffX : debuffX;
 			int y = activeBuffs[i].isBuff ? buffY : debuffY;
 			int col = activeBuffs[i].isBuff ? 3 : 1; //3=Blue, 1=Red;
-			D2GFX_DrawCellContextEx(&buffContext, x, y, -1, DRAW_MODE_NORMAL, White);
+			D2GFX_DrawCellContextEx(&buffContext, x, y, -1, DRAW_MODE_NORMAL, col);
 
 			if (activeBuffs[i].isBuff) {
 				buffX += cf->cells[0]->width + 1;
@@ -646,6 +646,8 @@ void ScreenInfo::OnGamePacketRecv(BYTE* packet, bool* block) {
 }
 
 void ScreenInfo::OnGameExit() {
+	delete mpqH;
+	delete cf;
 	DWORD xpGained = (currentExperience - startExperience);
 	double gamesToLevel = (ExpByLevel[currentLevel] - currentExperience) / (1.0 * xpGained);
 	double lastExpGainPct = currentExpGainPct;
