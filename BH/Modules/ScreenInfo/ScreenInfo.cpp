@@ -465,6 +465,8 @@ void ScreenInfo::OnDraw() {
 			int col = activeBuffs[i].isBuff ? 3 : 1; //3=Blue, 1=Red;
 			D2GFX_DrawCellContextEx(&buffContext, x, y, -1, DRAW_MODE_NORMAL, col);
 
+			delete &buffContext;
+
 			if (activeBuffs[i].isBuff) {
 				buffX += cf->cells[0]->width + 1;
 				totalBuffs++;
