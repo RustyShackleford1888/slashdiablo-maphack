@@ -315,8 +315,9 @@ void ScreenInfo::OnDraw() {
 	if (mpqH == NULL) {
 		mpqH = D2WIN_LoadMpq(5000, "BH.dll", "buffs.mpq", "buffs", 0, 0);
 	}
-	if (cf == NULL) {
+	if (!cellLoaded) {
 		cf = D2WIN_LoadCellFile("data\\global\\ui\\spells\\buffs24", 0);
+		cellLoaded = true;
 	}
 
 	ULONGLONG ticks = BHGetTickCount();
@@ -512,6 +513,13 @@ void ScreenInfo::OnDraw() {
 
 	delete [] level;	
 	
+}
+
+void ScreenInfo::OnOOGDraw() {
+	if (cellLoaded) {
+		D2WIN_UnloadCellFile(cf);
+		cellLoaded = false;
+	}
 }
 
 void ScreenInfo::FormattedXPPerSec(char* buffer, double xpPerSec) {
