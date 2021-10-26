@@ -92,7 +92,7 @@ class ScreenInfo : public Module {
 		ScreenInfo() :
 			Module("Screen Info"), warningTicks(BHGetTickCount()), packetRequests(0),
 			MephistoBlocked(false), DiabloBlocked(false), BaalBlocked(false), ReceivedQuestPacket(false),
-			startExperience(0), startLevel(0) {};
+			startExperience(0), startLevel(0), mpqH(NULL), cf(NULL) {};
 
 		void OnLoad();
 		void LoadConfig();

@@ -492,6 +492,7 @@ VARPTR(D2LAUNCH, BnData, BnetData *, 0x25ABC, 0x25B30)
 
 FUNCPTR(D2WIN, DrawSprites, void __fastcall, (void), 0x18750, 0xEAA0)
 FUNCPTR(D2WIN, LoadCellFile, CellFile* __fastcall, (const char* szFile, int Type), -10111, -10023)
+FUNCPTR(D2WIN, UnloadCellFile, void __fastcall, (CellFile* pCellFile), -10126, -10189)
 FUNCPTR(D2WIN, DrawCellFile, void __fastcall, (CellFile * pCellFile, int xPos, int yPos, int div, int trans, int Color), -10138, -10172)
 
 
