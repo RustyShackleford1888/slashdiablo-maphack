@@ -11,22 +11,24 @@
 #include <numeric>
 #include <filesystem>
 
-Patch* popupPatch = new Patch(Jump, D2CLIENT, { 0x3E7DD, 0x0 }, (int)Popup_Interception, 5);
-
 using namespace Drawing;
 
 map<std::string, Toggle> ScreenInfo::Toggles;
 
 void ScreenInfo::OnLoad() {
 	LoadConfig();
+	
 
 	//buffs
-	buffs = { STATE_QUICKNESS,STATE_FADE,STATE_CLOAKED,STATE_VENOMCLAWS,STATE_SHOUT,STATE_BATTLEORDERS,STATE_BATTLECOMMAND,STATE_OAKSAGE,STATE_CYCLONEARMOR,STATE_HURRICANE,STATE_BONEARMOR,STATE_HOLYSHIELD,STATE_FROZENARMOR,STATE_SHIVERARMOR,STATE_CHILLINGARMOR,STATE_ENCHANT,STATE_ENERGYSHIELD,STATE_THUNDERSTORM,
+	buffs = { STATE_QUICKNESS,STATE_FADE,STATE_CLOAKED,STATE_VENOMCLAWS,STATE_SHOUT,STATE_BATTLEORDERS,STATE_BATTLECOMMAND,STATE_OAKSAGE,STATE_CYCLONEARMOR,STATE_HURRICANE,STATE_BONEARMOR,STATE_HOLYSHIELD,STATE_FROZENARMOR,STATE_SHIVERARMOR,STATE_CHILLINGARMOR,STATE_ENCHANT,STATE_ENERGYSHIELD,STATE_THUNDERSTORM, STATE_SHRINE_EXPERIENCE,
 	//auras
 	STATE_MIGHT, STATE_PRAYER, STATE_RESISTFIRE, STATE_HOLYFIRE, STATE_THORNS, STATE_DEFIANCE, STATE_RESISTCOLD, STATE_BLESSEDAIM, STATE_STAMINA, STATE_RESISTLIGHT, STATE_CONCENTRATION, STATE_HOLYWIND, STATE_CLEANSING, STATE_HOLYSHOCK, STATE_SANCTUARY, STATE_MEDITATION, STATE_FANATICISM, STATE_REDEMPTION, STATE_CONVICTION, STATE_RESISTALL,
 	//debuffs
-	STATE_AMPLIFYDAMAGE, STATE_WEAKEN, STATE_DECREPIFY, STATE_LOWERRESIST };
-	//popupPatch->Install();
+	STATE_AMPLIFYDAMAGE, STATE_WEAKEN, STATE_DECREPIFY, STATE_LOWERRESIST, STATE_POISON, STATE_COLD };
+
+	buffNames = { L"Burst of Speed", L"Fade", L"Cloak of Shadows", L"Venom", L"Shout", L"Battle Orders", L"Battle Command", L"Oak Sage", L"Cyclone Armor", L"Hurricane", L"Bone Armor", L"Holy Shield", L"Frozen Armor", L"Shiver Armor", L"Chilling Armor", L"Enchant", L"Energy Shield", L"Thunder Storm", L"Experience Shrine",
+	L"Might", L"Prayer", L"Resist Fire", L"Holy Fire", L"Thorns", L"Defiance", L"Resist Cold", L"Blessed Aim", L"Vigor", L"Resist Lightning", L"Concentration", L"Holy Freeze", L"Cleansing", L"Holy Shock", L"Sanctuary", L"Meditation", L"Fanaticism", L"Redemption", L"Conviction", L"Salvation", 
+	L"Amplify Damage", L"Weaken", L"Decrepify", L"Lower Resist", L"Poisoned", L"Frozen"	};
 	
 	bhText = new Texthook(OutOfGame, 795, 6, BH_VERSION " (planqi Resurgence/Slash branch)");
 	bhText->SetAlignment(Right);
@@ -416,7 +418,7 @@ void ScreenInfo::OnDraw() {
 	if (cf) {
 		//dc6 is loaded!		
 		if (manageBuffs) {
-			//receive packet 0xA8 or 0xA9. Change on one of players states.
+			//received packet 0xA8 or 0xA9. Change on one of players states.
 			for (unsigned int i = 0; i < buffs.size(); i++) {
 				int state = D2COMMON_GetUnitState(pUnit, buffs[i]);
 				BOOL buffFound = false;
@@ -437,7 +439,7 @@ void ScreenInfo::OnDraw() {
 						newBuff.isBuff = (int)D2COMMON_GetUnitStat(pUnit, STAT_FIRERESIST, 0) < resTracker ? false : true;
 					}
 					else {
-						newBuff.isBuff = i < 38 ? true : false;
+						newBuff.isBuff = i < 39 ? true : false;
 					}					
 					activeBuffs.push_back(newBuff);
 				} else if (state == 0 && buffFound) {
@@ -448,6 +450,8 @@ void ScreenInfo::OnDraw() {
 			manageBuffs = false;
 			manageConv = false;
 		}
+		DWORD mouseX = *p_D2CLIENT_MouseX;
+		DWORD mouseY = *p_D2CLIENT_MouseY;
 		int screenX = *p_D2CLIENT_ScreenSizeX;
 		int screenY = *p_D2CLIENT_ScreenSizeY;
 		int buffX = 117;
@@ -468,14 +472,16 @@ void ScreenInfo::OnDraw() {
 			int y = activeBuffs[i].isBuff ? buffY : debuffY;
 			int col = activeBuffs[i].isBuff ? 3 : 1; //3=Blue, 1=Red;
 			D2GFX_DrawCellContextEx(&buffContext, x, y, -1, DRAW_MODE_NORMAL, col);
+			if (mouseX > x && mouseX < x + cf->cells[0]->width && mouseY > y - cf->cells[0]->height && mouseY < y) {
+				DrawPopup(buffNames[activeBuffs[i].index], x + cf->cells[0]->width / 2, y - cf->cells[0]->height);
+			}
 			if (activeBuffs[i].isBuff) {
 				buffX += cf->cells[0]->width + 1;
 				totalBuffs++;
 			}
 			else {
 				debuffX -= cf->cells[0]->width + 1;				
-			}
-			
+			}			
 		}
 		resTracker = (int)D2COMMON_GetUnitStat(pUnit, STAT_FIRERESIST, 0);
 	}
@@ -740,20 +746,9 @@ void ScreenInfo::WriteRunTrackerData() {
 	os << ReplaceAutomapTokens(szColumnData) << endl;
 }
 
-void ScreenInfo::PopupPatch() {
-	DWORD mouseX = *p_D2CLIENT_MouseX;
-	DWORD mouseY = *p_D2CLIENT_MouseY;
-	wstring a = L"line 1\nline 2\n\nline4";	
-	wchar_t del = L'\n';
-	vector<wstring> p = ScreenInfo::strBreakApart(a, del);
-	int widerText = 0;
-	for (unsigned int i = 0; i < p.size(); i++) {	
-		int currWidth = D2WIN_GetTextWidth(p[i].c_str());
-		if (currWidth > widerText) {	
-			widerText = currWidth;
-		}
-	}
-	D2WIN_DrawFramedText(a.c_str(), mouseX - widerText / 2, mouseY - 10, 0, 0);
+void ScreenInfo::DrawPopup(wchar_t* buffName, int x, int y) {	
+	int textWidth = D2WIN_GetTextWidth(buffName);
+	D2WIN_DrawRectText(buffName, x - textWidth / 2, y - 2, White, DRAW_MODE_ALPHA_50, White);
 }
 
 vector<wstring> ScreenInfo::strBreakApart(wstring str, wchar_t delimiter) {
@@ -1049,15 +1044,4 @@ StateCode GetStateCode(const char* name) {
 		}
 	}
 	return StateCodes[0];
-}
-
-void __declspec(naked) Popup_Interception()
-{
-	__asm {
-		call ScreenInfo::PopupPatch;
-
-		pop edi;
-		pop ebx;
-		ret 16;
-	}
 }
