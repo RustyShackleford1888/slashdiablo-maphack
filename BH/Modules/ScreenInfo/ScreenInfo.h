@@ -84,6 +84,7 @@ class ScreenInfo : public Module {
 		BOOL manageBuffs;
 		BOOL manageConv;
 		int resTracker;
+		BOOL cellLoaded;
 		std::vector<Buff> activeBuffs;
 		std::vector<BYTE> buffs;
 	public:
@@ -92,7 +93,7 @@ class ScreenInfo : public Module {
 		ScreenInfo() :
 			Module("Screen Info"), warningTicks(BHGetTickCount()), packetRequests(0),
 			MephistoBlocked(false), DiabloBlocked(false), BaalBlocked(false), ReceivedQuestPacket(false),
-			startExperience(0), startLevel(0) {};
+			startExperience(0), startLevel(0), mpqH(NULL), cf(NULL), cellLoaded(false) {};
 
 		void OnLoad();
 		void LoadConfig();
@@ -103,6 +104,7 @@ class ScreenInfo : public Module {
 	
 		void OnRightClick(bool up, int x, int y, bool* block);
 		void OnDraw();
+		void OnOOGDraw();
 		void OnAutomapDraw();
 		void OnGamePacketRecv(BYTE* packet, bool *block);
 
