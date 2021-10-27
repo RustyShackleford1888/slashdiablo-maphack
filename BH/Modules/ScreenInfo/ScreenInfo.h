@@ -16,12 +16,6 @@ struct StateWarning {
 	StateWarning(string n, ULONGLONG ticks) : name(n), startTicks(ticks) {}
 };
 
-struct Buff {
-	BYTE state;
-	int index;
-	BOOL isBuff;
-};
-
 class ScreenInfo : public Module {
 	private:
 		map<string, string> SkillWarnings;
@@ -32,7 +26,7 @@ class ScreenInfo : public Module {
 		Drawing::Texthook* mpqVersionText;
 		Drawing::Texthook* d2VersionText;
 		DWORD gameTimer;
-		DWORD endTimer;		
+		DWORD endTimer;
 
 		int packetRequests;
 		ULONGLONG warningTicks;
@@ -79,13 +73,6 @@ class ScreenInfo : public Module {
 		int	GetPlayerCount();
 		void FormattedXPPerSec(char* buffer, double xpPerSec);
 		string FormatTime(time_t t, const char* format);
-		CellFile* cf;
-		void* mpqH;
-		BOOL manageBuffs;
-		BOOL manageConv;
-		int resTracker;
-		std::vector<Buff> activeBuffs;
-		std::vector<BYTE> buffs;
 	public:
 		static map<std::string, Toggle> Toggles;
 
@@ -100,7 +87,7 @@ class ScreenInfo : public Module {
 		void OnKey(bool up, BYTE key, LPARAM lParam, bool* block);
 		void OnGameJoin();
 		void OnGameExit();
-	
+
 		void OnRightClick(bool up, int x, int y, bool* block);
 		void OnDraw();
 		void OnAutomapDraw();
@@ -108,14 +95,10 @@ class ScreenInfo : public Module {
 
 		std::string ReplaceAutomapTokens(std::string& v);
 		void WriteRunTrackerData();
-		void PopupPatch();
-		vector<wstring> strBreakApart(wstring str, wchar_t delimiter);
 
 		static void AddDrop(UnitAny* item);
 		static void AddDrop(const string& name, unsigned int x, unsigned int y);
 };
-
-void Popup_Interception();
 
 StateCode GetStateCode(unsigned int nKey);
 StateCode GetStateCode(const char* name);
