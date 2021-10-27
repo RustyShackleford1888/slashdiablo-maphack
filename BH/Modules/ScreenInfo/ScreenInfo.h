@@ -79,6 +79,15 @@ class ScreenInfo : public Module {
 		int	GetPlayerCount();
 		void FormattedXPPerSec(char* buffer, double xpPerSec);
 		string FormatTime(time_t t, const char* format);
+		CellFile* cf;
+		void* mpqH;
+		BOOL manageBuffs;
+		BOOL manageConv;
+		int resTracker;
+		BOOL cellLoaded;
+		vector<Buff> activeBuffs;
+		vector<BYTE> buffs;
+		vector<wchar_t*> buffNames;
 	public:
 		static map<std::string, Toggle> Toggles;
 
@@ -100,14 +109,14 @@ class ScreenInfo : public Module {
 		void OnAutomapDraw();
 		void OnGamePacketRecv(BYTE* packet, bool *block);
 
-		std::string ReplaceAutomapTokens(std::string& v);
+		std::string ReplaceAutomapTokens(std::string& v);		
 		void WriteRunTrackerData();
+		void DrawPopup(wchar_t* buffName, int x, int y);
+		vector<wstring> strBreakApart(wstring str, wchar_t delimiter);
 
 		static void AddDrop(UnitAny* item);
 		static void AddDrop(const string& name, unsigned int x, unsigned int y);
 };
-
-void Popup_Interception();
 
 StateCode GetStateCode(unsigned int nKey);
 StateCode GetStateCode(const char* name);
