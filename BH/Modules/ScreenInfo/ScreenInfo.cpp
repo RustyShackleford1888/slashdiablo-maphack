@@ -435,8 +435,9 @@ void ScreenInfo::OnDraw() {
 					Buff newBuff = {};
 					newBuff.state = buffs[i];
 					newBuff.index = i;
-					if (manageConv) {					
+					if (manageConv && buffs[i] == STATE_CONVICTION) {
 						newBuff.isBuff = (int)D2COMMON_GetUnitStat(pUnit, STAT_FIRERESIST, 0) < resTracker ? false : true;
+						manageConv = false;
 					}
 					else {
 						newBuff.isBuff = i < 39 ? true : false;
@@ -447,8 +448,7 @@ void ScreenInfo::OnDraw() {
 					activeBuffs.erase(activeBuffs.begin() + pos);
 				}			
 			}
-			manageBuffs = false;
-			manageConv = false;
+			manageBuffs = false;			
 		}
 		DWORD mouseX = *p_D2CLIENT_MouseX;
 		DWORD mouseY = *p_D2CLIENT_MouseY;
