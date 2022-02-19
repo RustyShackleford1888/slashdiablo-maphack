@@ -463,7 +463,7 @@ void ScreenInfo::OnDraw() {
 		for (unsigned i = 0; i < activeBuffs.size(); i++) {
 			if (totalBuffs % 9 == 0 && totalBuffs != 0) {
 				buffX = 117;
-				buffY += cf->cells[0]->height + 1;
+				buffY -= cf->cells[0]->height + 1;
 			}			
 			CellContext buffContext = {};
 			buffContext.nCellNo = activeBuffs[i].index;
