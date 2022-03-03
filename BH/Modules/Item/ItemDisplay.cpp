@@ -1339,10 +1339,10 @@ bool FlagsCondition::EvaluateInternalFromPacket(ItemInfo *info, Condition *arg1,
 }
 
 bool PlayerTypeCondition::EvaluateInternal(UnitItemInfo* uInfo, Condition* arg1, Condition* arg2) {
-	return ((*p_D2LAUNCH_BnData)->nCharFlags >> 5) == mode;
+	return (((*p_D2LAUNCH_BnData)->nCharFlags >> 5) & 0x1) == mode;
 }
 bool PlayerTypeCondition::EvaluateInternalFromPacket(ItemInfo* info, Condition* arg1, Condition* arg2) {
-	return ((*p_D2LAUNCH_BnData)->nCharFlags >> 5) == mode;
+	return (((*p_D2LAUNCH_BnData)->nCharFlags >> 5) & 0x1) == mode;
 }
 
 bool QualityCondition::EvaluateInternal(UnitItemInfo *uInfo, Condition *arg1, Condition *arg2) {
