@@ -20,6 +20,8 @@ Patch* weatherPatch = new Patch(Jump, D2COMMON, { 0x6CC56, 0x30C36 }, (int)Weath
 Patch* lightingPatch = new Patch(Call, D2CLIENT, { 0xA9A37, 0x233A7 }, (int)Lighting_Interception, 6);
 Patch* infraPatch = new Patch(Call, D2CLIENT, { 0x66623, 0xB4A23 }, (int)Infravision_Interception, 7);
 Patch* shakePatch = new Patch(Call, D2CLIENT, { 0x442A2, 0x452F2 }, (int)Shake_Interception, 5);
+Patch* diabloDeadMessage = new Patch((PatchType)0x68, D2CLIENT, { 0x52E84, 0x77737 }, (int)0x14, 5);
+
 Patch* monsterNamePatch = new Patch(Call, D2WIN, { 0x13550, 0x140E0 }, (int)HoverObject_Interception, 5);
 Patch* cpuPatch = new Patch(NOP, D2CLIENT, { 0x3CB7C, 0x2770C }, 0, 9);
 Patch* fpsPatch = new Patch(NOP, D2CLIENT, { 0x44E51, 0x45EA1 }, 0, 8);
@@ -28,6 +30,7 @@ Patch* skipNpcMessages1 = new Patch(Call, D2CLIENT, { 0x4BB07, 0x7EB87 }, (int)N
 Patch* skipNpcMessages2 = new Patch(Call, D2CLIENT, { 0x48BD6, 0x7B4C6 }, (int)NPCQuestMessageEndPatch1_ASM, 8);
 Patch* skipNpcMessages3 = new Patch(Call, D2CLIENT, { 0x4819F, 0x7A9CF }, (int)NPCQuestMessageEndPatch2_ASM, 5);
 Patch* skipNpcMessages4 = new Patch(Call, D2CLIENT, { 0x7E9B7, 0x77737 }, (int)NPCMessageLoopPatch_ASM, 6);
+
 
 static BOOL fSkipMessageReq = 0;
 static DWORD mSkipMessageTimer = 0;
@@ -240,6 +243,7 @@ void Maphack::OnLoad() {
 	/*ResetRevealed();
 	ReadConfig();
 	ResetPatches();*/
+	diabloDeadMessage->Install();
 
 	settingsTab = new UITab("Maphack", BH::settingsUI);
 
@@ -346,6 +350,7 @@ void Maphack::OnUnload() {
 	skipNpcMessages2->Remove();
 	skipNpcMessages3->Remove();
 	skipNpcMessages4->Remove();
+	diabloDeadMessage->Remove();
 }
 
 void Maphack::OnLoop() {
@@ -511,7 +516,7 @@ void Maphack::OnAutomapDraw() {
 					}
 
 					//Determine immunities
-					string szImmunities[] = { "\377c7i", "\377c8i", "\377c1i", "\377c9i", "\377c3i", "\377c2i" };
+					string szImmunities[] = { "\377c0p", "\377c8i", "\377c1i", "\377c9i", "\377c3i", "\377c2i" };
 					string szResistances[] = { "\377c7r", "\377c8r", "\377c1r", "\377c9r", "\377c3r", "\377c2r" };
 					DWORD dwImmunities[] = {
 						STAT_DMGREDUCTIONPCT,
@@ -1094,6 +1099,15 @@ void __declspec(naked) Infravision_Interception()
 	}
 }
 
+void __declspec(naked) DiabloMessage_Interception()
+{
+	__asm {
+		mov eax, 0x14
+		push eax
+		ret
+	}
+}
+
 VOID __stdcall Shake_Interception(LPDWORD lpX, LPDWORD lpY)
 {
 
@@ -1191,7 +1205,5 @@ void __declspec(naked) NPCQuestMessageEndPatch2_ASM()
 		ret
 	}
 }
-
-
 
 #pragma optimize( "", on)

@@ -80,8 +80,10 @@ void Lighting_Interception();
 void Infravision_Interception();
 void __stdcall Shake_Interception(LPDWORD lpX, LPDWORD lpY);
 void HoverObject_Interception();
+void DiabloMessage_Interception();
 
 void  NPCMessageLoopPatch_ASM();
 void  NPCQuestMessageStartPatch_ASM();
 void  NPCQuestMessageEndPatch1_ASM();
 void  NPCQuestMessageEndPatch2_ASM();
+
