@@ -63,7 +63,12 @@ bool Patch::Install() {
 	ReadProcessMemory(GetCurrentProcess(), (void*)address, oldCode, length, NULL);
 	
 	//Set the code with all NOPs by default
-	memset(code, 0x90, length);
+	if (type == 0x68) {
+		memset(code, 0x00, length);
+	}
+	else {
+		memset(code, 0x90, length);
+	}
 
 	if (type != NOP) {
 		//Set the opcode
