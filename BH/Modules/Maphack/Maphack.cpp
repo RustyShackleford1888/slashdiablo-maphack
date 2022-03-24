@@ -1099,15 +1099,6 @@ void __declspec(naked) Infravision_Interception()
 	}
 }
 
-void __declspec(naked) DiabloMessage_Interception()
-{
-	__asm {
-		mov eax, 0x14
-		push eax
-		ret
-	}
-}
-
 VOID __stdcall Shake_Interception(LPDWORD lpX, LPDWORD lpY)
 {
 
