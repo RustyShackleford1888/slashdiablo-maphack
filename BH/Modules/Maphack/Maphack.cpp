@@ -20,7 +20,7 @@ Patch* weatherPatch = new Patch(Jump, D2COMMON, { 0x6CC56, 0x30C36 }, (int)Weath
 Patch* lightingPatch = new Patch(Call, D2CLIENT, { 0xA9A37, 0x233A7 }, (int)Lighting_Interception, 6);
 Patch* infraPatch = new Patch(Call, D2CLIENT, { 0x66623, 0xB4A23 }, (int)Infravision_Interception, 7);
 Patch* shakePatch = new Patch(Call, D2CLIENT, { 0x442A2, 0x452F2 }, (int)Shake_Interception, 5);
-Patch* diabloDeadMessage = new Patch((PatchType)0x68, D2CLIENT, { 0x52E84, 0x77737 }, (int)0x14, 5);
+Patch* diabloDeadMessage = new Patch((PatchType)0x68, D2CLIENT, { 0x52E84, 0x693B4 }, (int)0x14, 5);
 
 Patch* monsterNamePatch = new Patch(Call, D2WIN, { 0x13550, 0x140E0 }, (int)HoverObject_Interception, 5);
 Patch* cpuPatch = new Patch(NOP, D2CLIENT, { 0x3CB7C, 0x2770C }, 0, 9);
