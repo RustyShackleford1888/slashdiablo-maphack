@@ -358,9 +358,9 @@ void ScreenInfo::OnDraw() {
 		int doneMephisto = D2COMMON_GetQuestFlag2(quests, THE_GUARDIAN, QFLAG_REWARD_GRANTED);
 		int doneDiablo = D2COMMON_GetQuestFlag2(quests, TERRORS_END, QFLAG_REWARD_GRANTED);
 		int doneBaal = D2COMMON_GetQuestFlag2(quests, EVE_OF_DESTRUCTION, QFLAG_REWARD_GRANTED);
-		int startedMephisto = D2COMMON_GetQuestFlag2(quests, THE_GUARDIAN, QFLAG_QUEST_STARTED);
-		int startedDiablo = D2COMMON_GetQuestFlag2(quests, TERRORS_END, QFLAG_QUEST_STARTED);
-		int startedBaal = D2COMMON_GetQuestFlag2(quests, EVE_OF_DESTRUCTION, QFLAG_QUEST_STARTED);
+		int startedMephisto = D2COMMON_GetQuestFlag2(quests, THE_GUARDIAN, QFLAG_QUEST_STARTED) | D2COMMON_GetQuestFlag2(quests, THE_GUARDIAN, QFLAG_QUEST_LEAVE_TOWN) | D2COMMON_GetQuestFlag2(quests, THE_GUARDIAN, QFLAG_QUEST_ENTER_AREA) | D2COMMON_GetQuestFlag2(quests, THE_GUARDIAN, QFLAG_CUSTOM_2);
+		int startedDiablo = D2COMMON_GetQuestFlag2(quests, TERRORS_END, QFLAG_QUEST_STARTED) | D2COMMON_GetQuestFlag2(quests, TERRORS_END, QFLAG_QUEST_LEAVE_TOWN);
+		int startedBaal = D2COMMON_GetQuestFlag2(quests, EVE_OF_DESTRUCTION, QFLAG_QUEST_STARTED) | D2COMMON_GetQuestFlag2(quests, EVE_OF_DESTRUCTION, QFLAG_QUEST_LEAVE_TOWN);
 
 		int warning = -1;
 		if (doneDuriel && startedMephisto && !doneMephisto && !MephistoBlocked) {
@@ -623,6 +623,15 @@ void ScreenInfo::OnGamePacketRecv(BYTE* packet, bool* block) {
 			DiabloBlocked = packet[1 + TERRORS_END] == 0;
 			BaalBlocked = packet[1 + EVE_OF_DESTRUCTION] == 0;
 			ReceivedQuestPacket = true;
+			break;
+		}
+	case 0x5D:
+		{
+			// Packet received when there is a change (progress) in one of the quests,
+			// we send packet 0x40 which triggers the server to send us packet 0x52 
+			// containing the updated information on quest changes.
+			BYTE RequestQuestData[1] = { 0x40 };
+			D2NET_SendPacket(1, 0, RequestQuestData);
 			break;
 		}
 	case 0xA8:
