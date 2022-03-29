@@ -230,7 +230,7 @@ string ScreenInfo::FormatTime(time_t t, const char* format) {
 	return ss.str();
 }
 
-void ScreenInfo::OnKey(bool up, BYTE key, LPARAM lParam, bool* block) {
+void ScreenInfo::OnKey(bool up, BYTE key, LPARAM lParam, bool* block) {	
 	for (map<string,Toggle>::iterator it = Toggles.begin(); it != Toggles.end(); it++) {
 		if (key == (*it).second.toggle) {
 			*block = true;
@@ -358,7 +358,12 @@ void ScreenInfo::OnDraw() {
 		int doneMephisto = D2COMMON_GetQuestFlag2(quests, THE_GUARDIAN, QFLAG_REWARD_GRANTED);
 		int doneDiablo = D2COMMON_GetQuestFlag2(quests, TERRORS_END, QFLAG_REWARD_GRANTED);
 		int doneBaal = D2COMMON_GetQuestFlag2(quests, EVE_OF_DESTRUCTION, QFLAG_REWARD_GRANTED);
-		int startedMephisto = D2COMMON_GetQuestFlag2(quests, THE_GUARDIAN, QFLAG_QUEST_STARTED) | D2COMMON_GetQuestFlag2(quests, THE_GUARDIAN, QFLAG_QUEST_LEAVE_TOWN) | D2COMMON_GetQuestFlag2(quests, THE_GUARDIAN, QFLAG_QUEST_ENTER_AREA) | D2COMMON_GetQuestFlag2(quests, THE_GUARDIAN, QFLAG_CUSTOM_2);
+		int startedMephisto = D2COMMON_GetQuestFlag2(quests, THE_GUARDIAN, QFLAG_QUEST_STARTED) | 
+			D2COMMON_GetQuestFlag2(quests, THE_GUARDIAN, QFLAG_QUEST_LEAVE_TOWN) |
+			D2COMMON_GetQuestFlag2(quests, THE_GUARDIAN, QFLAG_QUEST_ENTER_AREA) |
+			D2COMMON_GetQuestFlag2(quests, THE_GUARDIAN, QFLAG_CUSTOM_2) |
+			D2COMMON_GetQuestFlag2(quests, THE_GUARDIAN, QFLAG_CUSTOM_3) |
+			D2COMMON_GetQuestFlag2(quests, THE_GUARDIAN, QFLAG_CUSTOM_5);
 		int startedDiablo = D2COMMON_GetQuestFlag2(quests, TERRORS_END, QFLAG_QUEST_STARTED) | D2COMMON_GetQuestFlag2(quests, TERRORS_END, QFLAG_QUEST_LEAVE_TOWN);
 		int startedBaal = D2COMMON_GetQuestFlag2(quests, EVE_OF_DESTRUCTION, QFLAG_QUEST_STARTED) | D2COMMON_GetQuestFlag2(quests, EVE_OF_DESTRUCTION, QFLAG_QUEST_LEAVE_TOWN);
 
