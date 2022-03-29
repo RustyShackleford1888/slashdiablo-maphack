@@ -230,7 +230,7 @@ string ScreenInfo::FormatTime(time_t t, const char* format) {
 	return ss.str();
 }
 
-void ScreenInfo::OnKey(bool up, BYTE key, LPARAM lParam, bool* block) {		
+void ScreenInfo::OnKey(bool up, BYTE key, LPARAM lParam, bool* block) {
 	for (map<string,Toggle>::iterator it = Toggles.begin(); it != Toggles.end(); it++) {
 		if (key == (*it).second.toggle) {
 			*block = true;
@@ -310,7 +310,7 @@ void ScreenInfo::OnRightClick(bool up, int x, int y, bool* block) {
 void ScreenInfo::OnDraw() {
 	int yOffset = 1;
 	BnetData* pData = (*p_D2LAUNCH_BnData);
-	void *quests = D2CLIENT_GetQuestInfo();	
+	void *quests = D2CLIENT_GetQuestInfo();
 	if (!pData || !quests) {
 		return;
 	}
@@ -592,7 +592,7 @@ void ScreenInfo::OnGamePacketRecv(BYTE* packet, bool* block) {
 	// packet 52 by sending the server packet 40.
 
 	// 0xA8 and 0xA9 are received when effects (e.g. battle orders) begin or end
-	// on players.	
+	// on players.
 
 	switch (packet[0])
 	{
@@ -663,7 +663,7 @@ void ScreenInfo::OnGamePacketRecv(BYTE* packet, bool* block) {
 			}
 			manageBuffs = true;
 			break;
-		}	
+		}
 	default:
 		break;
 	}
