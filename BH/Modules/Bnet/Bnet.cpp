@@ -8,6 +8,9 @@ std::string Bnet::lastPass;
 std::string Bnet::lastDesc;
 std::regex Bnet::reg = std::regex("^(.*?)(\\d+)$");
 
+
+Patch* bnetLobbyPatch = new Patch(Jump, D2MULTI, { 0xBC00, 0xF9B0 }, (int)Bnet::BnetLobbyAdBlockPatch, 5);
+
 Patch* nextGame1 = new Patch(Call, D2MULTI, { 0x14D29, 0xADAB }, (int)Bnet::NextGamePatch, 5);
 Patch* nextGame2 = new Patch(Call, D2MULTI, { 0x14A0B, 0xB5E9 }, (int)Bnet::NextGamePatch, 5);
 Patch* nextPass1 = new Patch(Call, D2MULTI, { 0x14D64, 0xADE6 }, (int)Bnet::NextPassPatch, 5);
@@ -46,6 +49,7 @@ void Bnet::LoadConfig() {
 }
 
 void Bnet::InstallPatches() {
+	bnetLobbyPatch->Install();
 	if (*showLastGame || *nextInstead) {
 		nextGame1->Install();
 		nextGame2->Install();
@@ -66,6 +70,7 @@ void Bnet::InstallPatches() {
 }
 
 void Bnet::RemovePatches() {
+	bnetLobbyPatch->Remove();
 	nextGame1->Remove();
 	nextGame2->Remove();
 
@@ -132,6 +137,10 @@ void Bnet::OnGameExit() {
 	}
 
 	InstallPatches();
+}
+
+DWORD __stdcall Bnet::BnetLobbyAdBlockPatch(DWORD a1) {
+	return 1;
 }
 
 VOID __fastcall Bnet::NextGamePatch(Control* box, BOOL (__stdcall *FunCallBack)(Control*, DWORD, DWORD)) {
