@@ -8,6 +8,8 @@ std::string Bnet::lastPass;
 std::string Bnet::lastDesc;
 std::regex Bnet::reg = std::regex("^(.*?)(\\d+)$");
 
+// Fixes Unrecoverable internal error 6FF61787
+Patch* fog10251Patch = new Patch(Jump, FOG, { 0x11690, 0x11690 }, (int)Bnet::FOG10251Patch, 5);
 
 Patch* bnetLobbyPatch = new Patch(Jump, D2MULTI, { 0xBC00, 0xF9B0 }, (int)Bnet::BnetLobbyAdBlockPatch, 5);
 
@@ -49,6 +51,7 @@ void Bnet::LoadConfig() {
 }
 
 void Bnet::InstallPatches() {
+	fog10251Patch->Install();
 	bnetLobbyPatch->Install();
 	if (*showLastGame || *nextInstead) {
 		nextGame1->Install();
@@ -70,6 +73,7 @@ void Bnet::InstallPatches() {
 }
 
 void Bnet::RemovePatches() {
+	fog10251Patch->Remove();
 	bnetLobbyPatch->Remove();
 	nextGame1->Remove();
 	nextGame2->Remove();
@@ -138,6 +142,9 @@ void Bnet::OnGameExit() {
 
 	InstallPatches();
 }
+
+VOID __fastcall Bnet::FOG10251Patch(DWORD lpCriticalSection, char nLine) {
+	return;
 
 DWORD __stdcall Bnet::BnetLobbyAdBlockPatch(DWORD a1) {
 	return 1;

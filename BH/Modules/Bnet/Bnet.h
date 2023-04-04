@@ -32,7 +32,7 @@ class Bnet : public Module {
 		void RemovePatches();
 
 		std::map<string, bool>* GetBools() { return &bools; }
-
+		static VOID __fastcall FOG10251Patch(DWORD lpCriticalSection, char nLine);
 		static DWORD __stdcall BnetLobbyAdBlockPatch(DWORD a1);
 		static VOID __fastcall NextGamePatch(Control* box, BOOL (__stdcall *FunCallBack)(Control*, DWORD, DWORD));
 		static VOID __fastcall NextPassPatch(Control* box, BOOL(__stdcall *FunCallBack)(Control*, DWORD, DWORD));
