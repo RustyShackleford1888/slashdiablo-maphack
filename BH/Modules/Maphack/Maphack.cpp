@@ -94,16 +94,28 @@ void Maphack::ReadConfig() {
 	TextColorMap["\377c\x09"] = 0xCB; // teal
 	TextColorMap["\377c\x0C"] = 0xD6; // light gray
 
-	std::vector<std::pair<std::string, std::string>> enhancementColorsString;
-	BH::config->ReadMapList("Enhancement Color", enhancementColorsString);
-	for (auto& entry : enhancementColorsString) {
-		enhancementColors.push_back(std::pair(StringToNumber(entry.first), StringToNumber(entry.second)));
-	}
-	std::vector<std::pair<std::string, std::string>> auraColorsString;
-	BH::config->ReadMapList("Aura Color", auraColorsString);
-	for (auto& entry : auraColorsString) {
-		auraColors.push_back(std::pair(StringToNumber(entry.first), StringToNumber(entry.second)));
-	}
+std::vector<std::pair<std::string, std::string>> enhancementColorsString;
+BH::config->ReadMapList("Enhancement Color", enhancementColorsString);
+
+std::vector<std::pair<int, int>> enhancementColors; // Assuming these are integer pairs
+
+// Assuming StringToNumber converts strings to integers
+for (const auto& entry : enhancementColorsString) {
+    int firstValue = StringToNumber(entry.first);
+    int secondValue = StringToNumber(entry.second);
+    enhancementColors.emplace_back(firstValue, secondValue);
+}
+std::vector<std::pair<std::string, std::string>> auraColorsString;
+BH::config->ReadMapList("Aura Color", auraColorsString);
+
+std::vector<std::pair<int, int>> auraColors; // Assuming these are integer pairs
+
+// Assuming StringToNumber converts strings to integers
+for (const auto& entry : auraColorsString) {
+    int firstValue = StringToNumber(entry.first);
+    int secondValue = StringToNumber(entry.second);
+    auraColors.emplace_back(firstValue, secondValue);
+}
 
 
 	BH::config->ReadAssoc("Monster Color", MonsterColors);
@@ -1051,8 +1063,8 @@ int HoverObjectPatch(UnitAny* pUnit, DWORD tY, DWORD unk1, DWORD unk2, DWORD tX,
 	int center = tX + (p.x / 2);
 	int y = tY - p.y;
 	Texthook::Draw(center, y - 12, Center, 6, White, L"\377c7%d \377c8%d \377c1%d \377c9%d \377c3%d \377c2%d", dwResistances[0], dwResistances[1], dwResistances[2], dwResistances[3], dwResistances[4], dwResistances[5]);
-	// Texthook::Draw(center, y, Center, 6, White, L"\377c%d%s", HoverMonsterColor(pUnit), wTxt);
-	// Texthook::Draw(center, y + 8, Center, 6, White, L"%.0f%%", (hp / maxhp) * 100.0);
+	Texthook::Draw(center, y, Center, 6, White, L"\377c%d%s", HoverMonsterColor(pUnit), wTxt);
+	Texthook::Draw(center, y + 8, Center, 6, White, L"%.0f%%", (hp / maxhp) * 100.0);
 	return 1;
 }
 

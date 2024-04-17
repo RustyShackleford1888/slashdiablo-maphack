@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="D:\slashdiablo-maphack-master\slashdiablo-maphack-master\build\CMakeFiles\14b00b6ee12dd88234a8c8dddacccaf0\generate.stamp.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{ACA6D473-402C-354B-80BB-335AD41114A8}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>
