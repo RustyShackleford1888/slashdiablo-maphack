@@ -1,6 +1,6 @@
 #pragma once
 
-#define VERSION "BH 1.9.10-Resurgence"
+#define VERSION "BH 1.9.10.RBeta"
 
 #ifdef SHA
 #define BH_VERSION VERSION "." SHA
