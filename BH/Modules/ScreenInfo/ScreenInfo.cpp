@@ -24,7 +24,9 @@ void ScreenInfo::OnLoad() {
 	//auras
 	STATE_MIGHT, STATE_RESISTFIRE, STATE_HOLYFIRE, STATE_THORNS, STATE_DEFIANCE, STATE_RESISTCOLD, STATE_FORTIFY, STATE_STAMINA, STATE_RESISTLIGHT, STATE_CONCENTRATION, STATE_HOLYWIND, STATE_CLEANSING, STATE_HOLYSHOCK, STATE_SANCTUARY, STATE_MEDITATION, STATE_FANATICISM, STATE_REDEMPTION, STATE_CONVICTION, STATE_RESISTALL,
 	//debuffs
-	STATE_AMPLIFYDAMAGE, STATE_WEAKEN, STATE_DECREPIFY, STATE_LOWERRESIST, STATE_POISON, STATE_COLD, STATE_POISE };
+	STATE_AMPLIFYDAMAGE, STATE_WEAKEN, STATE_DECREPIFY, STATE_LOWERRESIST, STATE_POISON, STATE_COLD, 
+	//back to buffs, because i'm lazy.
+	STATE_POISE };
 
 	buffNames = { L"Burst of Speed", L"Fade", L"Cloak of Shadows", L"Venom", L"Shout", L"Battle Orders", L"Battle Command", L"Oak Sage", L"Cyclone Armor", L"Hurricane", L"Bone Armor", L"Holy Shield", L"Shiver Armor", L"Molten Armor", L"Enchant", L"Energy Shield", L"Thunder Storm", L"Experience Shrine",
 	L"Might", L"Resist Fire", L"Holy Fire", L"Thorns", L"Defiance", L"Resist Cold", L"Fortify", L"Vigor", L"Resist Lightning", L"Concentration", L"Holy Freeze", L"Cleansing", L"Holy Shock", L"Sanctuary", L"Meditation", L"Fanaticism", L"Redemption", L"Conviction", L"Salvation", 
@@ -455,7 +457,7 @@ void ScreenInfo::OnDraw() {
 						manageConv = false;
 					}
 					else {
-						newBuff.isBuff = (buffs[i] == STATE_POISE || i < 39) ? true : false;
+						newBuff.isBuff = (i < 37 || i > 42) ? true : false;
 					}					
 					activeBuffs.push_back(newBuff);
 				} else if (state == 0 && buffFound) {
