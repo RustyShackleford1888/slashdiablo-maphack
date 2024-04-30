@@ -310,7 +310,7 @@ enum TextColor {
 #define STAT_ENCHANT				165
 #define STAT_PIERCE					166
 #define STAT_CONVICTION				167
-#define STAT_CHILLINGARMOR			168
+#define STAT_MOLTENARMOR			168
 #define STAT_FRENZY					169
 #define STAT_DECREPIFY				170
 #define STAT_SKILLARMORPERCENT		171
@@ -526,7 +526,7 @@ enum D2States
 	STATE_INNERSIGHT = 0x11,
 	STATE_SKILL_MOVE = 0x12,
 	STATE_WEAKEN = 0x13,
-	STATE_CHILLINGARMOR = 0x14,
+	STATE_MOLTENARMOR = 0x14,
 	STATE_STUNNED = 0x15,
 	STATE_SPIDERLAY = 0x16,
 	STATE_DIMVISION = 0x17,
@@ -546,7 +546,7 @@ enum D2States
 	STATE_DEFIANCE = 0x25,
 	STATE_THUNDERSTORM = 0x26,
 	STATE_LIGHTNINGBOLT = 0x27,
-	STATE_BLESSEDAIM = 0x28,
+	STATE_FORTIFY = 0x28,
 	STATE_STAMINA = 0x29,
 	STATE_CONCENTRATION = 0x2A,
 	STATE_HOLYWIND = 0x2B,
@@ -691,6 +691,7 @@ enum D2States
 	STATE_PASSIVE_RESISTCOLD = 0xB6,
 	STATE_PASSIVE_RESISTLTNG = 0xB7,
 	STATE_UBERMINION = 0xB8,
+	STATE_POISE = 0xD3,
 };
 
 ///////////////////////////////////////////////////
@@ -763,7 +764,7 @@ enum D2States
 #define STATE_INNERSIGHT              17
 #define STATE_SKILL_MOVE              18
 #define STATE_WEAKEN                  19
-#define STATE_CHILLINGARMOR           20
+#define STATE_MOLTENARMOR	          20
 #define STATE_STUNNED                 21
 #define STATE_SPIDERLAY               22
 #define STATE_DIMVISION               23
@@ -783,7 +784,7 @@ enum D2States
 #define STATE_DEFIANCE                37
 #define STATE_THUNDERSTORM            38
 #define STATE_LIGHTNINGBOLT           39
-#define STATE_BLESSEDAIM              40
+#define STATE_FORTIFY	              40
 #define STATE_STAMINA                 41
 #define STATE_CONCENTRATION           42
 #define STATE_HOLYWIND                43
@@ -903,6 +904,7 @@ enum D2States
 #define STATE_QUICKNESS               157
 #define STATE_BLADESHIELD             158
 #define STATE_FADE                    159
+#define STATE_POISE                   211
 
 ///////////////////////////////////////////////////
 // Skill Tab Definitions
