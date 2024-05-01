@@ -3,6 +3,7 @@
 #include "../../BH.h"
 
 unsigned int Bnet::failToJoin;
+unsigned int Bnet::defaultGsIndex;
 std::string Bnet::lastName;
 std::string Bnet::lastPass;
 std::string Bnet::lastDesc;
@@ -46,6 +47,7 @@ void Bnet::LoadConfig() {
 	BH::config->ReadBoolean("Autofill Next Game", *nextInstead);
 	BH::config->ReadBoolean("Autofill Description", *keepDesc);
 	BH::config->ReadInt("Fail To Join", failToJoin);
+	BH::config->ReadInt("Default GS", defaultGsIndex);
 
 	InstallPatches();
 }
@@ -152,10 +154,16 @@ DWORD __stdcall Bnet::BnetLobbyAdBlockPatch(DWORD a1) {
 }
 
 VOID __fastcall Bnet::NextGamePatch(Control* box, BOOL (__stdcall *FunCallBack)(Control*, DWORD, DWORD)) {
-	if (Bnet::lastName.size() == 0)
-		return;
+	wchar_t* wszLastGameName = nullptr; // Ensure it's initialized to nullptr
 
-	wchar_t *wszLastGameName = AnsiToUnicode(Bnet::lastName.c_str());
+	if (Bnet::lastName.size() > 0) {
+		// Type in the game name from last game if available
+		wszLastGameName = AnsiToUnicode(Bnet::lastName.c_str());
+	}
+	else {
+		// TBD Input the default game name
+		wszLastGameName = AnsiToUnicode("");
+	}
 
 	D2WIN_SetControlText(box, wszLastGameName);
 	D2WIN_SelectEditBoxText(box);
@@ -166,9 +174,19 @@ VOID __fastcall Bnet::NextGamePatch(Control* box, BOOL (__stdcall *FunCallBack)(
 }
 
 VOID __fastcall Bnet::NextPassPatch(Control* box, BOOL(__stdcall *FunCallBack)(Control*, DWORD, DWORD)) {
-	if (Bnet::lastPass.size() == 0)
-		return;
-	wchar_t *wszLastPass = AnsiToUnicode(Bnet::lastPass.c_str());
+	wchar_t* wszLastPass = nullptr; // Ensure it's initialized to nullptr
+
+	if (Bnet::lastPass.size() > 0) {
+		// Type in the password from last game if available
+		wszLastPass = AnsiToUnicode(Bnet::lastPass.c_str());
+	}
+	else {
+		// TBD Input the default password, but only if the lastGame is null, otherwise we might be inserting an undesired password
+		if (Bnet::lastName.size() > 0) {
+			return;
+		}
+		wszLastPass = AnsiToUnicode("");
+	}	
 	
 	D2WIN_SetControlText(box, wszLastPass);
 	
@@ -178,9 +196,16 @@ VOID __fastcall Bnet::NextPassPatch(Control* box, BOOL(__stdcall *FunCallBack)(C
 }
 
 VOID __fastcall Bnet::GameDescPatch(Control* box, BOOL(__stdcall *FunCallBack)(Control*, DWORD, DWORD)) {
-	if (Bnet::lastDesc.size() == 0)
-		return;
-	wchar_t *wszLastDesc = AnsiToUnicode(Bnet::lastDesc.c_str());
+	wchar_t* wszLastDesc = nullptr; // Ensure it's initialized to nullptr
+
+	if (Bnet::lastDesc.size() > 0) {
+		// Type in the gs (description) from last game if available
+		wszLastDesc = AnsiToUnicode(Bnet::lastDesc.c_str());
+	}
+	else {
+		// TBD Input the default gs into description
+		wszLastDesc = AnsiToUnicode(Bnet::GetDefaultGsString().c_str());
+	}
 	
 	D2WIN_SetControlText(box, wszLastDesc);
 	

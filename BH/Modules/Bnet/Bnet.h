@@ -1,5 +1,6 @@
 #pragma once
 #include "../Module.h"
+#include "../AutoTele/AutoTele.h"
 #include <regex>
 
 struct Control;
@@ -16,6 +17,8 @@ class Bnet : public Module {
 		static std::string lastPass;
 		static std::string lastDesc;
 		static std::regex reg;
+		static unsigned int defaultGsIndex;
+		static string defaultGsString;
 
 	public:
 
@@ -38,6 +41,8 @@ class Bnet : public Module {
 		static VOID __fastcall NextPassPatch(Control* box, BOOL(__stdcall *FunCallBack)(Control*, DWORD, DWORD));
 		static VOID __fastcall GameDescPatch(Control* box, BOOL(__stdcall *FunCallBack)(Control*, DWORD, DWORD));
 		static void RemovePassPatch();
+
+		static std::string GetDefaultGsString() { return "gs" + std::to_string(defaultGsIndex + 1); }
 };
 
 void FailToJoin_Interception();

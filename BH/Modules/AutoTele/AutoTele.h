@@ -19,6 +19,7 @@ class AutoTele : public Module {
 		std::map<string, Toggle> Toggles;
 		unsigned int NextKey, OtherKey, WPKey, PrevKey;
 		unsigned int Colors[6];
+		static unsigned int defaultGsSetting;
 		Drawing::UITab* settingsTab;
 
 		int Try;
@@ -59,6 +60,7 @@ class AutoTele : public Module {
 
 		static Level* GetLevel(Act* pAct, int level);
 		static DWORD GetDistanceSquared(DWORD x1, DWORD y1, DWORD x2, DWORD y2);
+
 };
 
 enum TeleType {
