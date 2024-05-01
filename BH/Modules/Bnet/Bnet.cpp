@@ -4,6 +4,7 @@
 
 unsigned int Bnet::failToJoin;
 unsigned int Bnet::defaultGsIndex;
+
 std::string Bnet::lastName;
 std::string Bnet::lastPass;
 std::string Bnet::lastDesc;
@@ -48,6 +49,8 @@ void Bnet::LoadConfig() {
 	BH::config->ReadBoolean("Autofill Description", *keepDesc);
 	BH::config->ReadInt("Fail To Join", failToJoin);
 	BH::config->ReadInt("Default GS", defaultGsIndex);
+	BH::config->ReadString("Default Game Name", lastName);
+	BH::config->ReadString("Default Game Password", lastPass);
 
 	InstallPatches();
 }
