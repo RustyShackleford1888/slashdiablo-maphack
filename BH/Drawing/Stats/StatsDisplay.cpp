@@ -192,6 +192,7 @@ void StatsDisplay::OnDraw() {
 		int magReduction = (int)D2COMMON_GetUnitStat(unit, STAT_MAGICDMGREDUCTION, 0);
 		int magReductionPct = (int)D2COMMON_GetUnitStat(unit, STAT_MAGICDMGREDUCTIONPCT, 0);
 		Texthook::Draw(column1, (y += 16), None, 6, Tan, L"\377c4Damage Reduction: \377c7%d\377c0/\377c7%d%c \377c8%d\377c0/\377c8%d%c", dmgReduction, dmgReductionPct, '%', magReduction, magReductionPct, '%');
+		Texthook::Draw(column1, (y += 16), None, 6, Gold, L"Curse Reduction:\377c0 %d%%", (int)D2COMMON_GetUnitStat(unit, STAT_CURSERESISTANCE, 0));
 		y += 8;
 
 		int fMastery = (int)D2COMMON_GetUnitStat(unit, STAT_FIREMASTERY, 0);
@@ -203,14 +204,16 @@ void StatsDisplay::OnDraw() {
 		int fPierce = (int)D2COMMON_GetUnitStat(unit, STAT_PSENEMYFIRERESREDUC, 0);
 		int cPierce = (int)D2COMMON_GetUnitStat(unit, STAT_PSENEMYCOLDRESREDUC, 0);
 		int lPierce = (int)D2COMMON_GetUnitStat(unit, STAT_PSENEMYLIGHTNRESREDUC, 0);
-		int pPierce = (int)D2COMMON_GetUnitStat(unit, STAT_PSENEMYPSNRESREDUC, 0);
+		int pPierce = (int)D2COMMON_GetUnitStat(unit, STAT_PSENEMYPSNRESREDUC, 0);    
 		int mPierce = (int)D2COMMON_GetUnitStat(unit, STAT_PASSIVEMAGICRESREDUC, 0);
+		int physpierce = (int)D2COMMON_GetUnitStat(unit, STAT_PASSIVEDMGPIERCE, 0);
+
 		Texthook::Draw(column1, (y += 16), None, 6, Gold,
 				L"Elemental Mastery:\377c1 %d%%\377c3 %d%%\377c9 %d%%\377c2 %d%%\377c8 %d%%",
 				fMastery, cMastery, lMastery, pMastery, mMastery);
 		Texthook::Draw(column1, (y += 16), None, 6, Gold,
-				L"Elemental Pierce:\377c1 %d%%\377c3 %d%%\377c9 %d%%\377c2 %d%%\377c8 %d%%",
-				fPierce, cPierce, lPierce, pPierce, mPierce);
+				L"Pierce:\377c1 %d%%\377c3 %d%%\377c9 %d%%\377c2 %d%%\377c8 %d%%\377c0 %d%%",
+				fPierce, cPierce, lPierce, pPierce, mPierce, physpierce);
 		int classNum = pData->nCharClass;
 		auto classArMod = CharList[classNum]->toHitFactor - 35;
 		int dexAR = (int)D2COMMON_GetUnitStat(unit, STAT_DEXTERITY, 0) * 5 + classArMod;
@@ -303,6 +306,8 @@ void StatsDisplay::OnDraw() {
 		int minMagic = (int)D2COMMON_GetUnitStat(unit, STAT_MINIMUMMAGICALDAMAGE, 0);
 		int maxMagic = (int)D2COMMON_GetUnitStat(unit, STAT_MAXIMUMMAGICALDAMAGE, 0);
 		int addedPhys = (int)D2COMMON_GetUnitStat(unit, STAT_ADDSDAMAGE, 0);
+
+
 		Texthook::Draw(column1, (y += 16), None, 6, Gold,
 				L"Added Damage:\377c0 %d",
 				addedPhys);
@@ -337,22 +342,6 @@ void StatsDisplay::OnDraw() {
 		Texthook::Draw(column1, (y += 16), None, 6, Gold,
 				L"Stash Gold:\377c9 %d",
 				(int)D2COMMON_GetUnitStat(unit, STAT_GOLDBANK, 0));
-
-		void* quests = D2CLIENT_GetQuestInfo();
-		
-		Texthook::Draw(column2, y, None, 6, Gold,
-				L"Cow King:\377c0 %s", D2COMMON_GetQuestFlag(quests, THE_SEARCH_FOR_CAIN, QFLAG_CUSTOM_6) ? L"killed" : L"alive");
-
-		bool hasAndyQuest = D2COMMON_GetQuestFlag(quests, SISTERS_TO_THE_SLAUGHTER, QFLAG_UPDATE_QUEST_LOG)
-			| D2COMMON_GetQuestFlag(quests, SISTERS_TO_THE_SLAUGHTER, QFLAG_QUEST_COMPLETED_BEFORE);
-		bool hasDuryQuest = D2COMMON_GetQuestFlag(quests, THE_SEVEN_TOMBS, QFLAG_UPDATE_QUEST_LOG)
-			| D2COMMON_GetQuestFlag(quests, THE_SEVEN_TOMBS, QFLAG_QUEST_COMPLETED_BEFORE);
-
-		Texthook::Draw(column1, (y += 16), None, 6, Gold,
-			L"Andy Bugged:\377c0 %s", !hasAndyQuest ? L"n/a" : (D2COMMON_GetQuestFlag(quests, SISTERS_TO_THE_SLAUGHTER, QFLAG_QUEST_COMPLETED_BEFORE) ? L"no" : L"yes"));
-
-		Texthook::Draw(column2, y, None, 6, Gold,
-			L"Dury Bugged:\377c0 %s", !hasDuryQuest ? L"n/a" : (D2COMMON_GetQuestFlag(quests, THE_SEVEN_TOMBS, QFLAG_CUSTOM_1) ? L"no" : L"yes"));
 
 		if (customStats.size() > 0) {
 			y += 8;
