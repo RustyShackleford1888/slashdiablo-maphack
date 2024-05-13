@@ -24,21 +24,21 @@
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <CharacterSet>MultiByte</CharacterSet>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>MultiByte</CharacterSet>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Packaging|Win32'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>MultiByte</CharacterSet>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
@@ -73,7 +73,7 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_DEBUG;_SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
@@ -99,7 +99,7 @@ if defined D2Path (
       <AdditionalIncludeDirectories>..\ThirdParty\cpp-lru-cache\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
-      <PreprocessorDefinitions>_WINDLL;$(CustomDefinitions);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_WINDLL;_SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING;$(CustomDefinitions);%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -161,6 +161,7 @@ if defined D2Path (
     <ClCompile Include="Drawing\Basic\Linehook\Linehook.cpp" />
     <ClCompile Include="Drawing\Basic\Texthook\Texthook.cpp" />
     <ClCompile Include="Drawing\Hook.cpp" />
+    <ClCompile Include="Drawing\Stats\BreakpointsDisplay.cpp" />
     <ClCompile Include="Drawing\Stats\StatsDisplay.cpp" />
     <ClCompile Include="Drawing\UI\UI.cpp" />
     <ClCompile Include="Drawing\UI\UITab.cpp" />
@@ -214,6 +215,7 @@ if defined D2Path (
     <ClInclude Include="Drawing\Basic\Linehook\Linehook.h" />
     <ClInclude Include="Drawing\Basic\Texthook\Texthook.h" />
     <ClInclude Include="Drawing\Hook.h" />
+    <ClInclude Include="Drawing\Stats\BreakpointsDisplay.h" />
     <ClInclude Include="Drawing\Stats\StatsDisplay.h" />
     <ClInclude Include="Drawing\UI\UI.h" />
     <ClInclude Include="Drawing\UI\UITab.h" />

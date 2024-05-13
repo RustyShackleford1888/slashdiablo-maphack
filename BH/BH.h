@@ -37,6 +37,7 @@ namespace BH {
 	extern Config* itemConfig;
 	extern Drawing::UI* settingsUI;
 	extern Drawing::StatsDisplay* statsDisplay;
+	extern Drawing::BreakpointsDisplay* breakpointsDisplay;
 	extern WNDPROC OldWNDPROC;
 	extern map<string, Toggle>* MiscToggles;
 	extern map<string, Toggle>* MiscToggles2;

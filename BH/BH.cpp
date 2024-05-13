@@ -18,6 +18,7 @@ Config* BH::config;
 Config* BH::itemConfig;
 Drawing::UI* BH::settingsUI;
 Drawing::StatsDisplay* BH::statsDisplay;
+Drawing::BreakpointsDisplay* BH::breakpointsDisplay;
 bool BH::initialized;
 bool BH::cGuardLoaded;
 WNDPROC BH::OldWNDPROC;
@@ -147,6 +148,7 @@ void BH::Initialize()
 	moduleManager->LoadModules();
 
 	statsDisplay = new Drawing::StatsDisplay("Stats");
+	breakpointsDisplay = new Drawing::BreakpointsDisplay("Stats-TBD");
 
 	MiscToggles = ((AutoTele*)moduleManager->Get("autotele"))->GetToggles();
 	MiscToggles2 = ((Item*)moduleManager->Get("item"))->GetToggles();
@@ -178,6 +180,7 @@ bool BH::Shutdown() {
 		delete moduleManager;
 		delete settingsUI;
 		delete statsDisplay;
+		delete breakpointsDisplay;
 
 		SetWindowLong(D2GFX_GetHwnd(), GWL_WNDPROC, (LONG)BH::OldWNDPROC);
 		for (int n = 0; n < (sizeof(patches) / sizeof(Patch*)); n++) {
@@ -202,6 +205,7 @@ bool BH::ReloadConfig() {
 		itemConfig->Parse();
 		moduleManager->ReloadConfig();
 		statsDisplay->LoadConfig();
+		breakpointsDisplay->LoadConfig();
 	}
 	return true;
 }

@@ -8,6 +8,7 @@ void GameDraw() {
 	__raise BH::moduleManager->OnDraw();
 	Drawing::UI::Draw();
 	Drawing::StatsDisplay::Draw();
+	Drawing::BreakpointsDisplay::Draw();
 	Drawing::Hook::Draw(Drawing::InGame);
 }
 
@@ -54,6 +55,8 @@ LONG WINAPI GameWindowEvent(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 			blockEvent = true;
 		if (Drawing::StatsDisplay::Click(false, mouseX, mouseY))
 			blockEvent = true;
+		if (Drawing::BreakpointsDisplay::Click(false, mouseX, mouseY))
+			blockEvent = true;
 		__raise BH::moduleManager->OnLeftClick(false, mouseX, mouseY, &blockEvent);
 	}
 
@@ -63,6 +66,8 @@ LONG WINAPI GameWindowEvent(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 		if (Drawing::UI::LeftClick(true, mouseX, mouseY))
 			blockEvent = true;
 		if (Drawing::StatsDisplay::Click(true, mouseX, mouseY))
+			blockEvent = true;
+		if (Drawing::BreakpointsDisplay::Click(true, mouseX, mouseY))
 			blockEvent = true;
 		__raise BH::moduleManager->OnLeftClick(true, mouseX, mouseY, &blockEvent);
 	}
@@ -74,6 +79,8 @@ LONG WINAPI GameWindowEvent(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 			blockEvent = true;
 		if (Drawing::StatsDisplay::Click(false, mouseX, mouseY))
 			blockEvent = true;
+		if (Drawing::BreakpointsDisplay::Click(false, mouseX, mouseY))
+			blockEvent = true;
 		__raise BH::moduleManager->OnRightClick(false, mouseX, mouseY, &blockEvent);
 	}
 
@@ -84,6 +91,8 @@ LONG WINAPI GameWindowEvent(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 			blockEvent = true;
 		if (Drawing::StatsDisplay::Click(true, mouseX, mouseY))
 			blockEvent = true;
+		if (Drawing::BreakpointsDisplay::Click(true, mouseX, mouseY))
+			blockEvent = true;
 		__raise BH::moduleManager->OnRightClick(true, mouseX, mouseY, &blockEvent);
 	}
 
@@ -93,6 +102,8 @@ LONG WINAPI GameWindowEvent(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 				return NULL;
 			if (Drawing::StatsDisplay::KeyClick(false, wParam, lParam))
 				return NULL;
+			if (Drawing::BreakpointsDisplay::KeyClick(false, wParam, lParam))
+				return NULL;
 			__raise BH::moduleManager->OnKey(false, wParam, lParam, &blockEvent);
 		}
 
@@ -100,6 +111,8 @@ LONG WINAPI GameWindowEvent(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 			if (Drawing::Hook::KeyClick(true, wParam, lParam))
 				return NULL;
 			if (Drawing::StatsDisplay::KeyClick(true, wParam, lParam))
+				return NULL;
+			if (Drawing::BreakpointsDisplay::KeyClick(true, wParam, lParam))
 				return NULL;
 			__raise BH::moduleManager->OnKey(true, wParam, lParam, &blockEvent);
 		}
