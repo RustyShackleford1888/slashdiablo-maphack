@@ -122,47 +122,87 @@ void BreakpointsDisplay::OnDraw() {
 		BnetData* pData = (*p_D2LAUNCH_BnData);
 
 		int currentFCR = (int)D2COMMON_GetUnitStat(unit, STAT_FASTERCAST, 0);
-		int currentFrames = 0; // Variable to store the current frames
-		std::string nextBreakpointFCR; // Variable to store the FCR percentage needed for the next breakpoint
+		int currentFCRFrames = 0; 
+		std::string nextBreakpointFCR;
+		int currentFHR = (int)D2COMMON_GetUnitStat(unit, STAT_FASTERHITRECOVERY, 0);
+		int currentFHRFrames = 0;
+		std::string nextBreakpointFHR;
 
 		// Calculate current frames for each character class
 		switch (pData->nCharClass) {
 		case 0: // Amazon
 			if (currentFCR >= 152) {
-				currentFrames = 11;
+				currentFCRFrames = 11;
 				nextBreakpointFCR = "MAX";
 			}
 			else if (currentFCR >= 99) {
-				currentFrames = 12;
+				currentFCRFrames = 12;
 				nextBreakpointFCR = std::to_string(152 - currentFCR);
 			}
 			else if (currentFCR >= 68) {
-				currentFrames = 13;
+				currentFCRFrames = 13;
 				nextBreakpointFCR = std::to_string(99 - currentFCR);
 			}
 			else if (currentFCR >= 48) {
-				currentFrames = 14;
+				currentFCRFrames = 14;
 				nextBreakpointFCR = std::to_string(68 - currentFCR);
 			}
 			else if (currentFCR >= 32) {
-				currentFrames = 15;
+				currentFCRFrames = 15;
 				nextBreakpointFCR = std::to_string(48 - currentFCR);
 			}
 			else if (currentFCR >= 22) {
-				currentFrames = 16;
+				currentFCRFrames = 16;
 				nextBreakpointFCR = std::to_string(32 - currentFCR);
 			}
 			else if (currentFCR >= 14) {
-				currentFrames = 17;
+				currentFCRFrames = 17;
 				nextBreakpointFCR = std::to_string(22 - currentFCR);
 			}
 			else if (currentFCR >= 7) {
-				currentFrames = 18;
+				currentFCRFrames = 18;
 				nextBreakpointFCR = std::to_string(14 - currentFCR);
 			}
 			else {
-				currentFrames = 19;
+				currentFCRFrames = 19;
 				nextBreakpointFCR = std::to_string(7 - currentFCR);
+			}
+
+			if (currentFHR >= 600) {
+				currentFHRFrames = 3;
+				nextBreakpointFHR = "MAX";
+			}
+			else if (currentFHR >= 174) {
+				currentFHRFrames = 4;
+				nextBreakpointFHR = std::to_string(600 - currentFHR);
+			}
+			else if (currentFHR >= 86) {
+				currentFHRFrames = 5;
+				nextBreakpointFHR = std::to_string(174 - currentFHR);
+			}
+			else if (currentFHR >= 52) {
+				currentFHRFrames = 6;
+				nextBreakpointFHR = std::to_string(86 - currentFHR);
+			}
+			else if (currentFHR >= 32) {
+				currentFHRFrames = 7;
+				nextBreakpointFHR = std::to_string(52 - currentFHR);
+			}
+			else if (currentFHR >= 20) {
+				currentFHRFrames = 8;
+				nextBreakpointFHR = std::to_string(32 - currentFHR);
+			}
+			else if (currentFHR >= 13) {
+				currentFHRFrames = 9;
+				nextBreakpointFHR = std::to_string(20 - currentFHR);
+			}
+			else if (currentFHR >= 6) {
+				currentFHRFrames = 10;
+				nextBreakpointFHR = std::to_string(13 - currentFHR);
+			}
+			else {
+				currentFHRFrames = 11;
+				nextBreakpointFHR = std::to_string(6 - currentFHR);
 			}
 			break;
 		case 1: // Sorceress
@@ -171,373 +211,674 @@ void BreakpointsDisplay::OnDraw() {
 				D2CLIENT_GetPlayerUnit()->pInfo->pRightSkill->pSkillInfo->wSkillId == 0x31 ||
 				D2CLIENT_GetPlayerUnit()->pInfo->pLeftSkill->pSkillInfo->wSkillId == 0x31) {
 				if (currentFCR >= 194) {
-					currentFrames = 11;
+					currentFCRFrames = 11;
 					nextBreakpointFCR = "MAX";
 				}
 				else if (currentFCR >= 117) {
-					currentFrames = 12;
+					currentFCRFrames = 12;
 					nextBreakpointFCR = std::to_string(194 - currentFCR);
 				}
 				else if (currentFCR >= 78) {
-					currentFrames = 13;
+					currentFCRFrames = 13;
 					nextBreakpointFCR = std::to_string(117 - currentFCR);
 				}
 				else if (currentFCR >= 52) {
-					currentFrames = 14;
+					currentFCRFrames = 14;
 					nextBreakpointFCR = std::to_string(78 - currentFCR);
 				}
 				else if (currentFCR >= 35) {
-					currentFrames = 15;
+					currentFCRFrames = 15;
 					nextBreakpointFCR = std::to_string(52 - currentFCR);
 				}
 				else if (currentFCR >= 23) {
-					currentFrames = 16;
+					currentFCRFrames = 16;
 					nextBreakpointFCR = std::to_string(35 - currentFCR);
 				}
 				else if (currentFCR >= 15) {
-					currentFrames = 17;
+					currentFCRFrames = 17;
 					nextBreakpointFCR = std::to_string(23 - currentFCR);
 				}
 				else if (currentFCR >= 7) {
-					currentFrames = 18;
+					currentFCRFrames = 18;
 					nextBreakpointFCR = std::to_string(15 - currentFCR);
 				}
 				else {
-					currentFrames = 19;
+					currentFCRFrames = 19;
 					nextBreakpointFCR = std::to_string(9 - currentFCR);
 				}
 			}
 			else {
 				if (currentFCR >= 200) {
-					currentFrames = 7;
+					currentFCRFrames = 7;
 					nextBreakpointFCR = "MAX";
 				}
 				else if (currentFCR >= 105) {
-					currentFrames = 8;
+					currentFCRFrames = 8;
 					nextBreakpointFCR = std::to_string(200 - currentFCR);
 				}
 				else if (currentFCR >= 63) {
-					currentFrames = 9;
+					currentFCRFrames = 9;
 					nextBreakpointFCR = std::to_string(105 - currentFCR);
 				}
 				else if (currentFCR >= 37) {
-					currentFrames = 10;
+					currentFCRFrames = 10;
 					nextBreakpointFCR = std::to_string(63 - currentFCR);
 				}
 				else if (currentFCR >= 20) {
-					currentFrames = 11;
+					currentFCRFrames = 11;
 					nextBreakpointFCR = std::to_string(37 - currentFCR);
 				}
 				else if (currentFCR >= 9) {
-					currentFrames = 12;
+					currentFCRFrames = 12;
 					nextBreakpointFCR = std::to_string(20 - currentFCR);
 				}
 				else {
-					currentFrames = 13;
+					currentFCRFrames = 13;
 					nextBreakpointFCR = std::to_string(9 - currentFCR);
 				}
 			}
+			if (currentFHR >= 1480) {
+				currentFHRFrames = 4;
+				nextBreakpointFHR = "MAX";
+			}
+			else if (currentFHR >= 280) {
+				currentFHRFrames = 5;
+				nextBreakpointFHR = std::to_string(1480 - currentFHR);
+			}
+			else if (currentFHR >= 142) {
+				currentFHRFrames = 6;
+				nextBreakpointFHR = std::to_string(280 - currentFHR);
+			}
+			else if (currentFHR >= 86) {
+				currentFHRFrames = 7;
+				nextBreakpointFHR = std::to_string(142 - currentFHR);
+			}
+			else if (currentFHR >= 60) {
+				currentFHRFrames = 8;
+				nextBreakpointFHR = std::to_string(86 - currentFHR);
+			}
+			else if (currentFHR >= 42) {
+				currentFHRFrames = 9;
+				nextBreakpointFHR = std::to_string(60 - currentFHR);
+			}
+			else if (currentFHR >= 30) {
+				currentFHRFrames = 10;
+				nextBreakpointFHR = std::to_string(42 - currentFHR);
+			}
+			else if (currentFHR >= 20) {
+				currentFHRFrames = 11;
+				nextBreakpointFHR = std::to_string(30 - currentFHR);
+			}
+			else if (currentFHR >= 14) {
+				currentFHRFrames = 12;
+				nextBreakpointFHR = std::to_string(20 - currentFHR);
+			}
+			else if (currentFHR >= 9) {
+				currentFHRFrames = 13;
+				nextBreakpointFHR = std::to_string(14 - currentFHR);
+			}
+			else if (currentFHR >= 5) {
+				currentFHRFrames = 14;
+				nextBreakpointFHR = std::to_string(9 - currentFHR);
+			}
+			else {
+				currentFHRFrames = 15;
+				nextBreakpointFHR = std::to_string(5 - currentFHR);
+			}
+
 			break;
 
 		case 2: // Necromancer
 			if (D2COMMON_GetUnitState(unit, 176)) { // Vampire form
 				if (currentFCR >= 180) {
-					currentFrames = 13;
+					currentFCRFrames = 13;
 					nextBreakpointFCR = "MAX";
 				}
 				else if (currentFCR >= 120) {
-					currentFrames = 14;
+					currentFCRFrames = 14;
 					nextBreakpointFCR = std::to_string(180 - currentFCR);
 				}
 				else if (currentFCR >= 86) {
-					currentFrames = 15;
+					currentFCRFrames = 15;
 					nextBreakpointFCR = std::to_string(120 - currentFCR);
 				}
 				else if (currentFCR >= 65) {
-					currentFrames = 16;
+					currentFCRFrames = 16;
 					nextBreakpointFCR = std::to_string(86 - currentFCR);
 				}
 				else if (currentFCR >= 48) {
-					currentFrames = 17;
+					currentFCRFrames = 17;
 					nextBreakpointFCR = std::to_string(65 - currentFCR);
 				}
 				else if (currentFCR >= 35) {
-					currentFrames = 18;
+					currentFCRFrames = 18;
 					nextBreakpointFCR = std::to_string(48 - currentFCR);
 				}
 				else if (currentFCR >= 24) {
-					currentFrames = 19;
+					currentFCRFrames = 19;
 					nextBreakpointFCR = std::to_string(35 - currentFCR);
 				}
 				else if (currentFCR >= 18) {
-					currentFrames = 20;
+					currentFCRFrames = 20;
 					nextBreakpointFCR = std::to_string(24 - currentFCR);
 				}
 				else if (currentFCR >= 11) {
-					currentFrames = 21;
+					currentFCRFrames = 21;
 					nextBreakpointFCR = std::to_string(18 - currentFCR);
 				}
 				else if (currentFCR >= 6) {
-					currentFrames = 22;
+					currentFCRFrames = 22;
 					nextBreakpointFCR = std::to_string(11 - currentFCR);
 				}
 				else {
-					currentFrames = 23;
+					currentFCRFrames = 23;
 					nextBreakpointFCR = std::to_string(6 - currentFCR);
 				}
 			}
 			else { // Human form (default)
 				if (currentFCR >= 125) {
-					currentFrames = 9;
+					currentFCRFrames = 9;
 					nextBreakpointFCR = "MAX";
 				}
 				else if (currentFCR >= 75) {
-					currentFrames = 10;
+					currentFCRFrames = 10;
 					nextBreakpointFCR = std::to_string(125 - currentFCR);
 				}
 				else if (currentFCR >= 48) {
-					currentFrames = 11;
+					currentFCRFrames = 11;
 					nextBreakpointFCR = std::to_string(75 - currentFCR);
 				}
 				else if (currentFCR >= 30) {
-					currentFrames = 12;
+					currentFCRFrames = 12;
 					nextBreakpointFCR = std::to_string(48 - currentFCR);
 				}
 				else if (currentFCR >= 18) {
-					currentFrames = 13;
+					currentFCRFrames = 13;
 					nextBreakpointFCR = std::to_string(30 - currentFCR);
 				}
 				else if (currentFCR >= 9) {
-					currentFrames = 14;
+					currentFCRFrames = 14;
 					nextBreakpointFCR = std::to_string(18 - currentFCR);
 				}
 				else {
-					currentFrames = 15;
+					currentFCRFrames = 15;
 					nextBreakpointFCR = std::to_string(9 - currentFCR);
 				}
 			}
+			if (currentFHR >= 377) {
+				currentFHRFrames = 4;
+				nextBreakpointFHR = "MAX";
+			}
+			else if (currentFHR >= 152) {
+				currentFHRFrames = 5;
+				nextBreakpointFHR = std::to_string(377 - currentFHR);
+			}
+			else if (currentFHR >= 86) {
+				currentFHRFrames = 6;
+				nextBreakpointFHR = std::to_string(152 - currentFHR);
+			}
+			else if (currentFHR >= 56) {
+				currentFHRFrames = 7;
+				nextBreakpointFHR = std::to_string(86 - currentFHR);
+			}
+			else if (currentFHR >= 39) {
+				currentFHRFrames = 8;
+				nextBreakpointFHR = std::to_string(56 - currentFHR);
+			}
+			else if (currentFHR >= 26) {
+				currentFHRFrames = 9;
+				nextBreakpointFHR = std::to_string(39 - currentFHR);
+			}
+			else if (currentFHR >= 16) {
+				currentFHRFrames = 10;
+				nextBreakpointFHR = std::to_string(26 - currentFHR);
+			}
+			else if (currentFHR >= 10) {
+				currentFHRFrames = 11;
+				nextBreakpointFHR = std::to_string(16 - currentFHR);
+			}
+			else if (currentFHR >= 5) {
+				currentFHRFrames = 12;
+				nextBreakpointFHR = std::to_string(10 - currentFHR);
+			}
+			else {
+				currentFHRFrames = 13;
+				nextBreakpointFHR = std::to_string(5 - currentFHR);
+			}
+
 			break;
 		case 3: // Paladin
 			if (currentFCR >= 125) {
-				currentFrames = 9;
+				currentFCRFrames = 9;
 				nextBreakpointFCR = "MAX";
 			}
 			else if (currentFCR >= 75) {
-				currentFrames = 10;
+				currentFCRFrames = 10;
 				nextBreakpointFCR = std::to_string(125 - currentFCR);
 			}
 			else if (currentFCR >= 48) {
-				currentFrames = 11;
+				currentFCRFrames = 11;
 				nextBreakpointFCR = std::to_string(75 - currentFCR);
 			}
 			else if (currentFCR >= 30) {
-				currentFrames = 12;
+				currentFCRFrames = 12;
 				nextBreakpointFCR = std::to_string(48 - currentFCR);
 			}
 			else if (currentFCR >= 18) {
-				currentFrames = 13;
+				currentFCRFrames = 13;
 				nextBreakpointFCR = std::to_string(30 - currentFCR);
 			}
 			else if (currentFCR >= 9) {
-				currentFrames = 14;
+				currentFCRFrames = 14;
 				nextBreakpointFCR = std::to_string(18 - currentFCR);
 			}
 			else {
-				currentFrames = 15;
+				currentFCRFrames = 15;
 				nextBreakpointFCR = std::to_string(9 - currentFCR);
 			}
+			if (currentFHR >= 4680) {
+				currentFHRFrames = 2;
+				nextBreakpointFHR = "MAX";
+			}
+			else if (currentFHR >= 200) {
+				currentFHRFrames = 3;
+				nextBreakpointFHR = std::to_string(4680 - currentFHR);
+			}
+			else if (currentFHR >= 86) {
+				currentFHRFrames = 4;
+				nextBreakpointFHR = std::to_string(200 - currentFHR);
+			}
+			else if (currentFHR >= 48) {
+				currentFHRFrames = 5;
+				nextBreakpointFHR = std::to_string(86 - currentFHR);
+			}
+			else if (currentFHR >= 27) {
+				currentFHRFrames = 6;
+				nextBreakpointFHR = std::to_string(48 - currentFHR);
+			}
+			else if (currentFHR >= 15) {
+				currentFHRFrames = 7;
+				nextBreakpointFHR = std::to_string(27 - currentFHR);
+			}
+			else if (currentFHR >= 7) {
+				currentFHRFrames = 8;
+				nextBreakpointFHR = std::to_string(15 - currentFHR);
+			}
+			else {
+				currentFHRFrames = 9;
+				nextBreakpointFHR = std::to_string(7 - currentFHR);
+			}
+
 			break;
 		case 4: // Barbarian
 			if (currentFCR >= 200) {
-				currentFrames = 7;
+				currentFCRFrames = 7;
 				nextBreakpointFCR = "MAX";
 			}
 			else if (currentFCR >= 105) {
-				currentFrames = 8;
+				currentFCRFrames = 8;
 				nextBreakpointFCR = std::to_string(200 - currentFCR);
 			}
 			else if (currentFCR >= 63) {
-				currentFrames = 9;
+				currentFCRFrames = 9;
 				nextBreakpointFCR = std::to_string(105 - currentFCR);
 			}
 			else if (currentFCR >= 37) {
-				currentFrames = 10;
+				currentFCRFrames = 10;
 				nextBreakpointFCR = std::to_string(63 - currentFCR);
 			}
 			else if (currentFCR >= 20) {
-				currentFrames = 11;
+				currentFCRFrames = 11;
 				nextBreakpointFCR = std::to_string(37 - currentFCR);
 			}
 			else if (currentFCR >= 9) {
-				currentFrames = 12;
+				currentFCRFrames = 12;
 				nextBreakpointFCR = std::to_string(20 - currentFCR);
 			}
 			else {
-				currentFrames = 13;
+				currentFCRFrames = 13;
 				nextBreakpointFCR = std::to_string(9 - currentFCR);
+			}
+			if (currentFHR >= 4680) {
+				currentFHRFrames = 2;
+				nextBreakpointFHR = "MAX";
+			}
+			else if (currentFHR >= 200) {
+				currentFHRFrames = 3;
+				nextBreakpointFHR = std::to_string(4680 - currentFHR);
+			}
+			else if (currentFHR >= 86) {
+				currentFHRFrames = 4;
+				nextBreakpointFHR = std::to_string(200 - currentFHR);
+			}
+			else if (currentFHR >= 48) {
+				currentFHRFrames = 5;
+				nextBreakpointFHR = std::to_string(86 - currentFHR);
+			}
+			else if (currentFHR >= 27) {
+				currentFHRFrames = 6;
+				nextBreakpointFHR = std::to_string(48 - currentFHR);
+			}
+			else if (currentFHR >= 15) {
+				currentFHRFrames = 7;
+				nextBreakpointFHR = std::to_string(27 - currentFHR);
+			}
+			else if (currentFHR >= 7) {
+				currentFHRFrames = 8;
+				nextBreakpointFHR = std::to_string(15 - currentFHR);
+			}
+			else {
+				currentFHRFrames = 9;
+				nextBreakpointFHR = std::to_string(7 - currentFHR);
 			}
 			break;
 		case 5: // Druid
 			if (D2COMMON_GetUnitState(unit, 139)) { // Werewolf form
 				if (currentFCR >= 157) {
-					currentFrames = 9;
+					currentFCRFrames = 9;
 					nextBreakpointFCR = "MAX";
 				}
 				else if (currentFCR >= 95) {
-					currentFrames = 10;
+					currentFCRFrames = 10;
 					nextBreakpointFCR = std::to_string(157 - currentFCR);
 				}
 				else if (currentFCR >= 60) {
-					currentFrames = 11;
+					currentFCRFrames = 11;
 					nextBreakpointFCR = std::to_string(95 - currentFCR);
 				}
 				else if (currentFCR >= 40) {
-					currentFrames = 12;
+					currentFCRFrames = 12;
 					nextBreakpointFCR = std::to_string(60 - currentFCR);
 				}
 				else if (currentFCR >= 26) {
-					currentFrames = 13;
+					currentFCRFrames = 13;
 					nextBreakpointFCR = std::to_string(40 - currentFCR);
 				}
 				else if (currentFCR >= 14) {
-					currentFrames = 14;
+					currentFCRFrames = 14;
 					nextBreakpointFCR = std::to_string(26 - currentFCR);
 				}
 				else if (currentFCR >= 6) {
-					currentFrames = 15;
+					currentFCRFrames = 15;
 					nextBreakpointFCR = std::to_string(14 - currentFCR);
 				}
 				else {
-					currentFrames = 16;
+					currentFCRFrames = 16;
 					nextBreakpointFCR = std::to_string(6 - currentFCR);
+				}
+				if (currentFHR >= 280) {
+					currentFHRFrames = 2;
+					nextBreakpointFHR = "MAX";
+				}
+				else if (currentFHR >= 86) {
+					currentFHRFrames = 3;
+					nextBreakpointFHR = std::to_string(280 - currentFHR);
+				}
+				else if (currentFHR >= 42) {
+					currentFHRFrames = 4;
+					nextBreakpointFHR = std::to_string(86 - currentFHR);
+				}
+				else if (currentFHR >= 20) {
+					currentFHRFrames = 5;
+					nextBreakpointFHR = std::to_string(42 - currentFHR);
+				}
+				else if (currentFHR >= 9) {
+					currentFHRFrames = 6;
+					nextBreakpointFHR = std::to_string(20 - currentFHR);
+				}
+				else {
+					currentFHRFrames = 7;
+					nextBreakpointFHR = std::to_string(9 - currentFHR);
 				}
 			}
 			else if (D2COMMON_GetUnitState(unit, 140)) { // Werebear form
 				if (currentFCR >= 163) {
-					currentFrames = 9;
+					currentFCRFrames = 9;
 					nextBreakpointFCR = "MAX";
 				}
 				else if (currentFCR >= 99) {
-					currentFrames = 10;
+					currentFCRFrames = 10;
 					nextBreakpointFCR = std::to_string(163 - currentFCR);
 				}
 				else if (currentFCR >= 63) {
-					currentFrames = 11;
+					currentFCRFrames = 11;
 					nextBreakpointFCR = std::to_string(99 - currentFCR);
 				}
 				else if (currentFCR >= 40) {
-					currentFrames = 12;
+					currentFCRFrames = 12;
 					nextBreakpointFCR = std::to_string(63 - currentFCR);
 				}
 				else if (currentFCR >= 26) {
-					currentFrames = 13;
+					currentFCRFrames = 13;
 					nextBreakpointFCR = std::to_string(40 - currentFCR);
 				}
 				else if (currentFCR >= 15) {
-					currentFrames = 14;
+					currentFCRFrames = 14;
 					nextBreakpointFCR = std::to_string(26 - currentFCR);
 				}
 				else if (currentFCR >= 7) {
-					currentFrames = 15;
+					currentFCRFrames = 15;
 					nextBreakpointFCR = std::to_string(15 - currentFCR);
 				}
 				else {
-					currentFrames = 16;
+					currentFCRFrames = 16;
 					nextBreakpointFCR = std::to_string(7 - currentFCR);
+				}
+				if (currentFHR >= 360) {
+					currentFHRFrames = 4;
+					nextBreakpointFHR = "MAX";
+				}
+				else if (currentFHR >= 152) {
+					currentFHRFrames = 5;
+					nextBreakpointFHR = std::to_string(360 - currentFHR);
+				}
+				else if (currentFHR >= 86) {
+					currentFHRFrames = 6;
+					nextBreakpointFHR = std::to_string(152 - currentFHR);
+				}
+				else if (currentFHR >= 54) {
+					currentFHRFrames = 7;
+					nextBreakpointFHR = std::to_string(86 - currentFHR);
+				}
+				else if (currentFHR >= 37) {
+					currentFHRFrames = 8;
+					nextBreakpointFHR = std::to_string(54 - currentFHR);
+				}
+				else if (currentFHR >= 24) {
+					currentFHRFrames = 9;
+					nextBreakpointFHR = std::to_string(37 - currentFHR);
+				}
+				else if (currentFHR >= 16) {
+					currentFHRFrames = 10;
+					nextBreakpointFHR = std::to_string(24 - currentFHR);
+				}
+				else if (currentFHR >= 10) {
+					currentFHRFrames = 11;
+					nextBreakpointFHR = std::to_string(16 - currentFHR);
+				}
+				else if (currentFHR >= 5) {
+					currentFHRFrames = 12;
+					nextBreakpointFHR = std::to_string(10 - currentFHR);
+				}
+				else {
+					currentFHRFrames = 13;
+					nextBreakpointFHR = std::to_string(5 - currentFHR);
 				}
 			}
 			else { // Human form (default)
 				if (currentFCR >= 163) {
-					currentFrames = 10;
+					currentFCRFrames = 10;
 					nextBreakpointFCR = "MAX";
 				}
 				else if (currentFCR >= 99) {
-					currentFrames = 11;
+					currentFCRFrames = 11;
 					nextBreakpointFCR = std::to_string(163 - currentFCR);
 				}
 				else if (currentFCR >= 68) {
-					currentFrames = 12;
+					currentFCRFrames = 12;
 					nextBreakpointFCR = std::to_string(99 - currentFCR);
 				}
 				else if (currentFCR >= 46) {
-					currentFrames = 13;
+					currentFCRFrames = 13;
 					nextBreakpointFCR = std::to_string(68 - currentFCR);
 				}
 				else if (currentFCR >= 30) {
-					currentFrames = 14;
+					currentFCRFrames = 14;
 					nextBreakpointFCR = std::to_string(46 - currentFCR);
 				}
 				else if (currentFCR >= 19) {
-					currentFrames = 15;
+					currentFCRFrames = 15;
 					nextBreakpointFCR = std::to_string(30 - currentFCR);
 				}
 				else if (currentFCR >= 10) {
-					currentFrames = 16;
+					currentFCRFrames = 16;
 					nextBreakpointFCR = std::to_string(19 - currentFCR);
 				}
 				else if (currentFCR >= 4) {
-					currentFrames = 17;
+					currentFCRFrames = 17;
 					nextBreakpointFCR = std::to_string(10 - currentFCR);
 				}
 				else {
-					currentFrames = 18;
+					currentFCRFrames = 18;
 					nextBreakpointFCR = std::to_string(4 - currentFCR);
 				}
+				if (currentFHR >= 456) {
+					currentFHRFrames = 4;
+					nextBreakpointFHR = "MAX";
+				}
+				else if (currentFHR >= 174) {
+					currentFHRFrames = 5;
+					nextBreakpointFHR = std::to_string(456 - currentFHR);
+				}
+				else if (currentFHR >= 99) {
+					currentFHRFrames = 6;
+					nextBreakpointFHR = std::to_string(174 - currentFHR);
+				}
+				else if (currentFHR >= 63) {
+					currentFHRFrames = 7;
+					nextBreakpointFHR = std::to_string(99 - currentFHR);
+				}
+				else if (currentFHR >= 42) {
+					currentFHRFrames = 8;
+					nextBreakpointFHR = std::to_string(63 - currentFHR);
+				}
+				else if (currentFHR >= 29) {
+					currentFHRFrames = 9;
+					nextBreakpointFHR = std::to_string(42 - currentFHR);
+				}
+				else if (currentFHR >= 19) {
+					currentFHRFrames = 10;
+					nextBreakpointFHR = std::to_string(29 - currentFHR);
+				}
+				else if (currentFHR >= 13) {
+					currentFHRFrames = 11;
+					nextBreakpointFHR = std::to_string(19 - currentFHR);
+				}
+				else if (currentFHR >= 7) {
+					currentFHRFrames = 12;
+					nextBreakpointFHR = std::to_string(13 - currentFHR);
+				}
+				else if (currentFHR >= 3) {
+					currentFHRFrames = 13;
+					nextBreakpointFHR = std::to_string(7 - currentFHR);
+				}
+				else {
+					currentFHRFrames = 14;
+					nextBreakpointFHR = std::to_string(3 - currentFHR);
+				}
+
 			}
 			break;
 
 		case 6: // Assassin
 			if (currentFCR >= 174) {
-				currentFrames = 9;
+				currentFCRFrames = 9;
 				nextBreakpointFCR = "MAX";
 			}
 			else if (currentFCR >= 102) {
-				currentFrames = 10;
+				currentFCRFrames = 10;
 				nextBreakpointFCR = std::to_string(174 - currentFCR);
 			}
 			else if (currentFCR >= 65) {
-				currentFrames = 11;
+				currentFCRFrames = 11;
 				nextBreakpointFCR = std::to_string(102 - currentFCR);
 			}
 			else if (currentFCR >= 42) {
-				currentFrames = 12;
+				currentFCRFrames = 12;
 				nextBreakpointFCR = std::to_string(65 - currentFCR);
 			}
 			else if (currentFCR >= 27) {
-				currentFrames = 13;
+				currentFCRFrames = 13;
 				nextBreakpointFCR = std::to_string(42 - currentFCR);
 			}
 			else if (currentFCR >= 16) {
-				currentFrames = 14;
+				currentFCRFrames = 14;
 				nextBreakpointFCR = std::to_string(27 - currentFCR);
 			}
 			else if (currentFCR >= 8) {
-				currentFrames = 15;
+				currentFCRFrames = 15;
 				nextBreakpointFCR = std::to_string(16 - currentFCR);
 			}
 			else {
-				currentFrames = 16;
+				currentFCRFrames = 16;
 				nextBreakpointFCR = std::to_string(8 - currentFCR);
+			}
+			if (currentFHR >= 4680) {
+				currentFHRFrames = 2;
+				nextBreakpointFHR = "MAX";
+			}
+			else if (currentFHR >= 200) {
+				currentFHRFrames = 3;
+				nextBreakpointFHR = std::to_string(4680 - currentFHR);
+			}
+			else if (currentFHR >= 86) {
+				currentFHRFrames = 4;
+				nextBreakpointFHR = std::to_string(200 - currentFHR);
+			}
+			else if (currentFHR >= 48) {
+				currentFHRFrames = 5;
+				nextBreakpointFHR = std::to_string(86 - currentFHR);
+			}
+			else if (currentFHR >= 27) {
+				currentFHRFrames = 6;
+				nextBreakpointFHR = std::to_string(48 - currentFHR);
+			}
+			else if (currentFHR >= 15) {
+				currentFHRFrames = 7;
+				nextBreakpointFHR = std::to_string(27 - currentFHR);
+			}
+			else if (currentFHR >= 7) {
+				currentFHRFrames = 8;
+				nextBreakpointFHR = std::to_string(15 - currentFHR);
+			}
+			else {
+				currentFHRFrames = 9;
+				nextBreakpointFHR = std::to_string(7 - currentFHR);
 			}
 			break;
 		}
 
-		// Now you can use currentFrames in the subsequent code block
+		// Now you can use currentFCRFrames in the subsequent code block
 
 		// Now you can use currentFCR and nextBreakpointFCR in your text drawing function
 		Texthook::Draw(column1, (y += 8), None, 6, Gold,
 			L"Breakpoints");
 		Texthook::Draw(column1, (y += 16), None, 6, Gold,
-			L"FCR:\377c0 %d%% (Frames:%d Next BP:+%S%%)",
-			currentFCR, currentFrames, nextBreakpointFCR.c_str());
+			L"FCR:\377c0 %d%% (Frames:%d Next BP:%s%S%s)",
+			currentFCR, currentFCRFrames,
+			(nextBreakpointFCR == "MAX" ? L"" : L"+"),
+			nextBreakpointFCR.c_str(),
+			(nextBreakpointFCR == "MAX" ? L"" : L"%"));
 		Texthook::Draw(column1, y += 16, None, 6, Gold,
 			L"Block Rate:\377c0 %d",
 			(int)D2COMMON_GetUnitStat(unit, STAT_FASTERBLOCK, 0)
 		);
 		Texthook::Draw(column1, (y += 16), None, 6, Gold,
-			L"Hit Recovery:\377c0 %d",
-			(int)D2COMMON_GetUnitStat(unit, STAT_FASTERHITRECOVERY, 0)
-		);
+			L"FHR:\377c0 %d%% (Frames:%d Next BP:%s%S%s)",
+			currentFHR, currentFHRFrames,
+			(nextBreakpointFHR == "MAX" ? L"" : L"+"),
+			nextBreakpointFHR.c_str(),
+			(nextBreakpointFHR == "MAX" ? L"" : L"%"));
 		Texthook::Draw(column1, y += 16, None, 6, Gold,
 			L"Run/Walk:\377c0 %d",
 			(int)D2COMMON_GetUnitStat(unit, STAT_FASTERRUNWALK, 0)
