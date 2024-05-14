@@ -905,6 +905,7 @@ enum D2States
 #define STATE_QUICKNESS               157
 #define STATE_BLADESHIELD             158
 #define STATE_FADE                    159
+#define STATE_MONSTERSET			  176
 #define STATE_POISE                   211
 
 ///////////////////////////////////////////////////
