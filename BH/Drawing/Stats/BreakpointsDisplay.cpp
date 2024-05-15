@@ -41,10 +41,7 @@ BreakpointsDisplay::~BreakpointsDisplay() {
 void BreakpointsDisplay::LoadConfig() {
 	int height = 200;
 
-	BH::config->ReadToggle(" on Right", "None", false, Toggles["Stats on Right"]);
-
-	int xPos = Toggles["Stats on Right"].state ?
-		*p_D2CLIENT_ScreenSizeX - 10 - GetXSize() : 10;
+	int xPos = 5;  
 	SetX(xPos);
 	SetYSize(height);
 }
@@ -60,7 +57,7 @@ void BreakpointsDisplay::SetX(unsigned int newX) {
 void BreakpointsDisplay::SetY(unsigned int newY) {
 	if (newY >= 0 && newY <= Hook::GetScreenHeight()) {
 		Lock();
-		y = newY;
+		y = newY + 47;
 		Unlock();
 	}
 }
@@ -68,7 +65,7 @@ void BreakpointsDisplay::SetY(unsigned int newY) {
 void BreakpointsDisplay::SetXSize(unsigned int newXSize) {
 	if (newXSize >= 0 && newXSize <= (Hook::GetScreenWidth() - GetX())) {
 		Lock();
-		xSize = newXSize;
+		xSize = newXSize - 38;
 		Unlock();
 	}
 }
@@ -116,7 +113,7 @@ void BreakpointsDisplay::OnDraw() {
 		pRect.right = x + GetXSize();
 		pRect.bottom = y + GetYSize();
 
-		Drawing::Boxhook::Draw(GetX(), GetY(), GetXSize(), GetYSize(), White, Drawing::BTBlack);
+		Drawing::Boxhook::Draw(GetX(), GetY(), GetXSize(), GetYSize(), White, Drawing::BTThreeFourths);
 		Drawing::Framehook::DrawRectStub(&pRect);
 
 		BnetData* pData = (*p_D2LAUNCH_BnData);
@@ -863,9 +860,10 @@ void BreakpointsDisplay::OnDraw() {
 		// Now you can use currentFCR and nextBreakpointFCR in your text drawing function
 		Texthook::Draw(column1, (y += 8), None, 6, Gold,
 			L"Breakpoints");
+		Texthook::Draw(column1, (y += 16), None, 6, Gold, L"FCR:\377c0 %d%%", currentFCR);
 		Texthook::Draw(column1, (y += 16), None, 6, Gold,
-			L"FCR:\377c0 %d%% (Frames:%d Next BP:%s%S%s)",
-			currentFCR, currentFCRFrames,
+			L"\377c0(Frames:%d Next BP:%s%S%s)",
+			currentFCRFrames,
 			(nextBreakpointFCR == "MAX" ? L"" : L"+"),
 			nextBreakpointFCR.c_str(),
 			(nextBreakpointFCR == "MAX" ? L"" : L"%"));
@@ -873,9 +871,10 @@ void BreakpointsDisplay::OnDraw() {
 			L"Block Rate:\377c0 %d",
 			(int)D2COMMON_GetUnitStat(unit, STAT_FASTERBLOCK, 0)
 		);
+		Texthook::Draw(column1, (y += 16), None, 6, Gold, L"FHR:\377c0 %d%%", currentFHR);
 		Texthook::Draw(column1, (y += 16), None, 6, Gold,
-			L"FHR:\377c0 %d%% (Frames:%d Next BP:%s%S%s)",
-			currentFHR, currentFHRFrames,
+			L"\377c0(Frames:%d Next BP:%s%S%s)",
+			currentFHRFrames,
 			(nextBreakpointFHR == "MAX" ? L"" : L"+"),
 			nextBreakpointFHR.c_str(),
 			(nextBreakpointFHR == "MAX" ? L"" : L"%"));
