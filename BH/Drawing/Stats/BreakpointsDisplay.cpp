@@ -24,7 +24,7 @@ BreakpointsDisplay::BreakpointsDisplay(std::string name2) {
 	SetActive(true);
 	SetMinimized(true);
 
-	BH::config->ReadKey("Breakpoints Summary", "VK_9", breakpointKey);
+	BH::config->ReadKey("Breakpoints Summary", "VK_A", breakpointKey);
 	display = this;
 }
 
@@ -920,30 +920,28 @@ void BreakpointsDisplay::OnDraw() {
 
 bool BreakpointsDisplay::KeyClick(bool bUp, BYTE bKey, LPARAM lParam) {
 	display->Lock();
-	bool block = display->OnKey(bUp, bKey, lParam);
+	display->OnKey(bUp, bKey, lParam);
 	display->Unlock();
-	return block;
+	return false;
 }
 
-bool BreakpointsDisplay::OnKey(bool up, BYTE kkey, LPARAM lParam) {
+void BreakpointsDisplay::OnKey(bool up, BYTE kkey, LPARAM lParam) {
 	UnitAny* unit = D2CLIENT_GetPlayerUnit();
 	if (!unit)
-		return false;
+		return;
 
 	if (IsMinimized()) {
 		if (!up && kkey == breakpointKey) {
 			LoadConfig();
 			SetMinimized(false);
-			return true;
 		}
 	}
 	else {
 		if (!up && (kkey == breakpointKey || kkey == VK_ESCAPE)) {
 			SetMinimized(true);
-			return true;
 		}
 	}
-	return false;
+	return;
 }
 
 bool BreakpointsDisplay::Click(bool up, unsigned int mouseX, unsigned int mouseY) {
