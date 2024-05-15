@@ -25,6 +25,7 @@ BreakpointsDisplay::BreakpointsDisplay(std::string name2) {
 	SetMinimized(true);
 
 	BH::config->ReadKey("Breakpoints Summary", "VK_A", breakpointKey);
+	BH::config->ReadKey("Breakpoints Summary2", "VK_C", breakpointKey2);
 	display = this;
 }
 
@@ -108,7 +109,7 @@ void BreakpointsDisplay::OnDraw() {
 			(*it)->OnDraw();
 
 		int y = GetY();
-		RECT pRect;
+		RECT pRect{};
 		pRect.left = GetX();
 		pRect.top = y;
 		pRect.right = x + GetXSize();
@@ -931,13 +932,13 @@ void BreakpointsDisplay::OnKey(bool up, BYTE kkey, LPARAM lParam) {
 		return;
 
 	if (IsMinimized()) {
-		if (!up && kkey == breakpointKey) {
+		if (!up  && (kkey == breakpointKey || kkey == breakpointKey2)) {
 			LoadConfig();
 			SetMinimized(false);
 		}
 	}
 	else {
-		if (!up && (kkey == breakpointKey || kkey == VK_ESCAPE)) {
+		if (!up && (kkey == breakpointKey || kkey == VK_ESCAPE || kkey == breakpointKey2)) {
 			SetMinimized(true);
 		}
 	}

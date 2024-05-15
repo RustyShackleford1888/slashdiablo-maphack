@@ -20,6 +20,7 @@ namespace Drawing {
 		std::string name;
 		unsigned int x, y, xSize, ySize;
 		unsigned int breakpointKey;
+		unsigned int breakpointKey2;
 		bool active, minimized;
 		CRITICAL_SECTION crit;
 	public:
