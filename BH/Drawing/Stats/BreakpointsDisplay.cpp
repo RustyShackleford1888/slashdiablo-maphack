@@ -12,7 +12,7 @@ BreakpointsDisplay* BreakpointsDisplay::display;
 
 BreakpointsDisplay::BreakpointsDisplay(std::string name2) {
 	int yPos = 10;
-	int width = 240;
+	int width = 165;
 
 	InitializeCriticalSection(&crit);
 	SetY(yPos);
@@ -57,7 +57,7 @@ void BreakpointsDisplay::SetX(unsigned int newX) {
 void BreakpointsDisplay::SetY(unsigned int newY) {
 	if (newY >= 0 && newY <= Hook::GetScreenHeight()) {
 		Lock();
-		y = newY + 47;
+		y = newY + 51;
 		Unlock();
 	}
 }
@@ -96,7 +96,8 @@ void BreakpointsDisplay::OnDraw() {
 	if (!unit)
 		return;
 	int column1 = GetX() + 5;
-	int column2 = column1 + GetXSize() / 2;
+	int column2 = column1 + 25;
+	int column3 = column1 + 5;
 
 	if (!IsMinimized()) {
 		if (D2CLIENT_GetUIState(UI_MERC)) {
@@ -125,6 +126,8 @@ void BreakpointsDisplay::OnDraw() {
 		int currentFHRFrames = 0;
 		std::string nextBreakpointFHR;
 
+
+	
 		// Calculate current frames for each character class
 		switch (pData->nCharClass) {
 		case 0: // Amazon
@@ -855,41 +858,63 @@ void BreakpointsDisplay::OnDraw() {
 			break;
 		}
 
-		// Now you can use currentFCRFrames in the subsequent code block
-
 		// Now you can use currentFCR and nextBreakpointFCR in your text drawing function
+		//HEADER
 		Texthook::Draw(column1, (y += 8), None, 6, Gold,
 			L"Breakpoints");
-		Texthook::Draw(column1, (y += 16), None, 6, Gold, L"FCR:\377c0 %d%%", currentFCR);
-		Texthook::Draw(column1, (y += 16), None, 6, Gold,
-			L"\377c0(Frames:%d Next BP:%s%S%s)",
-			currentFCRFrames,
+		Texthook::Draw(column1, (y += 2), None, 6, Black,
+			L"_______________________");
+		//FCR SECTION
+		Texthook::Draw(column1, (y += 12), None, 6, Gold, L"FCR:\377c0 %d%%", currentFCR);
+		Texthook::Draw(column2, (y += 16), None, 6, Gold,
+			L"\377c0\tFrames:%d",
+			currentFCRFrames);
+		Texthook::Draw(column2, (y += 16), None, 6, Gold,
+			L"\377c0\tNext BP:%s%S%s",
 			(nextBreakpointFCR == "MAX" ? L"" : L"+"),
 			nextBreakpointFCR.c_str(),
 			(nextBreakpointFCR == "MAX" ? L"" : L"%"));
-		Texthook::Draw(column1, y += 16, None, 6, Gold,
+		Texthook::Draw(column1, (y += 2), None, 6, Black,
+			L"_______________________");
+		//FBR SECTION
+		Texthook::Draw(column1, y += 12, None, 6, Gold,
 			L"Block Rate:\377c0 %d",
 			(int)D2COMMON_GetUnitStat(unit, STAT_FASTERBLOCK, 0)
 		);
-		Texthook::Draw(column1, (y += 16), None, 6, Gold, L"FHR:\377c0 %d%%", currentFHR);
-		Texthook::Draw(column1, (y += 16), None, 6, Gold,
-			L"\377c0(Frames:%d Next BP:%s%S%s)",
-			currentFHRFrames,
+		Texthook::Draw(column1, (y += 2), None, 6, Black,
+			L"_______________________");
+		//FHR SECTION
+		Texthook::Draw(column1, (y += 12), None, 6, Gold, L"FHR:\377c0 %d%%", currentFHR);
+		Texthook::Draw(column2, (y += 16), None, 6, Gold,
+			L"\377c0\tFrames:%d",
+			currentFHRFrames);
+		Texthook::Draw(column2, (y += 16), None, 6, Gold,
+			L"\377c0\tNext BP:%s%S%s",
 			(nextBreakpointFHR == "MAX" ? L"" : L"+"),
 			nextBreakpointFHR.c_str(),
 			(nextBreakpointFHR == "MAX" ? L"" : L"%"));
-		Texthook::Draw(column1, y += 16, None, 6, Gold,
+		Texthook::Draw(column1, (y += 2), None, 6, Black,
+			L"_______________________");
+		//FRW SECTION
+		Texthook::Draw(column1, y += 12, None, 6, Gold,
 			L"Run/Walk:\377c0 %d",
 			(int)D2COMMON_GetUnitStat(unit, STAT_FASTERRUNWALK, 0)
 		);
-		Texthook::Draw(column1, (y += 16), None, 6, Gold,
+		Texthook::Draw(column1, (y += 2), None, 6, Black,
+			L"_______________________");
+		//IAS SECTION
+		Texthook::Draw(column1, (y += 12), None, 6, Gold,
 			L"Attack Rate:\377c0 %d",
 			(int)D2COMMON_GetUnitStat(unit, STAT_ATTACKRATE, 0));
-		Texthook::Draw(column1, y += 16, None, 6, Gold,
+		Texthook::Draw(column1, (y += 2), None, 6, Black,
+			L"_______________________");
+		Texthook::Draw(column1, y += 12, None, 6, Gold,
 			L"IAS:\377c0 %d",
 			(int)D2COMMON_GetUnitStat(unit, STAT_IAS, 0));
-
+		Texthook::Draw(column1, (y += 2), None, 6, Black,
+			L"_______________________");
 		y += 8;
+
 	}
 }
 
