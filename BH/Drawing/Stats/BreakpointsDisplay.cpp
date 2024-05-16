@@ -957,10 +957,7 @@ bool BreakpointsDisplay::OnClick(bool up, unsigned int x, unsigned int y) {
 	if (!unit)
 		return false;
 
-	if (!IsMinimized() && InRange(x, y)) {
-		SetMinimized(true);
-		return true;
-	}
+
 	return false;
 }
 
