@@ -8,12 +8,12 @@
 int waypoints[] = {119,157,156,323,288,402,324,237,238,398,496,511,494};
 int CSID = 0;
 int CS[] = {392, 394, 396, 255};
-unsigned int AutoTele::defaultGsSetting = 0;
 
 
 using namespace Drawing;
 
 void AutoTele::OnLoad() {
+	defaultGs = MaphackGsOne;
 	LoadConfig();
 
 	std::map<string, bool>* bnetBools (BH::BnetBools);
@@ -67,12 +67,13 @@ void AutoTele::OnLoad() {
 	new Inputhook(settingsTab, col + 130, (Y -= 2), 100, DefaultGame);
 	new Texthook(settingsTab, col, (Y += 20), "\377c4Default Password:");
 	new Inputhook(settingsTab, col + 130, (Y -=2), 100, DefaultPassword);
-	new Texthook(settingsTab, col, (Y +=20), "\377c4Default GS:");
+
+	new Texthook(settingsTab, col + 5, Y + 30, "Default Gs:");
 	vector<string> gs_options;
-	gs_options.push_back("\377c01 - New York");
-	gs_options.push_back("\377c02 - Los Angeles");
-	gs_options.push_back("\377c03 - Amsterdam");
-	new Combohook(settingsTab, col + 130, (Y -=2), 130, &defaultGsSetting, gs_options);
+	gs_options.push_back("1 - New York");
+	gs_options.push_back("2 - Los Angeles");
+	gs_options.push_back("3 - Amsterdam");
+	new Combohook(settingsTab, col + 80, Y + 26, 130, &defaultGs, gs_options);
 
 }
 
@@ -93,9 +94,9 @@ void AutoTele::LoadConfig() {
 	BH::config->ReadInt("Other Color", Colors[2]);
 	BH::config->ReadInt("WP Color", Colors[3]);
 	BH::config->ReadInt("Prev Color", Colors[4]);
-	BH::config->ReadInt("Default GS", defaultGsSetting);
 	BH::config->ReadString("Default Game Name", DefaultGame);
 	BH::config->ReadString("Default Password", DefaultPassword);
+	BH::config->ReadInt("Default Gs", defaultGs);
 }
 
 void AutoTele::OnAutomapDraw() {
