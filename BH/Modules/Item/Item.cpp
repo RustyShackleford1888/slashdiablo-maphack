@@ -258,25 +258,25 @@ void Item::DrawSettings() {
 	new Keyhook(settingsTab, 4, y+2, &showPlayer, "Show Player's Gear:   ");
 	y += 15;
 
-	new Texthook(settingsTab, 4, y, "Filter Level:");
+	new Texthook(settingsTab, 4, y, "\377c4Filter Level:");
 
 	vector<string> options;
-	options.push_back("0 - None");
-	options.push_back("1 - Minimal");
-	options.push_back("2 - Moderate");
-	options.push_back("3 - Aggressive");
+	options.push_back("\377c00 - None");
+	options.push_back("\377c01 - Minimal");
+	options.push_back("\377c02 - Moderate");
+	options.push_back("\377c03 - Aggressive");
 	new Combohook(settingsTab, 85, y, 120, &filterLevelSetting, options);
 
-	new Texthook(settingsTab, 234, y, "Ping Tiers <=:");
+	new Texthook(settingsTab, 234, y, "\377c4Ping Tiers <=:");
 
 	vector<string> ping_options;
-	ping_options.push_back("0");
-	ping_options.push_back("1");
-	ping_options.push_back("2");
-	ping_options.push_back("3");
-	ping_options.push_back("4");
-	ping_options.push_back("5");
-	ping_options.push_back("6");
+	ping_options.push_back("\377c00");
+	ping_options.push_back("\377c01");
+	ping_options.push_back("\377c02");
+	ping_options.push_back("\377c03");
+	ping_options.push_back("\377c04");
+	ping_options.push_back("\377c05");
+	ping_options.push_back("\377c06");
 	new Combohook(settingsTab, 330, y, 40, &pingLevelSetting, ping_options);
 }
 

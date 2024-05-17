@@ -83,7 +83,7 @@ void UI::SetXSize(unsigned int newXSize) {
 void UI::SetYSize(unsigned int newYSize) {
 	if (newYSize >= 0 && newYSize <= (Hook::GetScreenHeight() - GetX())) {
 		Lock();
-		ySize = newYSize;
+		ySize = newYSize + 20;
 		Unlock();
 	}
 }
