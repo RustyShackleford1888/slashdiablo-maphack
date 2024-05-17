@@ -4,6 +4,9 @@
 
 unsigned int Bnet::failToJoin;
 unsigned int Bnet::defaultGsIndex;
+std::string Bnet::DefaultGame;
+std::string Bnet::DefaultPassword;
+
 
 std::string Bnet::lastName;
 std::string Bnet::lastPass;
@@ -49,8 +52,8 @@ void Bnet::LoadConfig() {
 	BH::config->ReadBoolean("Autofill Description", *keepDesc);
 	BH::config->ReadInt("Fail To Join", failToJoin);
 	BH::config->ReadInt("Default GS", defaultGsIndex);
-	BH::config->ReadString("Default Game Name", lastName);
-	BH::config->ReadString("Default Game Password", lastPass);
+	BH::config->ReadString("Default Game Name", DefaultGame);
+	BH::config->ReadString("Default Password", DefaultPassword);
 
 	InstallPatches();
 }
@@ -165,7 +168,7 @@ VOID __fastcall Bnet::NextGamePatch(Control* box, BOOL (__stdcall *FunCallBack)(
 	}
 	else {
 		// TBD Input the default game name
-		wszLastGameName = AnsiToUnicode("");
+		wszLastGameName = AnsiToUnicode(Bnet::GetDefaultGamename().c_str() );
 	}
 
 	D2WIN_SetControlText(box, wszLastGameName);
@@ -188,7 +191,7 @@ VOID __fastcall Bnet::NextPassPatch(Control* box, BOOL(__stdcall *FunCallBack)(C
 		if (Bnet::lastName.size() > 0) {
 			return;
 		}
-		wszLastPass = AnsiToUnicode("");
+		wszLastPass = AnsiToUnicode(Bnet::GetDefaultPassword().c_str());
 	}	
 	
 	D2WIN_SetControlText(box, wszLastPass);

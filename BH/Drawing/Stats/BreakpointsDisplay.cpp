@@ -868,10 +868,10 @@ void BreakpointsDisplay::OnDraw() {
 		//FCR SECTION
 		Texthook::Draw(column1, (y += 12), None, 6, Gold, L"FCR:\377c0 %d%%", currentFCR);
 		Texthook::Draw(column2, (y += 16), None, 6, Gold,
-			L"\377c0\tFrames:%d",
+			L"\377c0Frames:%d",
 			currentFCRFrames);
 		Texthook::Draw(column2, (y += 16), None, 6, Gold,
-			L"\377c0\tNext BP:%s%S%s",
+			L"\377c0Next BP:%s%S%s",
 			(nextBreakpointFCR == "MAX" ? L"" : L"+"),
 			nextBreakpointFCR.c_str(),
 			(nextBreakpointFCR == "MAX" ? L"" : L"%"));
@@ -887,10 +887,10 @@ void BreakpointsDisplay::OnDraw() {
 		//FHR SECTION
 		Texthook::Draw(column1, (y += 12), None, 6, Gold, L"FHR:\377c0 %d%%", currentFHR);
 		Texthook::Draw(column2, (y += 16), None, 6, Gold,
-			L"\377c0\tFrames:%d",
+			L"\377c0Frames:%d",
 			currentFHRFrames);
 		Texthook::Draw(column2, (y += 16), None, 6, Gold,
-			L"\377c0\tNext BP:%s%S%s",
+			L"\377c0Next BP:%s%S%s",
 			(nextBreakpointFHR == "MAX" ? L"" : L"+"),
 			nextBreakpointFHR.c_str(),
 			(nextBreakpointFHR == "MAX" ? L"" : L"%"));

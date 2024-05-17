@@ -20,6 +20,8 @@ class AutoTele : public Module {
 		unsigned int NextKey, OtherKey, WPKey, PrevKey;
 		unsigned int Colors[6];
 		static unsigned int defaultGsSetting;
+		std::string DefaultGame;
+		std::string DefaultPassword;
 		Drawing::UITab* settingsTab;
 
 		int Try;

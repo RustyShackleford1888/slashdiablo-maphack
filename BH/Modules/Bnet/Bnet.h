@@ -19,6 +19,8 @@ class Bnet : public Module {
 		static std::regex reg;
 		static unsigned int defaultGsIndex;
 		static string defaultGsString;
+		static string DefaultGame;
+		static string DefaultPassword;
 
 	public:
 
@@ -43,6 +45,8 @@ class Bnet : public Module {
 		static void RemovePassPatch();
 
 		static std::string GetDefaultGsString() { return "gs" + std::to_string(defaultGsIndex + 1); }
+		static std::string GetDefaultGamename() { return DefaultGame; }
+		static std::string GetDefaultPassword() { return DefaultPassword; }
 };
 
 void FailToJoin_Interception();
