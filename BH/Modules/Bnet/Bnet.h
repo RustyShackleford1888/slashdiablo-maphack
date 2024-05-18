@@ -8,19 +8,20 @@ struct Control;
 class Bnet : public Module {
 	private:
 		std::map<string, bool> bools;
+		std::map<string, unsigned int> ints;
 		bool* showLastGame;
 		bool* showLastPass;
 		bool* nextInstead;
 		bool* keepDesc;
+		static string DefaultGame;
+		static string DefaultPassword;
 		static unsigned int failToJoin;
 		static std::string lastName;
 		static std::string lastPass;
 		static std::string lastDesc;
 		static std::regex reg;
-		static unsigned int defaultGsIndex;
+		unsigned int* defaultGsIndex;
 		static string defaultGsString;
-		static string DefaultGame;
-		static string DefaultPassword;
 
 	public:
 
@@ -44,7 +45,7 @@ class Bnet : public Module {
 		static VOID __fastcall GameDescPatch(Control* box, BOOL(__stdcall *FunCallBack)(Control*, DWORD, DWORD));
 		static void RemovePassPatch();
 
-		static std::string GetDefaultGsString() { return "gs" + std::to_string(defaultGsIndex + 1); }
+		std::map<string, unsigned int>* GetInts() { return &ints; }
 		static std::string GetDefaultGamename() { return DefaultGame; }
 		static std::string GetDefaultPassword() { return DefaultPassword; }
 };

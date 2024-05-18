@@ -3,7 +3,6 @@
 #include "../../BH.h"
 
 unsigned int Bnet::failToJoin;
-unsigned int Bnet::defaultGsIndex;
 std::string Bnet::DefaultGame;
 std::string Bnet::DefaultPassword;
 
@@ -11,6 +10,7 @@ std::string Bnet::DefaultPassword;
 std::string Bnet::lastName;
 std::string Bnet::lastPass;
 std::string Bnet::lastDesc;
+std::string Bnet::defaultGsString;
 std::regex Bnet::reg = std::regex("^(.*?)(\\d+)$");
 
 // Fixes Unrecoverable internal error 6FF61787
@@ -41,6 +41,9 @@ void Bnet::OnLoad() {
 	keepDesc = &bools["Autofill Description"];
 	*keepDesc = true;
 
+	defaultGsIndex = &ints["Default Gs"];
+	*defaultGsIndex = 0;
+
 	failToJoin = 4000;
 	LoadConfig();
 }
@@ -51,7 +54,8 @@ void Bnet::LoadConfig() {
 	BH::config->ReadBoolean("Autofill Next Game", *nextInstead);
 	BH::config->ReadBoolean("Autofill Description", *keepDesc);
 	BH::config->ReadInt("Fail To Join", failToJoin);
-	BH::config->ReadInt("Default GS", defaultGsIndex);
+	BH::config->ReadInt("Default Gs", *defaultGsIndex);
+	defaultGsString = "gs" + std::to_string(*defaultGsIndex + 1);
 	BH::config->ReadString("Default Game Name", DefaultGame);
 	BH::config->ReadString("Default Password", DefaultPassword);
 
@@ -209,8 +213,7 @@ VOID __fastcall Bnet::GameDescPatch(Control* box, BOOL(__stdcall *FunCallBack)(C
 		wszLastDesc = AnsiToUnicode(Bnet::lastDesc.c_str());
 	}
 	else {
-		// TBD Input the default gs into description
-		wszLastDesc = AnsiToUnicode(Bnet::GetDefaultGsString().c_str());
+		wszLastDesc = AnsiToUnicode(Bnet::defaultGsString.c_str());
 	}
 	
 	D2WIN_SetControlText(box, wszLastDesc);

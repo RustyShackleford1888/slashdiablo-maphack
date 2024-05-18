@@ -6,12 +6,6 @@
 #include "../../Config.h"
 #include "ATIncludes\ArrayEx.h"
 
-enum MaphackGs {
-	MaphackGsOne = 0,
-	MaphackGsTwo,
-	MaphackGsThree
-};
-
 typedef struct Vector_t
 {
 	unsigned int dwType;
@@ -25,9 +19,9 @@ class AutoTele : public Module {
 		std::map<string, Toggle> Toggles;
 		unsigned int NextKey, OtherKey, WPKey, PrevKey;
 		unsigned int Colors[6];
+		unsigned int defaultGs;
 		std::string DefaultGame;
 		std::string DefaultPassword;
-		unsigned int defaultGs;
 		Drawing::UITab* settingsTab;
 
 		int Try;

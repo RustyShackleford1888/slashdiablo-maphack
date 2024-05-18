@@ -13,10 +13,10 @@ int CS[] = {392, 394, 396, 255};
 using namespace Drawing;
 
 void AutoTele::OnLoad() {
-	defaultGs = MaphackGsOne;
 	LoadConfig();
 
 	std::map<string, bool>* bnetBools (BH::BnetBools);
+	std::map<string, unsigned int>* bnetInts(BH::BnetInts);
 	std::map<string, bool>* gamefilterBools(BH::GamefilterBools);
 
 	settingsTab = new UITab("Misc", BH::settingsUI);
@@ -73,7 +73,7 @@ void AutoTele::OnLoad() {
 	gs_options.push_back("1 - New York");
 	gs_options.push_back("2 - Los Angeles");
 	gs_options.push_back("3 - Amsterdam");
-	new Combohook(settingsTab, col + 80, Y + 26, 130, &defaultGs, gs_options);
+	new Combohook(settingsTab, col + 80, Y + 26, 130, &(*bnetInts)["Default Gs"], gs_options);
 
 }
 
@@ -96,7 +96,6 @@ void AutoTele::LoadConfig() {
 	BH::config->ReadInt("Prev Color", Colors[4]);
 	BH::config->ReadString("Default Game Name", DefaultGame);
 	BH::config->ReadString("Default Password", DefaultPassword);
-	BH::config->ReadInt("Default Gs", defaultGs);
 }
 
 void AutoTele::OnAutomapDraw() {
