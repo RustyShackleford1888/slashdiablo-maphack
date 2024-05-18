@@ -9,6 +9,7 @@ class Bnet : public Module {
 	private:
 		std::map<string, bool> bools;
 		std::map<string, unsigned int> ints;
+		std::map<string, string> strings;
 		bool* showLastGame;
 		bool* showLastPass;
 		bool* nextInstead;
@@ -46,8 +47,8 @@ class Bnet : public Module {
 		static void RemovePassPatch();
 
 		std::map<string, unsigned int>* GetInts() { return &ints; }
-		static std::string GetDefaultGamename() { return DefaultGame; }
-		static std::string GetDefaultPassword() { return DefaultPassword; }
+		std::map<string, string>* GetStrings() { return &strings; }
+
 };
 
 void FailToJoin_Interception();

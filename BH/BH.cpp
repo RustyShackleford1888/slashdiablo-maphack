@@ -26,6 +26,7 @@ map<string, Toggle>* BH::MiscToggles;
 map<string, Toggle>* BH::MiscToggles2;
 map<string, bool>* BH::BnetBools;
 map<string, unsigned int>* BH::BnetInts;
+map<string, string>* BH::BnetStrings;
 map<string, bool>* BH::GamefilterBools;
 map<size_t, string> BH::drops;
 
@@ -144,6 +145,7 @@ void BH::Initialize()
 	new ChatColor();
 
 	BnetInts = ((Bnet*)moduleManager->Get("bnet"))->GetInts();
+	BnetStrings = ((Bnet*)moduleManager->Get("bnet"))->GetStrings();
 	BnetBools = ((Bnet*)moduleManager->Get("bnet"))->GetBools();
 	GamefilterBools = ((Gamefilter*)moduleManager->Get("gamefilter"))->GetBools();
 
