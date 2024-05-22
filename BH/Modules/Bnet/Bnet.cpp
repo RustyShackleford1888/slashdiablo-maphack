@@ -44,12 +44,6 @@ void Bnet::OnLoad() {
 	defaultGsIndex = &ints["Default Gs"];
 	*defaultGsIndex = 0;
 
-	DefaultGame = &strings["Default game Name"];
-	
-	
-	DefaultPassword = &strings["Default Password"];
-	
-
 	failToJoin = 4000;
 	LoadConfig();
 }
@@ -178,7 +172,7 @@ VOID __fastcall Bnet::NextGamePatch(Control* box, BOOL (__stdcall *FunCallBack)(
 	}
 	else {
 		// TBD Input the default game name
-		wszLastGameName = AnsiToUnicode(Bnet::DefaultGame.c_str() );
+		wszLastGameName = AnsiToUnicode(Bnet::GetDefaultGamename().c_str() );
 	}
 
 	D2WIN_SetControlText(box, wszLastGameName);
@@ -201,7 +195,7 @@ VOID __fastcall Bnet::NextPassPatch(Control* box, BOOL(__stdcall *FunCallBack)(C
 		if (Bnet::lastName.size() > 0) {
 			return;
 		}
-		wszLastPass = AnsiToUnicode(Bnet::DefaultPassword.c_str());
+		wszLastPass = AnsiToUnicode(Bnet::GetDefaultPassword().c_str());
 	}	
 	
 	D2WIN_SetControlText(box, wszLastPass);
