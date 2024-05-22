@@ -19,9 +19,6 @@ class AutoTele : public Module {
 		std::map<string, Toggle> Toggles;
 		unsigned int NextKey, OtherKey, WPKey, PrevKey;
 		unsigned int Colors[6];
-		unsigned int defaultGs;
-		std::string DefaultGame;
-		std::string DefaultPassword;
 		Drawing::UITab* settingsTab;
 
 		int Try;

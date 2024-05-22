@@ -63,11 +63,6 @@ void AutoTele::OnLoad() {
 	new Colorhook(settingsTab, 250, 102, &Colors[5], "Other Extra");
 
 	new Texthook(settingsTab, col + 20, (Y += 22), "Default Game Settings");
-	new Texthook(settingsTab, col, (Y +=15), "\377c4Default Game Name:");
-	new Inputhook(settingsTab, col + 130, (Y -= 2), 100, DefaultGame);
-	new Texthook(settingsTab, col, (Y += 20), "\377c4Default Password:");
-	new Inputhook(settingsTab, col + 130, (Y -=2), 100, DefaultPassword);
-
 	new Texthook(settingsTab, col + 5, Y + 30, "Default Gs:");
 	vector<string> gs_options;
 	gs_options.push_back("1 - New York");
@@ -94,8 +89,6 @@ void AutoTele::LoadConfig() {
 	BH::config->ReadInt("Other Color", Colors[2]);
 	BH::config->ReadInt("WP Color", Colors[3]);
 	BH::config->ReadInt("Prev Color", Colors[4]);
-	BH::config->ReadString("Default Game Name", DefaultGame);
-	BH::config->ReadString("Default Password", DefaultPassword);
 }
 
 void AutoTele::OnAutomapDraw() {
