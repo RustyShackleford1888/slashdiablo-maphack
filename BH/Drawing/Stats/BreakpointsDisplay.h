@@ -55,8 +55,6 @@ namespace Drawing {
 
 		bool OnClick(bool up, unsigned int mouseX, unsigned int mouseY);
 		static bool Click(bool up, unsigned int mouseX, unsigned int mouseY);
-
-		void OnKey(bool up, BYTE key, LPARAM lParam);
-		static bool KeyClick(bool bUp, BYTE bKey, LPARAM lParam);
+		static bool KeyClick(bool up, unsigned char key, long lParam);
 	};
 };
