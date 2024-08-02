@@ -60,6 +60,7 @@ class AutoTele : public Module {
 
 		static Level* GetLevel(Act* pAct, int level);
 		static DWORD GetDistanceSquared(DWORD x1, DWORD y1, DWORD x2, DWORD y2);
+
 };
 
 enum TeleType {

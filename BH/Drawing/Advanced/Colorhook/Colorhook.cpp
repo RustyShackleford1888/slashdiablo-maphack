@@ -104,9 +104,9 @@ void Colorhook::OnDraw() {
 	Lock();
 	if (Colorhook::current == this) {
 		//Draw the shaded background
-		Boxhook::Draw(0, 0, Hook::GetScreenWidth(), Hook::GetScreenHeight(), 0, BTOneHalf);
+		Boxhook::Draw(0, 0, Hook::GetScreenWidth(), Hook::GetScreenHeight(), 0xf, BTOneHalf);
 		//Draw the actual choose color box
-		Framehook::Draw(310, 180, 180, 220, 0, BTNormal);
+		Framehook::Draw(310, 180, 180, 220, 0xf, BTNormal);
 		//Draw title
 		Texthook::Draw(360, 186, false, 0, White, "Choose Color");
 		int col = 1, boxX1, boxX2, boxY1, boxY2;
@@ -126,7 +126,7 @@ void Colorhook::OnDraw() {
 			if (mX >= boxX1 && mY >= boxY1 && mX <= boxX2 && mY <= boxY2)
 				curColor = n;
 			//Draw each color box
-			D2GFX_DrawRectangle(boxX1, boxY1, boxX2, boxY2, n, 5);
+			D2GFX_DrawRectangle(boxX1, boxY1, boxX2, boxY2, n, BTNormal); // was BTNormal
 		}
 		//Draw the +ish symbol showing the currently hovered color
 		Crosshook::Draw(457, 380, curColor);
