@@ -74,23 +74,6 @@ void Maphack::ReadConfig() {
 	BH::config->ReadAssoc("Missile Color", missileColors);
 	BH::config->ReadAssoc("Monster Color", monsterColors);
 
-	TextColorMap["\377c0"] = 0x20;  // white
-	TextColorMap["\377c1"] = 0x0A;  // red
-	TextColorMap["\377c2"] = 0x84;  // green
-	TextColorMap["\377c3"] = 0x97;  // blue
-	TextColorMap["\377c4"] = 0x0D;  // gold
-	TextColorMap["\377c5"] = 0xD0;  // gray
-	TextColorMap["\377c6"] = 0x00;  // black
-	TextColorMap["\377c7"] = 0x5A;  // tan
-	TextColorMap["\377c8"] = 0x60;  // orange
-	TextColorMap["\377c9"] = 0x0C;  // yellow
-	TextColorMap["\377c;"] = 0x9B;  // purple
-	TextColorMap["\377c:"] = 0x76;  // dark green
-	TextColorMap["\377c\x06"] = 0x66; // coral
-	TextColorMap["\377c\x07"] = 0x82; // sage
-	TextColorMap["\377c\x09"] = 0xCB; // teal
-	TextColorMap["\377c\x0C"] = 0xD6; // light gray
-
 	BH::config->ReadAssoc("Monster Color", MonsterColors);
 	for (auto it = MonsterColors.cbegin(); it != MonsterColors.cend(); it++) {
 		// If the key is a number, it means a monster we've assigned a specific color
