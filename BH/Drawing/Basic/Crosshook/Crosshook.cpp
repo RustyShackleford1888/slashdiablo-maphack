@@ -106,3 +106,4 @@ bool Crosshook::Draw(unsigned int x, unsigned int y, unsigned int color) {
 
 	return true;
 }
+

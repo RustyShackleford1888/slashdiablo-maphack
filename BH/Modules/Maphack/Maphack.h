@@ -44,6 +44,7 @@ class Maphack : public Module {
 		map<std::string, Toggle> Toggles;
 		Drawing::UITab* settingsTab;
 		std::map<DWORD, std::vector<BaseSkill>> Skills;
+		std::ofstream drop_stream;
 
 	public:
 	Maphack();
