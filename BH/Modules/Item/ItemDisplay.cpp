@@ -374,6 +374,38 @@ void SubstituteNameVariables(UnitItemInfo *uInfo, string &name, const string &ac
 					stat_match[0].length(), statVal);
 		}
 	}
+	// test multi-stats
+	if (name.find("%MULTI-") != string::npos) {
+		std::regex stat_reg("%MULTI-([0-9]{1,4})%", std::regex_constants::ECMAScript);
+		std::smatch stat_match;
+
+		while (std::regex_search(name, stat_match, stat_reg)) {
+			int stat = stoi(stat_match[1].str(), nullptr, 10);
+			statVal[0] = '\0';
+			if (stat <= (int)STAT_MAX) {
+
+				DWORD value = 0;
+				Stat aStatList[256] = { NULL };
+				StatList* pStatList = D2COMMON_GetStatList(uInfo->item, NULL, 0x40);
+				if (pStatList) {
+					DWORD dwStats = D2COMMON_CopyStatList(pStatList, (Stat*)aStatList, 256);
+					for (UINT i = 0; i < dwStats; i++) {
+						if (stat == aStatList[i].wStatIndex) {
+							value = aStatList[i].dwStatValue;
+						}
+					}
+				}
+
+				// Hp and mana need adjusting
+				if (stat == 7 || stat == 9)
+					value /= 256;
+				sprintf_s(statVal, "%d", value);
+			}
+			name.replace(
+					stat_match.prefix().length(),
+					stat_match[0].length(), statVal);
+		}
+	}
 }
 
 BYTE GetAffixLevel(BYTE ilvl, BYTE qlvl, BYTE mlvl) {
