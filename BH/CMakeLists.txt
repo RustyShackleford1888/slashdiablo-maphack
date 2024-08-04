@@ -1,3 +1,4 @@
+cmake_minimum_required(VERSION 3.10)
 project(BH)
 
 set(SOURCE_FILES "AsyncDrawBuffer.cpp"
@@ -49,11 +50,16 @@ set(DRAWING_SOURCES "Drawing/Hook.cpp"
                     "Drawing/Basic/Framehook/Framehook.cpp"
                     "Drawing/Basic/Linehook/Linehook.cpp"
                     "Drawing/Basic/Texthook/Texthook.cpp"
+                    "Drawing/Stats/BreakpointsDisplay.cpp"
                     "Drawing/Stats/StatsDisplay.cpp"
                     "Drawing/UI/UI.cpp"
                     "Drawing/UI/UITab.cpp")
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(SOURCE_FILES ${SOURCE_FILES} ${MODULE_SOURCES} ${DRAWING_SOURCES})
 add_library(BH ${SOURCE_FILES})
+set(CMAKE_CXX_FLAGS_RELEASE "/MT /O2 /Ob2 /DNDEBUG")
 target_include_directories(BH PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../ThirdParty/cpp-lru-cache/include)
 target_link_libraries(BH ${STORM_LIBRARY} Shlwapi)
+
