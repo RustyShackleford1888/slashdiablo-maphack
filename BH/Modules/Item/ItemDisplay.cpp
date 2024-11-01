@@ -315,6 +315,7 @@ void SubstituteNameVariables(UnitItemInfo *uInfo, string &name, const string &ac
 
 	ActionReplace replacements[] = {
 		{"NAME", origName},
+		{"ORIGNAME", origName},
 		{"BASENAME", baseName},
 		{"SOCKETS", sockets},
 		{"RUNENUM", runenum},

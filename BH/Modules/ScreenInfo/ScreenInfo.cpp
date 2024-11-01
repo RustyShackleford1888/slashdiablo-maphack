@@ -17,21 +17,21 @@ map<std::string, Toggle> ScreenInfo::Toggles;
 
 void ScreenInfo::OnLoad() {
 	LoadConfig();
-	
+
 
 	//buffs
 	buffs = { STATE_QUICKNESS,STATE_FADE,STATE_CLOAKED,STATE_VENOMCLAWS,STATE_SHOUT,STATE_BATTLEORDERS,STATE_BATTLECOMMAND,STATE_OAKSAGE,STATE_CYCLONEARMOR,STATE_HURRICANE,STATE_BONEARMOR,STATE_HOLYSHIELD,STATE_SHIVERARMOR,STATE_MOLTENARMOR,STATE_ENCHANT,STATE_ENERGYSHIELD,STATE_THUNDERSTORM, STATE_SHRINE_EXPERIENCE,
-	//auras
-	STATE_MIGHT, STATE_RESISTFIRE, STATE_HOLYFIRE, STATE_THORNS, STATE_DEFIANCE, STATE_RESISTCOLD, STATE_FORTIFY, STATE_STAMINA, STATE_RESISTLIGHT, STATE_CONCENTRATION, STATE_HOLYWIND, STATE_CLEANSING, STATE_HOLYSHOCK, STATE_SANCTUARY, STATE_MEDITATION, STATE_FANATICISM, STATE_REDEMPTION, STATE_CONVICTION, STATE_RESISTALL,
-	//debuffs
-	STATE_AMPLIFYDAMAGE, STATE_WEAKEN, STATE_DECREPIFY, STATE_LOWERRESIST, STATE_POISON, STATE_COLD, 
-	//back to buffs, because i'm lazy.
-	STATE_POISE };
+		//auras
+		STATE_MIGHT, STATE_RESISTFIRE, STATE_HOLYFIRE, STATE_THORNS, STATE_DEFIANCE, STATE_RESISTCOLD, STATE_FORTIFY, STATE_STAMINA, STATE_RESISTLIGHT, STATE_CONCENTRATION, STATE_HOLYWIND, STATE_CLEANSING, STATE_HOLYSHOCK, STATE_SANCTUARY, STATE_MEDITATION, STATE_FANATICISM, STATE_REDEMPTION, STATE_CONVICTION, STATE_RESISTALL,
+		//debuffs
+		STATE_AMPLIFYDAMAGE, STATE_WEAKEN, STATE_DECREPIFY, STATE_LOWERRESIST, STATE_POISON, STATE_COLD,
+		//back to buffs, because i'm lazy.
+		STATE_POISE };
 
 	buffNames = { L"Burst of Speed", L"Fade", L"Cloak of Shadows", L"Venom", L"Shout", L"Battle Orders", L"Battle Command", L"Oak Sage", L"Cyclone Armor", L"Hurricane", L"Bone Armor", L"Holy Shield", L"Shiver Armor", L"Molten Armor", L"Enchant", L"Energy Shield", L"Thunder Storm", L"Experience Shrine",
-	L"Might", L"Resist Fire", L"Holy Fire", L"Thorns", L"Defiance", L"Resist Cold", L"Fortify", L"Vigor", L"Resist Lightning", L"Concentration", L"Holy Freeze", L"Cleansing", L"Holy Shock", L"Sanctuary", L"Meditation", L"Fanaticism", L"Redemption", L"Conviction", L"Salvation", 
-	L"Amplify Damage", L"Weaken", L"Decrepify", L"Lower Resist", L"Poisoned", L"Frozen", L"Poise"	};
-	
+	L"Might", L"Resist Fire", L"Holy Fire", L"Thorns", L"Defiance", L"Resist Cold", L"Fortify", L"Vigor", L"Resist Lightning", L"Concentration", L"Holy Freeze", L"Cleansing", L"Holy Shock", L"Sanctuary", L"Meditation", L"Fanaticism", L"Redemption", L"Conviction", L"Salvation",
+	L"Amplify Damage", L"Weaken", L"Decrepify", L"Lower Resist", L"Poisoned", L"Frozen", L"Poise" };
+
 	bhText = new Texthook(OutOfGame, 795, 6, BH_VERSION " (planqi Resurgence/Slash branch)");
 	bhText->SetAlignment(Right);
 	bhText->SetColor(Gold);
@@ -53,8 +53,8 @@ void ScreenInfo::OnLoad() {
 	szLastXpGainPer = "N/A";
 	szLastGameTime = "N/A";
 
-    automap["GAMESTOLVL"] = szGamesToLevel;
-    automap["TIMETOLVL"] = szTimeToLevel;
+	automap["GAMESTOLVL"] = szGamesToLevel;
+	automap["TIMETOLVL"] = szTimeToLevel;
 	automap["LASTXPPERCENT"] = szLastXpGainPer;
 	automap["LASTXPPERSEC"] = szLastXpPerSec;
 	automap["LASTGAMETIME"] = szLastGameTime;
@@ -65,7 +65,7 @@ void ScreenInfo::LoadConfig() {
 	BH::config->ReadToggle("Experience Meter", "VK_NUMPAD7", false, Toggles["Experience Meter"]);
 
 	BH::config->ReadArray("AutomapInfo", automapInfo);
-	
+
 	BH::config->ReadToggle("Run Details On Join", "None", false, Toggles["Run Details On Join"]);
 	BH::config->ReadToggle("Save Run Details", "None", false, Toggles["Save Run Details"]);
 	BH::config->ReadString("Save Run Details Location", szSavePath);
@@ -76,12 +76,12 @@ void ScreenInfo::LoadConfig() {
 	const string delimiter = ",";
 	szColumnHeader = accumulate(runDetailsColumns.begin(), runDetailsColumns.end(), string(),
 		[delimiter](const string& s, const pair<const string, const string>& p) {
-		return s + (s.empty() ? string() : delimiter) + p.first;
-	});
+			return s + (s.empty() ? string() : delimiter) + p.first;
+		});
 	szColumnData = accumulate(runDetailsColumns.begin(), runDetailsColumns.end(), string(),
 		[delimiter](const string& s, const pair<const string, const string>& p) {
-		return s + (s.empty() ? string() : delimiter) + p.second;
-	});
+			return s + (s.empty() ? string() : delimiter) + p.second;
+		});
 
 	BH::config->ReadAssoc("Skill Warning", SkillWarnings);
 	SkillWarningMap.clear();
@@ -102,12 +102,13 @@ void ScreenInfo::MpqLoaded() {
 	mpqVersionText->SetColor(Gold);
 }
 
-void ScreenInfo::OnGameJoin() {	
+void ScreenInfo::OnGameJoin() {
 	UnitsOverall.clear();
 	UnitsDead.clear();
 	killscounter["total"] = 0;
 	killscounter["unique"] = 0;
 	killscounter["champ"] = 0;
+	killsPerMinute = 0;
 	BnetData* pInfo = (*p_D2LAUNCH_BnData);
 	UnitAny* unit = D2CLIENT_GetPlayerUnit();
 	if (unit) {
@@ -119,7 +120,7 @@ void ScreenInfo::OnGameJoin() {
 		if (!SetWindowText(D2GFX_GetHwnd(), title.c_str())) {
 			printf("Failed setting window text, error: %d\n\n", GetLastError());
 		}
-	}	
+	}
 	manageConv = false;
 	manageBuffs = true;
 	//}
@@ -202,7 +203,7 @@ void ScreenInfo::OnGameJoin() {
 	}
 	runs[runname]++;
 	*/
-	runcounter[runname]++;	
+	runcounter[runname]++;
 
 	if (!Toggles["Run Details On Join"].state) {
 		return;
@@ -212,7 +213,8 @@ void ScreenInfo::OnGameJoin() {
 		PrintText(Orange, "%d games played this session.", nTotalGames);
 		PrintText(Orange, "%d \"%s\" games played this session.", runcounter[runname], runname.c_str());
 		//PrintText(Orange, "%d \"%s\" games played total.", runs[runname], runname.c_str());
-	} else {
+	}
+	else {
 		//sp
 		PrintText(Orange, "%d games played this session.", nTotalGames);
 		PrintText(Orange, "%d single player games played this session.", runcounter[runname]);
@@ -254,8 +256,8 @@ bool IsKillable(UnitAny* pUnit) {
 	return true;
 }
 
-void ScreenInfo::OnKey(bool up, BYTE key, LPARAM lParam, bool* block) {	
-	for (map<string,Toggle>::iterator it = Toggles.begin(); it != Toggles.end(); it++) {
+void ScreenInfo::OnKey(bool up, BYTE key, LPARAM lParam, bool* block) {
+	for (map<string, Toggle>::iterator it = Toggles.begin(); it != Toggles.end(); it++) {
 		if (key == (*it).second.toggle) {
 			*block = true;
 			if (up) {
@@ -271,7 +273,7 @@ void ScreenInfo::OnKey(bool up, BYTE key, LPARAM lParam, bool* block) {
 // Right-clicking in the chat console pastes from the clipboard
 void ScreenInfo::OnRightClick(bool up, int x, int y, bool* block) {
 	if (up)
-		return;	
+		return;
 
 	int left = 130, top = 500, width = 540, height = 42;
 	if (D2CLIENT_GetUIState(0x05) && x >= left && x <= (left + width) && y >= top && y <= (top + height)) {
@@ -281,15 +283,15 @@ void ScreenInfo::OnRightClick(bool up, int x, int y, bool* block) {
 			OpenClipboard(NULL);
 			HGLOBAL glob = GetClipboardData(CF_TEXT);
 			size_t size = GlobalSize(glob);
-			char* cbtext = (char *)glob;
+			char* cbtext = (char*)glob;
 
 			std::vector<INPUT> events;
-			char buffer[120] = {0};
+			char buffer[120] = { 0 };
 			GetLocaleInfo(LOCALE_USER_DEFAULT, LOCALE_ILANGUAGE, buffer, sizeof(buffer));
 			HKL hKeyboardLayout = LoadKeyboardLayout(buffer, KLF_ACTIVATE);
 
-			for (unsigned int i = 0; i < size-1; i++) {
-				INPUT keyEvent = {0};
+			for (unsigned int i = 0; i < size - 1; i++) {
+				INPUT keyEvent = { 0 };
 				const SHORT Vk = VkKeyScanEx(cbtext[i], hKeyboardLayout);
 				const UINT VKey = MapVirtualKey(LOBYTE(Vk), 0);
 
@@ -323,7 +325,7 @@ void ScreenInfo::OnRightClick(bool up, int x, int y, bool* block) {
 			}
 			CloseClipboard();
 
-			if(hKeyboardLayout) {
+			if (hKeyboardLayout) {
 				UnloadKeyboardLayout(hKeyboardLayout);
 			}
 			int retval = SendInput(events.size(), &events[0], sizeof(INPUT));
@@ -334,7 +336,7 @@ void ScreenInfo::OnRightClick(bool up, int x, int y, bool* block) {
 void ScreenInfo::OnDraw() {
 	int yOffset = 1;
 	BnetData* pData = (*p_D2LAUNCH_BnData);
-	void *quests = D2CLIENT_GetQuestInfo();
+	void* quests = D2CLIENT_GetQuestInfo();
 	if (!pData || !quests) {
 		return;
 	}
@@ -351,18 +353,19 @@ void ScreenInfo::OnDraw() {
 	if (!ReceivedQuestPacket && packetRequests < 6 && ms > 5000) {
 		// Ask for quest information from the server; server will respond with packet 0x52.
 		// (In case we inject mid-game and miss the packets sent upon game creation/joining)
-		BYTE RequestQuestData[1] = {0x40};
+		BYTE RequestQuestData[1] = { 0x40 };
 		D2NET_SendPacket(1, 0, RequestQuestData);
 		packetTicks = ticks;
 		packetRequests++;
 	}
 
 	while (!CurrentWarnings.empty()) {
-		StateWarning *curr = CurrentWarnings.front();
+		StateWarning* curr = CurrentWarnings.front();
 		if (ticks - curr->startTicks > 5000) {
 			CurrentWarnings.pop_front();
 			delete curr;
-		} else {
+		}
+		else {
 			break;
 		}
 	}
@@ -376,13 +379,13 @@ void ScreenInfo::OnDraw() {
 	// It's a kludge to peek into other modules for config info, but it just seems silly to
 	// create a new UI tab for each module with config parameters.
 	if ((*BH::MiscToggles)["Quest Drop Warning"].state) {
-		char *bossNames[3] = {"Mephisto", "Diablo", "Baal"};
+		char* bossNames[3] = { "Mephisto", "Diablo", "Baal" };
 		int xpac = pData->nCharFlags & PLAYER_TYPE_EXPANSION;
 		int doneDuriel = D2COMMON_GetQuestFlag2(quests, THE_SEVEN_TOMBS, QFLAG_REWARD_GRANTED);
 		int doneMephisto = D2COMMON_GetQuestFlag2(quests, THE_GUARDIAN, QFLAG_REWARD_GRANTED);
 		int doneDiablo = D2COMMON_GetQuestFlag2(quests, TERRORS_END, QFLAG_REWARD_GRANTED);
 		int doneBaal = D2COMMON_GetQuestFlag2(quests, EVE_OF_DESTRUCTION, QFLAG_REWARD_GRANTED);
-		int startedMephisto = D2COMMON_GetQuestFlag2(quests, THE_GUARDIAN, QFLAG_QUEST_STARTED) | 
+		int startedMephisto = D2COMMON_GetQuestFlag2(quests, THE_GUARDIAN, QFLAG_QUEST_STARTED) |
 			D2COMMON_GetQuestFlag2(quests, THE_GUARDIAN, QFLAG_QUEST_LEAVE_TOWN) |
 			D2COMMON_GetQuestFlag2(quests, THE_GUARDIAN, QFLAG_QUEST_ENTER_AREA) |
 			D2COMMON_GetQuestFlag2(quests, THE_GUARDIAN, QFLAG_CUSTOM_2) |
@@ -392,24 +395,27 @@ void ScreenInfo::OnDraw() {
 		int startedBaal = D2COMMON_GetQuestFlag2(quests, EVE_OF_DESTRUCTION, QFLAG_QUEST_STARTED) | D2COMMON_GetQuestFlag2(quests, EVE_OF_DESTRUCTION, QFLAG_QUEST_LEAVE_TOWN);
 
 		int warning = -1;
-				int CurrentAct = D2CLIENT_GetPlayerUnit()->dwAct;
+		int CurrentAct = D2CLIENT_GetPlayerUnit()->dwAct;
 		if (doneDuriel && startedMephisto && !doneMephisto && !MephistoBlocked && CurrentAct == 2) {
 			warning = 0;
-		} else if (doneMephisto && startedDiablo && !doneDiablo && !DiabloBlocked && CurrentAct == 3) {
+		}
+		else if (doneMephisto && startedDiablo && !doneDiablo && !DiabloBlocked && CurrentAct == 3) {
 			warning = 1;
-		} else if (xpac && doneDiablo && startedBaal && !doneBaal && !BaalBlocked && CurrentAct == 4) {
+		}
+		else if (xpac && doneDiablo && startedBaal && !doneBaal && !BaalBlocked && CurrentAct == 4) {
 			warning = 2;
 		}
 		if (warning >= 0) {
 			ms = ticks - warningTicks;
 			if (ms > 2000) {
 				warningTicks = ticks;
-			} else if (ms > 500) {
+			}
+			else if (ms > 500) {
 				Texthook::Draw(*p_D2CLIENT_ScreenSizeX / 2, 30,
 					Center, 3, Red, "%s Quest Active", bossNames[warning]);
 			}
 		}
-	}	
+	}
 
 	UnitAny* pUnit = D2CLIENT_GetPlayerUnit();
 	currentExperience = (int)D2COMMON_GetUnitStat(pUnit, STAT_EXP, 0);
@@ -452,14 +458,14 @@ void ScreenInfo::OnDraw() {
 			for (unsigned int i = 0; i < buffs.size(); i++) {
 				int state = D2COMMON_GetUnitState(pUnit, buffs[i]);
 				BOOL buffFound = false;
-				int pos = 0;				
+				int pos = 0;
 				for (unsigned j = 0; j < activeBuffs.size(); j++) {
 					if (activeBuffs[j].state == buffs[i]) {
 						buffFound = true;
 						pos = j;
 						break;
 					}
-				}			
+				}
 				if (state != 0 && !buffFound) {
 					//add buff to activeBuffs
 					Buff newBuff = {};
@@ -471,14 +477,15 @@ void ScreenInfo::OnDraw() {
 					}
 					else {
 						newBuff.isBuff = (i < 37 || i > 42) ? true : false;
-					}					
+					}
 					activeBuffs.push_back(newBuff);
-				} else if (state == 0 && buffFound) {
+				}
+				else if (state == 0 && buffFound) {
 					//remove buff from activeBuffs
 					activeBuffs.erase(activeBuffs.begin() + pos);
-				}			
+				}
 			}
-			manageBuffs = false;			
+			manageBuffs = false;
 		}
 		DWORD mouseX = *p_D2CLIENT_MouseX;
 		DWORD mouseY = *p_D2CLIENT_MouseY;
@@ -488,13 +495,13 @@ void ScreenInfo::OnDraw() {
 		int debuffX = screenX - 117 - cf->cells[0]->width;
 		int buffY = screenY - 49;
 		int debuffY = screenY - 49;
-		int totalBuffs = 0;	
+		int totalBuffs = 0;
 
 		for (unsigned i = 0; i < activeBuffs.size(); i++) {
 			if (totalBuffs % 9 == 0 && totalBuffs != 0) {
 				buffX = 117;
 				buffY -= cf->cells[0]->height + 1;
-			}			
+			}
 			CellContext buffContext = {};
 			buffContext.nCellNo = activeBuffs[i].index;
 			buffContext.pCellFile = cf;
@@ -510,12 +517,12 @@ void ScreenInfo::OnDraw() {
 				totalBuffs++;
 			}
 			else {
-				debuffX -= cf->cells[0]->width + 1;				
-			}			
+				debuffX -= cf->cells[0]->width + 1;
+			}
 		}
 		resTracker = (int)D2COMMON_GetUnitStat(pUnit, STAT_FIRERESIST, 0);
 	}
-	
+
 	// The call to GetLevelName somehow invalidates pUnit. This is only observable in O2 builds. The game
 	// will crash when you attempt to open the map (which calls OnAutomapDraw function). We need to get the player unit
 	// again after calling this function. It may be a good idea in general not to store the return value of
@@ -532,7 +539,8 @@ void ScreenInfo::OnDraw() {
 	WORD areaLevel = 0;
 	if (pData->nCharFlags & PLAYER_TYPE_EXPANSION) {
 		areaLevel = levelTxt->wMonLvlEx[D2CLIENT_GetDifficulty()];
-	} else {
+	}
+	else {
 		areaLevel = levelTxt->wMonLvl[D2CLIENT_GetDifficulty()];
 	}
 	for (Room1* room1 = pUnit->pAct->pRoom1; room1; room1 = room1->pRoomNext) {
@@ -556,7 +564,7 @@ void ScreenInfo::OnDraw() {
 				}
 			}
 		}
-	}	
+	}
 
 	automap["CURRENTCHARLEVEL"] = to_string(currentLevel);
 	automap["CURRENTCHARLEVELPERCENT"] = to_string(static_cast<double>(currentLevel) + (pExp / 100.0));
@@ -571,9 +579,18 @@ void ScreenInfo::OnDraw() {
 	automap["TOTALKILLED"] = to_string(killscounter["total"]);
 	automap["UNIQUEKILLED"] = to_string(killscounter["unique"]);
 	automap["CHAMPKILLED"] = to_string(killscounter["champ"]);
+	// Calculate elapsed time in seconds since the game started
+	DWORD currentTime = GetTickCount();
+	double elapsedTime = (currentTime - gameTimer) / 1000.0; // Convert to seconds
 
-	delete [] level;	
-	
+	// Calculate kills per minute
+	if (elapsedTime > 0) {
+		killsPerMinute = (double)killscounter["total"] / (elapsedTime / 60.0); // Calculate kills per minute
+		automap["KILLSPERMINUTE"] = to_string((int)killsPerMinute); // Store in automap
+	}
+
+	delete[] level;
+
 }
 
 void ScreenInfo::OnOOGDraw() {
@@ -615,16 +632,16 @@ std::string ScreenInfo::ReplaceAutomapTokens(std::string& v) {
 	return result;
 }
 
-void ScreenInfo::OnAutomapDraw() {		
-	int y = 6+(BH::cGuardLoaded?16:0);
+void ScreenInfo::OnAutomapDraw() {
+	int y = 6 + (BH::cGuardLoaded ? 16 : 0);
 
 	for (vector<string>::iterator it = automapInfo.begin(); it < automapInfo.end(); it++) {
 		string key = ReplaceAutomapTokens(*it);
 		if (key.length() > 0) {
-			Texthook::Draw(*p_D2CLIENT_ScreenSizeX - 10, y, Right,0,Gold,"%s", key.c_str());
+			Texthook::Draw(*p_D2CLIENT_ScreenSizeX - 10, y, Right, 0, Gold, "%s", key.c_str());
 			y += 16;
 		}
-	}	
+	}
 }
 
 void ScreenInfo::AddDrop(UnitAny* pItem) {
@@ -652,73 +669,73 @@ void ScreenInfo::OnGamePacketRecv(BYTE* packet, bool* block) {
 	switch (packet[0])
 	{
 	case 0x29:
-		{
-			// The packet consists of two-byte pairs for each of the 41 quests,
-			// starting at the third byte. The high bit of the first byte in the pair
-			// (corresponding to QFLAG_QUEST_COMPLETED_BEFORE) is always set when the
-			// quest was previously completed. QFLAG_PRIMARY_GOAL_ACHIEVED is often
-			// set as well.
-			// Packet received at game start, and upon talking to quest NPCs.
-			int packetLen = 97;
-			MephistoBlocked = (packet[2 + (THE_GUARDIAN * 2)] & 0x80) > 0;
-			DiabloBlocked = (packet[2 + (TERRORS_END * 2)] & 0x80) > 0;
-			BaalBlocked = (packet[2 + (EVE_OF_DESTRUCTION * 2)] & 0x80) > 0;
-			ReceivedQuestPacket = true;  // fixme: want this here?
-			break;
+	{
+		// The packet consists of two-byte pairs for each of the 41 quests,
+		// starting at the third byte. The high bit of the first byte in the pair
+		// (corresponding to QFLAG_QUEST_COMPLETED_BEFORE) is always set when the
+		// quest was previously completed. QFLAG_PRIMARY_GOAL_ACHIEVED is often
+		// set as well.
+		// Packet received at game start, and upon talking to quest NPCs.
+		int packetLen = 97;
+		MephistoBlocked = (packet[2 + (THE_GUARDIAN * 2)] & 0x80) > 0;
+		DiabloBlocked = (packet[2 + (TERRORS_END * 2)] & 0x80) > 0;
+		BaalBlocked = (packet[2 + (EVE_OF_DESTRUCTION * 2)] & 0x80) > 0;
+		ReceivedQuestPacket = true;  // fixme: want this here?
+		break;
 
-			// TODO: does it get cleared when quest completed while we are in game in different act?
-		}
+		// TODO: does it get cleared when quest completed while we are in game in different act?
+	}
 	case 0x52:
-		{
-			// We have one byte for each of the 41 quests: zero if the quest is blocked,
-			// and nonzero if we can complete it.
-			// Packet received upon opening quest log, and after sending 0x40 to server.
-			int packetLen = 42;
-			MephistoBlocked = packet[1 + THE_GUARDIAN] == 0;
-			DiabloBlocked = packet[1 + TERRORS_END] == 0;
-			BaalBlocked = packet[1 + EVE_OF_DESTRUCTION] == 0;
-			ReceivedQuestPacket = true;
-			break;
-		}
+	{
+		// We have one byte for each of the 41 quests: zero if the quest is blocked,
+		// and nonzero if we can complete it.
+		// Packet received upon opening quest log, and after sending 0x40 to server.
+		int packetLen = 42;
+		MephistoBlocked = packet[1 + THE_GUARDIAN] == 0;
+		DiabloBlocked = packet[1 + TERRORS_END] == 0;
+		BaalBlocked = packet[1 + EVE_OF_DESTRUCTION] == 0;
+		ReceivedQuestPacket = true;
+		break;
+	}
 	case 0x5D:
-		{
-			// Packet received when there is a change (progress) in one of the quests,
-			// we send packet 0x40 which triggers the server to send us packet 0x52 
-			// containing the updated information on quest changes.
-			BYTE RequestQuestData[1] = { 0x40 };
-			D2NET_SendPacket(1, 0, RequestQuestData);
-			break;
-		}
+	{
+		// Packet received when there is a change (progress) in one of the quests,
+		// we send packet 0x40 which triggers the server to send us packet 0x52 
+		// containing the updated information on quest changes.
+		BYTE RequestQuestData[1] = { 0x40 };
+		D2NET_SendPacket(1, 0, RequestQuestData);
+		break;
+	}
 	case 0xA8:
-		{
-	    	// Packet received when the character begins a new state (i.e. buff/effect received).
-			//BYTE unitType = packet[1];
-			//DWORD unitId = *(DWORD*)&packet[2];
-			//BYTE packetLen = packet[6];
-			DWORD state = packet[7];
-			//DWORD effects = packet[8];
-			//DWORD me = pUnit ? pUnit->dwUnitId : 0;
-			if (state == 28) {
-				manageConv = true;
-			}
-			manageBuffs = true;
-			break;
+	{
+		// Packet received when the character begins a new state (i.e. buff/effect received).
+		//BYTE unitType = packet[1];
+		//DWORD unitId = *(DWORD*)&packet[2];
+		//BYTE packetLen = packet[6];
+		DWORD state = packet[7];
+		//DWORD effects = packet[8];
+		//DWORD me = pUnit ? pUnit->dwUnitId : 0;
+		if (state == 28) {
+			manageConv = true;
 		}
+		manageBuffs = true;
+		break;
+	}
 	case 0xA9:
-		{
-			// Packet received when the character ends a state (i.e. buff runs out).
-			BYTE unitType = packet[1];
-			DWORD unitId = *(DWORD*)&packet[2];
-			DWORD state = packet[6];
-			DWORD me = pUnit ? pUnit->dwUnitId : 0;
-			if (unitType == UNIT_PLAYER && unitId == me) {
-				if (SkillWarningMap.find(state) != SkillWarningMap.end()) {
-					CurrentWarnings.push_back(new StateWarning(SkillWarningMap[state], BHGetTickCount()));
-				}
+	{
+		// Packet received when the character ends a state (i.e. buff runs out).
+		BYTE unitType = packet[1];
+		DWORD unitId = *(DWORD*)&packet[2];
+		DWORD state = packet[6];
+		DWORD me = pUnit ? pUnit->dwUnitId : 0;
+		if (unitType == UNIT_PLAYER && unitId == me) {
+			if (SkillWarningMap.find(state) != SkillWarningMap.end()) {
+				CurrentWarnings.push_back(new StateWarning(SkillWarningMap[state], BHGetTickCount()));
 			}
-			manageBuffs = true;
-			break;
 		}
+		manageBuffs = true;
+		break;
+	}
 	default:
 		break;
 	}
@@ -732,6 +749,7 @@ void ScreenInfo::OnGameExit() {
 	double lastExpPerSecond = currentExpPerSecond;
 	int lastGameLength = endTimer;
 	int timeToLevel = gamesToLevel * lastGameLength;
+	killsPerMinute = (double)killscounter["total"];
 
 	char buffer[128];
 	sprintf_s(buffer, sizeof(buffer), "%.2f", gamesToLevel);
@@ -751,9 +769,9 @@ void ScreenInfo::OnGameExit() {
 
 	const string delimiter = ", ";
 	string drops = accumulate(BH::drops.begin(), BH::drops.end(), string(),
-	[delimiter](const string& s, const pair<const size_t, string>& p) {
-		return s + (s.empty() ? string() : delimiter) + p.second;
-	});
+		[delimiter](const string& s, const pair<const size_t, string>& p) {
+			return s + (s.empty() ? string() : delimiter) + p.second;
+		});
 	BH::drops.clear();
 
 	drops = regex_replace(drops, regex("\xFF" "c."), "");
@@ -784,7 +802,7 @@ void ScreenInfo::OnGameExit() {
 
 	if (Toggles["Save Run Details"].state) {
 		WriteRunTrackerData();
-	}	
+	}
 	/*
 	cRunData->Write();
 	delete cRunData;
@@ -805,12 +823,12 @@ void ScreenInfo::WriteRunTrackerData() {
 		return;
 	}
 	if (!exist) {
-		os << ReplaceAutomapTokens(szColumnHeader) << endl; 
+		os << ReplaceAutomapTokens(szColumnHeader) << endl;
 	}
 	os << ReplaceAutomapTokens(szColumnData) << endl;
 }
 
-void ScreenInfo::DrawPopup(wchar_t* buffName, int x, int y) {	
+void ScreenInfo::DrawPopup(wchar_t* buffName, int x, int y) {
 	int textWidth = D2WIN_GetTextWidth(buffName);
 	D2WIN_DrawRectText(buffName, x - textWidth / 2, y - 2, White, DRAW_MODE_ALPHA_50, White);
 }

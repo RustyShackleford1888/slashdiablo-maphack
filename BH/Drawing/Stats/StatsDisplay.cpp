@@ -4,6 +4,7 @@
 #include "../Basic/Boxhook/Boxhook.h"
 #include "../../D2Ptrs.h"
 #include "../../BH.h"
+#include "BreakpointsDisplay.h" 
 
 using namespace Drawing;
 
@@ -131,6 +132,11 @@ void StatsDisplay::OnDraw() {
 			unit = D2CLIENT_GetMercUnit();
 			isMerc = true;
 		}
+		if (D2CLIENT_GetUIState(0x02)) {
+			int xPos = *p_D2CLIENT_ScreenSizeX - 10 - GetXSize();  // Position on the right
+			SetX(xPos);
+		}
+
 		for (std::list<Hook*>::iterator it = Hooks.begin(); it != Hooks.end(); it++)
 			(*it)->OnDraw();
 

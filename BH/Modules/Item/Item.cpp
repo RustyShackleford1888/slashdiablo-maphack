@@ -118,9 +118,9 @@ void Item::OnGameJoin() {
 	// (GUIDs not unique across games)
 	ResetCaches();
 	OnLoop();
-	if (ItemDisplay::UntestedSettingsUsed()) {
-		PrintText(10, "Warning - using experimental config settings");
-	}
+	//if (ItemDisplay::UntestedSettingsUsed()) {
+	//	PrintText(10, "Warning - using experimental config settings");
+	//}
 }
 
 void Item::LoadConfig() {
@@ -724,6 +724,7 @@ void __stdcall Item::OnProperties(wchar_t * wTxt)
 				GetColorCode(TextColor::White).c_str());
 		}
 	}
+
 
 	if (!(Toggles["Always Show Item Stat Ranges"].state ||
 				GetKeyState(VK_CONTROL) & 0x8000) ||

@@ -16,7 +16,6 @@ namespace Drawing {
 	class BreakpointsDisplay : public HookGroup {
 	private:
 		std::map<std::string, Toggle> Toggles;
-		static BreakpointsDisplay* display;
 		std::string name;
 		unsigned int x, y, xSize, ySize;
 		unsigned int breakpointKey;
@@ -24,6 +23,7 @@ namespace Drawing {
 		bool active, minimized;
 		CRITICAL_SECTION crit;
 	public:
+		static BreakpointsDisplay* display;
 		BreakpointsDisplay(std::string name);
 		~BreakpointsDisplay();
 
