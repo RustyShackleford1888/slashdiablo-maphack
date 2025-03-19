@@ -693,6 +693,7 @@ enum D2States
 	STATE_PASSIVE_RESISTLTNG = 0xB7,
 	STATE_UBERMINION = 0xB8,
 	STATE_POISE = 0xD3,
+	STATE_ELIXIR = 0xDD,
 };
 
 ///////////////////////////////////////////////////
@@ -907,6 +908,7 @@ enum D2States
 #define STATE_FADE                    159
 #define STATE_MONSTERSET			  176
 #define STATE_POISE                   211
+#define STATE_ELIXIR                  221
 
 ///////////////////////////////////////////////////
 // Skill Tab Definitions

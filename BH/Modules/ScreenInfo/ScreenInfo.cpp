@@ -26,11 +26,11 @@ void ScreenInfo::OnLoad() {
 		//debuffs
 		STATE_AMPLIFYDAMAGE, STATE_WEAKEN, STATE_DECREPIFY, STATE_LOWERRESIST, STATE_POISON, STATE_COLD,
 		//back to buffs, because i'm lazy.
-		STATE_POISE };
+		STATE_POISE, STATE_ELIXIR };
 
 	buffNames = { L"Burst of Speed", L"Fade", L"Cloak of Shadows", L"Venom", L"Shout", L"Battle Orders", L"Battle Command", L"Oak Sage", L"Cyclone Armor", L"Hurricane", L"Bone Armor", L"Holy Shield", L"Shiver Armor", L"Molten Armor", L"Enchant", L"Energy Shield", L"Thunder Storm", L"Experience Shrine",
 	L"Might", L"Resist Fire", L"Holy Fire", L"Thorns", L"Defiance", L"Resist Cold", L"Fortify", L"Vigor", L"Resist Lightning", L"Concentration", L"Holy Freeze", L"Cleansing", L"Holy Shock", L"Sanctuary", L"Meditation", L"Fanaticism", L"Redemption", L"Conviction", L"Salvation",
-	L"Amplify Damage", L"Weaken", L"Decrepify", L"Lower Resist", L"Poisoned", L"Frozen", L"Poise" };
+	L"Amplify Damage", L"Weaken", L"Decrepify", L"Lower Resist", L"Poisoned", L"Frozen", L"Poise", L"Elixir" };
 
 	bhText = new Texthook(OutOfGame, 795, 6, BH_VERSION " (planqi Resurgence/Slash branch)");
 	bhText->SetAlignment(Right);
