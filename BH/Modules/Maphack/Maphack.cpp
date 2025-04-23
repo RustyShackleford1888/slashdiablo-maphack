@@ -62,7 +62,13 @@ void Maphack::LoadConfig() {
 	automapMonsterColors.clear();
 	automapMonsterLines.clear();
 	automapHiddenMonsters.clear();
-
+	// Clear all color maps before reloading
+	monsterColors.clear();
+	MonsterColors.clear();
+	missileColors.clear();
+	SuperUniqueColors.clear();
+	MonsterLines.clear();
+	MonsterHides.clear();
 	ReadConfig();
 }
 

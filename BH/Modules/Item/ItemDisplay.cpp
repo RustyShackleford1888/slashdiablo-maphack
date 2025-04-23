@@ -987,6 +987,14 @@ void Condition::BuildConditions(vector<Condition*> &conditions, string token) {
 		Condition::AddOperand(conditions, new ItemStatCondition(STAT_REPLENISHESQUANTITY, 0, operation, value));
 	} else if (key == "REPAIR") {
 		Condition::AddOperand(conditions, new ItemStatCondition(STAT_REPAIRSDURABILITY, 0, operation, value));
+	} else if (key == "FMAST") {
+		Condition::AddOperand(conditions, new ItemStatCondition(STAT_FIREMASTERY, 0, operation, value));
+	} else if (key == "LMAST") {
+		Condition::AddOperand(conditions, new ItemStatCondition(STAT_LIGHTNINGMASTERY, 0, operation, value));
+	} else if (key == "CMAST") {
+		Condition::AddOperand(conditions, new ItemStatCondition(STAT_COLDMASTERY, 0, operation, value));
+	} else if (key == "PMAST") {
+		Condition::AddOperand(conditions, new ItemStatCondition(STAT_POISONMASTERY, 0, operation, value));
 	} else if (key == "ARMOR") {
 		Condition::AddOperand(conditions, new ItemGroupCondition(ITEM_GROUP_ALLARMOR));
 	} else if (key == "BELT") {
