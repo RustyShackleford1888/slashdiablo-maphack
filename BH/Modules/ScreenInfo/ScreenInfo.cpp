@@ -172,7 +172,14 @@ void ScreenInfo::OnGameJoin() {
 	}
 	automap["GAMEPASS"] = pData->szGamePass;
 	automap["GAMEDESC"] = pData->szGameDesc;
-	automap["GAMEIP"] = pData->szGameIP;
+	
+	// Get server IP from GameInfo (more reliable than BnetData)
+	GameStructInfo* pGameInfo = (*p_D2CLIENT_GameInfo);
+	if (pGameInfo && strlen(pGameInfo->szGameServerIp) > 0) {
+		automap["GAMEIP"] = pGameInfo->szGameServerIp;
+	} else {
+		automap["GAMEIP"] = pData->szGameIP; // Fallback to BnetData
+	}
 	automap["GAMEDIFF"] = szDiff[D2CLIENT_GetDifficulty()];
 	automap["ACCOUNTNAME"] = pData->szAccountName;
 	automap["CHARNAME"] = pUnit->pPlayerData->szName;

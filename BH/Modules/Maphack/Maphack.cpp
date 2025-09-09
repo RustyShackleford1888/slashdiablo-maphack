@@ -17,7 +17,6 @@
 
 using namespace Drawing;
 Patch* weatherPatch = new Patch(Jump, D2COMMON, { 0x6CC56, 0x30C36 }, (int)Weather_Interception, 5);
-Patch* lightingPatch = new Patch(Call, D2CLIENT, { 0xA9A37, 0x233A7 }, (int)Lighting_Interception, 6);
 Patch* infraPatch = new Patch(Call, D2CLIENT, { 0x66623, 0xB4A23 }, (int)Infravision_Interception, 7);
 Patch* shakePatch = new Patch(Call, D2CLIENT, { 0x442A2, 0x452F2 }, (int)Shake_Interception, 5);
 Patch* diabloDeadMessage = new Patch((PatchType)0x68, D2CLIENT, { 0x52E84, 0x693B4 }, (int)0x14, 5);
@@ -181,7 +180,6 @@ for (const auto& entry : auraColorsString) {
 	BH::config->ReadToggle("Show Monsters", "None", true, Toggles["Show Monsters"]);
 	BH::config->ReadToggle("Show Missiles", "None", true, Toggles["Show Missiles"]);
 	BH::config->ReadToggle("Show Chests", "None", true, Toggles["Show Chests"]);
-	BH::config->ReadToggle("Force Light Radius", "None", true, Toggles["Force Light Radius"]);
 	BH::config->ReadToggle("Remove Weather", "None", true, Toggles["Remove Weather"]);
 	BH::config->ReadToggle("Infravision", "None", true, Toggles["Infravision"]);
 	BH::config->ReadToggle("Remove Shake", "None", false, Toggles["Remove Shake"]);
@@ -205,11 +203,6 @@ void Maphack::ResetRevealed() {
 }
 
 void Maphack::ResetPatches() {
-	//Lighting Patch
-	if (Toggles["Force Light Radius"].state)
-		lightingPatch->Install();
-	else
-		lightingPatch->Remove();
 
 	//Weather Patch
 	if (Toggles["Remove Weather"].state)
@@ -287,8 +280,6 @@ void Maphack::OnLoad() {
 	new Checkhook(settingsTab, 4, (Y += 15), &Toggles["Show Chests"].state, "Show Chests");
 	new Keyhook(settingsTab, keyhook_x, (Y + 2), &Toggles["Show Chests"].toggle, "");
 
-	new Checkhook(settingsTab, 4, (Y += 15), &Toggles["Force Light Radius"].state, "Light Radius");
-	new Keyhook(settingsTab, keyhook_x, (Y + 2), &Toggles["Force Light Radius"].toggle, "");
 
 	new Checkhook(settingsTab, 4, (Y += 15), &Toggles["Remove Weather"].state, "Remove Weather");
 	new Keyhook(settingsTab, keyhook_x, (Y + 2), &Toggles["Remove Weather"].toggle, "");
@@ -360,7 +351,6 @@ void Maphack::OnKey(bool up, BYTE key, LPARAM lParam, bool* block) {
 }
 
 void Maphack::OnUnload() {
-	lightingPatch->Remove();
 	weatherPatch->Remove();
 	infraPatch->Remove();
 	shakePatch->Remove();
@@ -1090,22 +1080,6 @@ BOOL __fastcall InfravisionPatch(UnitAny *unit)
 	return false;
 }
 
-void __declspec(naked) Lighting_Interception()
-{
-	__asm {
-		je lightold
-		mov eax,0xff
-		mov byte ptr [esp+4+0], al
-		mov byte ptr [esp+4+1], al
-		mov byte ptr [esp+4+2], al
-		add dword ptr [esp], 0x72;
-		ret
-		lightold:
-		push esi
-		call D2COMMON_GetLevelIdFromRoom_I;
-		ret
-	}
-}
 
 void __declspec(naked) Infravision_Interception()
 {

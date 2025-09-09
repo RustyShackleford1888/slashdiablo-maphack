@@ -142,6 +142,7 @@ void BH::Initialize()
 	new StashExport();
 	new Maphack();
 	new ChatColor();
+	new MOTD();
 
 	BnetInts = ((Bnet*)moduleManager->Get("bnet"))->GetInts();
 	BnetBools = ((Bnet*)moduleManager->Get("bnet"))->GetBools();
