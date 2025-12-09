@@ -7,6 +7,8 @@
 #include "../../BitReader.h"
 #include "../Item/ItemDisplay.h"
 #include "../../MPQInit.h"
+#include <vector>
+#include <map>
 
 extern int INVENTORY_WIDTH;
 extern int INVENTORY_HEIGHT;
@@ -34,6 +36,12 @@ struct ItemPacketData {
 	unsigned int destination;
 };
 
+struct GoldItemData {
+	DWORD itemId;
+	DWORD x;
+	DWORD y;
+};
+
 class ItemMover : public Module {
 private:
 	bool FirstInit;
@@ -50,9 +58,16 @@ private:
 	unsigned int HealKey;
 	unsigned int ManaKey;
 	unsigned int JuvKey;
+	unsigned int TransmuteKey;
 	ItemPacketData ActivePacket;
 	CRITICAL_SECTION crit;
 	Drawing::UITab* settingsTab;
+	
+	// Auto gold pickup members
+	Toggle autoPickupGold;
+	unsigned int goldPickupRange;
+	ULONGLONG lastPickupTick;
+	std::map<DWORD, GoldItemData> trackedGoldItems;
 public:
 	ItemMover() : Module("Item Mover"),
 		ActivePacket(),
@@ -65,9 +80,14 @@ public:
 		stashLayout(NULL),
 		inventoryLayout(NULL),
 		cubeLayout(NULL),
-	  tp_warn_quantity(3){
+		tp_warn_quantity(3),
+		goldPickupRange(5),
+		lastPickupTick(0) {
 
 		InitializeCriticalSection(&crit);
+		// Initialize toggle to safe defaults
+		autoPickupGold.toggle = 0;
+		autoPickupGold.state = false;
 	};
 
 	~ItemMover() {
@@ -103,6 +123,7 @@ public:
 	void LoadConfig();
 
 	void OnLoad();
+	void OnLoop();
 	void OnKey(bool up, BYTE key, LPARAM lParam, bool* block);
 	void OnLeftClick(bool up, unsigned int x, unsigned int y, bool* block);
 	void OnRightClick(bool up, unsigned int x, unsigned int y, bool* block);

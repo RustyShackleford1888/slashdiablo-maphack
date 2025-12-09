@@ -371,8 +371,12 @@ void ItemMover::LoadConfig() {
 	BH::config->ReadKey("Use Healing Potion", "VK_NUMPADMULTIPLY", HealKey);
 	BH::config->ReadKey("Use Mana Potion", "VK_NUMPADSUBTRACT", ManaKey);
 	BH::config->ReadKey("Use Rejuv Potion", "VK_NUMPADDIVIDE", JuvKey);
+	BH::config->ReadKey("Cube Transmute", "None", TransmuteKey);
 
 	BH::config->ReadInt("Low TP Warning", tp_warn_quantity);
+	
+	// Auto gold pickup config
+	BH::config->ReadToggle("Auto Pickup Gold", "None", false, autoPickupGold);
 }
 
 void ItemMover::OnLoad() {
@@ -384,10 +388,11 @@ void ItemMover::OnLoad() {
 	unsigned int x = 8;
 	unsigned int y = 7;
 	new Drawing::Texthook(settingsTab, x, y, "Keys (esc to clear)");
-	new Drawing::Keyhook(settingsTab, x, (y += 15), &TpKey ,  "Quick Town Portal:     ");
-	new Drawing::Keyhook(settingsTab, x, (y += 15), &HealKey, "Use Healing Potion:    ");
-	new Drawing::Keyhook(settingsTab, x, (y += 15), &ManaKey, "Use Mana Potion:       ");
-	new Drawing::Keyhook(settingsTab, x, (y += 15), &JuvKey,  "Use Rejuv Potion:      ");
+	new Drawing::Keyhook(settingsTab, x, (y += 15), &TpKey ,       "Quick Town Portal:     ");
+	new Drawing::Keyhook(settingsTab, x, (y += 15), &HealKey,     "Use Healing Potion:    ");
+	new Drawing::Keyhook(settingsTab, x, (y += 15), &ManaKey,     "Use Mana Potion:       ");
+	new Drawing::Keyhook(settingsTab, x, (y += 15), &JuvKey,      "Use Rejuv Potion:      ");
+	new Drawing::Keyhook(settingsTab, x, (y += 15), &TransmuteKey,"Cube Transmute:        ");
 
 	y += 7;
 
@@ -405,10 +410,72 @@ void ItemMover::OnLoad() {
 			"Ctrl-shift-rightclick moves item into closed cube");
 	colored_text->SetColor(Gold);
 
+	y += 7;
+
+	new Drawing::Texthook(settingsTab, x, (y += 15), "Auto Pickup");
+	new Drawing::Checkhook(settingsTab, x, (y += 15), &autoPickupGold.state, "Auto Pickup Gold");
 	colored_text = new Drawing::Texthook(settingsTab, x, (y += 15),
-			"");
+			"Automatically picks up gold within range");
 	colored_text->SetColor(Gold);
 
+}
+
+void ItemMover::OnLoop() {
+	if (!autoPickupGold.state) {
+		return;
+	}
+
+	UnitAny* player = D2CLIENT_GetPlayerUnit();
+	if (!player || !player->pPath || !player->pAct) {
+		return;
+	}
+
+	// Throttle pickup attempts (100ms between attempts)
+	ULONGLONG currentTick = BHGetTickCount();
+	if (currentTick - lastPickupTick < 100) {
+		return;
+	}
+
+	DWORD playerX = player->pPath->xPos;
+	DWORD playerY = player->pPath->yPos;
+
+	// Iterate through all rooms and ground items to find gold
+	for (Room1* room1 = player->pAct->pRoom1; room1; room1 = room1->pRoomNext) {
+		if (!room1->pUnitFirst) {
+			continue;
+		}
+
+		for (UnitAny* pUnit = room1->pUnitFirst; pUnit; pUnit = pUnit->pListNext) {
+			// Check if this is an item on the ground
+			if (pUnit->dwType != UNIT_ITEM || !pUnit->pItemPath) {
+				continue;
+			}
+
+			// Check if it's gold
+			char* code = D2COMMON_GetItemText(pUnit->dwTxtFileNo)->szCode;
+			if (!code || code[0] != 'g' || code[1] != 'l' || code[2] != 'd') {
+				continue;
+			}
+
+			// Calculate distance to gold
+			DWORD goldX = pUnit->pItemPath->dwPosX;
+			DWORD goldY = pUnit->pItemPath->dwPosY;
+			DWORD distance = GetDistanceSquared(playerX, playerY, goldX, goldY);
+
+			// If gold is within 5 yards, pick it up (hardcoded range)
+			if (distance <= 5) {
+				// Send packet 0x13 - player action on unit
+				BYTE PacketData[9] = {0x13, 0, 0, 0, 0, 0, 0, 0, 0};
+				*reinterpret_cast<DWORD*>(PacketData + 1) = 4;  // Action type 4
+				*reinterpret_cast<DWORD*>(PacketData + 5) = pUnit->dwUnitId;
+				D2NET_SendPacket(9, 1, PacketData);
+
+				lastPickupTick = currentTick;
+				// Only pick up one gold pile per loop iteration
+				return;
+			}
+		}
+	}
 }
 
 void ItemMover::OnKey(bool up, BYTE key, LPARAM lParam, bool* block)  {
@@ -482,6 +549,13 @@ void ItemMover::OnKey(bool up, BYTE key, LPARAM lParam, bool* block)  {
 				PrintText(Red, "TP tome is running low!");
 			}
 			D2NET_SendPacket(13, 0, PacketData);
+			*block = true;
+		}
+	}
+	if (!up && (key == TransmuteKey)) {
+		// Only transmute if the cube UI is open
+		if (D2CLIENT_GetUIState(UI_CUBE)) {
+			D2CLIENT_Transmute();
 			*block = true;
 		}
 	}
