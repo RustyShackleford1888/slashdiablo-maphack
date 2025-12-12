@@ -417,6 +417,9 @@ void ItemMover::OnLoad() {
 	colored_text = new Drawing::Texthook(settingsTab, x, (y += 15),
 			"Automatically picks up gold within range");
 	colored_text->SetColor(Gold);
+	colored_text = new Drawing::Texthook(settingsTab, x, (y += 15),
+			"WARNING: Highly experimental - could get you killed!");
+	colored_text->SetColor(Red);
 
 }
 
