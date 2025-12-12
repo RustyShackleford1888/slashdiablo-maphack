@@ -63,7 +63,7 @@ namespace Drawing {
 			void SetDragged(bool state); // never writes the config file
 			void SetZOrder(unsigned int newZ) { Lock(); zOrder = newZ; Unlock(); };
 
-			UITab* GetActiveTab() { if (!currentTab) { currentTab = (*Tabs.begin()); } return currentTab; };
+			UITab* GetActiveTab() { if (!currentTab && !Tabs.empty()) { currentTab = (*Tabs.begin()); } return currentTab; };
 			void SetCurrentTab(UITab* tab) { Lock(); currentTab = tab; Unlock(); };
 
 			void OnDraw();
