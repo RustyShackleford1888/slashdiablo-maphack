@@ -433,6 +433,17 @@ void ItemMover::OnLoop() {
 		return;
 	}
 
+	// Check if inventory gold is at max capacity
+	// Max gold formula: 10,000 per level (level 1 = 10,000, level 99 = 990,000)
+	DWORD currentGold = (DWORD)D2COMMON_GetUnitStat(player, STAT_GOLD, 0);
+	DWORD playerLevel = (DWORD)D2COMMON_GetUnitStat(player, STAT_LEVEL, 0);
+	DWORD maxGold = playerLevel * 10000;
+	
+	// If inventory gold is at max capacity, temporarily disable auto pickup
+	if (currentGold >= maxGold) {
+		return;
+	}
+
 	// Throttle pickup attempts (100ms between attempts)
 	ULONGLONG currentTick = BHGetTickCount();
 	if (currentTick - lastPickupTick < 100) {

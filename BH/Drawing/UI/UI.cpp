@@ -33,6 +33,7 @@ UI::UI(std::string name, unsigned int xSize, unsigned int ySize) {
 		SetMinimized(false);
 	}
 	SetActive(false);
+	SetVisible(true); // UI is visible by default
 	zOrder = UIs.size();
 	UIs.push_back(this);
 }
@@ -171,8 +172,13 @@ void UI::OnDraw() {
 		Framehook::Draw(GetX(), GetY(), GetXSize(), GetYSize(), 0, (IsActive()?BTNormal:BTOneHalf));
 		Framehook::Draw(GetX(), GetY(), GetXSize(), TITLE_BAR_HEIGHT, 0, BTNormal);
 		Texthook::Draw(GetX() + 4, GetY () + 3, false, 0, InTitle((*p_D2CLIENT_MouseX), (*p_D2CLIENT_MouseY))?Silver:White, GetName());
-		for (list<UITab*>::iterator it = Tabs.begin(); it != Tabs.end(); it++)
-			(*it)->OnDraw();
+		if (!Tabs.empty()) {
+			for (list<UITab*>::iterator it = Tabs.begin(); it != Tabs.end(); it++) {
+				if (*it != nullptr) {
+					(*it)->OnDraw();
+				}
+			}
+		}
 	}
 }
 
@@ -234,8 +240,14 @@ void UI::SetMinimized(bool newState) {
 	if (newState) {
 		Minimized.push_back(this);
 		BH::config->Write();
-	} else
-		Minimized.remove(this); 
+	} else {
+		Minimized.remove(this);
+		SetVisible(true);
+		// Ensure currentTab is set when opening the UI
+		if (!currentTab && !Tabs.empty()) {
+			currentTab = (*Tabs.begin());
+		}
+	}
 	minimized = newState; 
 	WritePrivateProfileString(name.c_str(), "Minimized", to_string<bool>(newState).c_str(), string(BH::path + "UI.ini").c_str());
 	Unlock(); 
@@ -255,8 +267,13 @@ bool UI::OnLeftClick(bool up, unsigned int mouseX, unsigned int mouseY) {
 			if(GetAsyncKeyState(VK_CONTROL))
 			{
 				if (up) {
-					SetMinimized(false);
-					Sort(this);
+					// Only open UI if tabs have been initialized
+					if (!Tabs.empty()) {
+						SetMinimized(false);
+						Sort(this);
+					} else {
+						PrintText(7, "Settings not ready yet. Please wait...");
+					}
 				}
 				return true;
 			}
@@ -302,10 +319,12 @@ bool UI::OnLeftClick(bool up, unsigned int mouseX, unsigned int mouseY) {
 		SetActive(true);
 		Sort(this);
 		if (up) {
-			for (list<UITab*>::iterator it = Tabs.begin(); it != Tabs.end(); it++) {
-				if ((*it)->IsHovering(mouseX, mouseY)) {
-					SetCurrentTab(*it);
-					return true;
+			if (!Tabs.empty()) {
+				for (list<UITab*>::iterator it = Tabs.begin(); it != Tabs.end(); it++) {
+					if (*it != nullptr && (*it)->IsHovering(mouseX, mouseY)) {
+						SetCurrentTab(*it);
+						return true;
+					}
 				}
 			}
 		}
