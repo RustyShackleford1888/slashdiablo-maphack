@@ -27,7 +27,7 @@ void MOTD::InitializeServerMessages() {
 void MOTD::OnGameJoin() {
     // Get server IP from GameInfo (which we know works)
     GameStructInfo* pGameInfo = (*p_D2CLIENT_GameInfo);
-    if (!pGameInfo) {
+    if (!pGameInfo || !pGameInfo->szGameServerIp) {
         return;
     }
 

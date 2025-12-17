@@ -17,6 +17,7 @@
 
 using namespace Drawing;
 Patch* weatherPatch = new Patch(Jump, D2COMMON, { 0x6CC56, 0x30C36 }, (int)Weather_Interception, 5);
+Patch* lightingPatch = new Patch(Call, D2CLIENT, { 0xA9A37, 0x233A7 }, (int)Lighting_Interception, 6);
 Patch* infraPatch = new Patch(Call, D2CLIENT, { 0x66623, 0xB4A23 }, (int)Infravision_Interception, 7);
 Patch* shakePatch = new Patch(Call, D2CLIENT, { 0x442A2, 0x452F2 }, (int)Shake_Interception, 5);
 Patch* diabloDeadMessage = new Patch((PatchType)0x68, D2CLIENT, { 0x52E84, 0x693B4 }, (int)0x14, 5);
@@ -40,6 +41,11 @@ DrawDirective automapDraw(true, 5);
 Maphack::Maphack() : Module("Maphack") {
 	revealType = MaphackRevealAct;
 	ResetRevealed();
+	cheaterNoticeUntil = 0;
+	cheaterActiveLast = false;
+	cheaterAutoLast = Toggles["Auto Reveal"].state;
+	cheaterMonstersLast = Toggles["Show Monsters"].state;
+	cheaterLightLast = Toggles["Force Light Radius"].state;
 	missileColors["Player"] = 0x97;
 	missileColors["Neutral"] = 0x0A;
 	missileColors["Party"] = 0x84;
@@ -180,6 +186,7 @@ for (const auto& entry : auraColorsString) {
 	BH::config->ReadToggle("Show Monsters", "None", true, Toggles["Show Monsters"]);
 	BH::config->ReadToggle("Show Missiles", "None", true, Toggles["Show Missiles"]);
 	BH::config->ReadToggle("Show Chests", "None", true, Toggles["Show Chests"]);
+	BH::config->ReadToggle("Force Light Radius", "None", true, Toggles["Force Light Radius"]);
 	BH::config->ReadToggle("Remove Weather", "None", true, Toggles["Remove Weather"]);
 	BH::config->ReadToggle("Infravision", "None", true, Toggles["Infravision"]);
 	BH::config->ReadToggle("Remove Shake", "None", false, Toggles["Remove Shake"]);
@@ -203,6 +210,12 @@ void Maphack::ResetRevealed() {
 }
 
 void Maphack::ResetPatches() {
+
+	//Lighting Patch
+	if (Toggles["Force Light Radius"].state)
+		lightingPatch->Install();
+	else
+		lightingPatch->Remove();
 
 	//Weather Patch
 	if (Toggles["Remove Weather"].state)
@@ -262,11 +275,6 @@ void Maphack::OnLoad() {
 	unsigned int Y = 0;
 	int keyhook_x = 150;
 	int col2_x = 250;
-	new Checkhook(settingsTab, 4, (Y += 15), &Toggles["Auto Reveal"].state, "Auto Reveal");
-	new Keyhook(settingsTab, keyhook_x, (Y + 2), &Toggles["Auto Reveal"].toggle, "");
-
-	new Checkhook(settingsTab, 4, (Y += 15), &Toggles["Show Monsters"].state, "Show Monsters");
-	new Keyhook(settingsTab, keyhook_x, (Y + 2), &Toggles["Show Monsters"].toggle, "");
 
 	new Checkhook(settingsTab, 4, (Y += 15), &Toggles["Monster Enchantments"].state, "  Enchantments");
 	new Keyhook(settingsTab, keyhook_x, (Y + 2), &Toggles["Monster Enchantments"].toggle, "");
@@ -319,14 +327,26 @@ void Maphack::OnLoad() {
 	new Colorhook(settingsTab, col2_x, 122, &monsterColors["Champion"], "Champion");
 	new Colorhook(settingsTab, col2_x, 137, &monsterColors["Boss"], "Boss");
 
-	new Texthook(settingsTab, 6, (Y += 15), "Reveal Type:");
+	cheaterTab = new UITab("Cheater", BH::settingsUI);
+	new Texthook(cheaterTab, 80, 3, "Cheats");
+	unsigned int cheaterY = 0;
+	int cheaterKeyhookX = 150;
 
+	new Checkhook(cheaterTab, 4, (cheaterY += 15), &Toggles["Auto Reveal"].state, "Auto Reveal");
+	new Keyhook(cheaterTab, cheaterKeyhookX, (cheaterY + 2), &Toggles["Auto Reveal"].toggle, "");
+
+	new Checkhook(cheaterTab, 4, (cheaterY += 15), &Toggles["Show Monsters"].state, "Show Monsters");
+	new Keyhook(cheaterTab, cheaterKeyhookX, (cheaterY + 2), &Toggles["Show Monsters"].toggle, "");
+
+	new Checkhook(cheaterTab, 4, (cheaterY += 15), &Toggles["Force Light Radius"].state, "Light Radius");
+	new Keyhook(cheaterTab, cheaterKeyhookX, (cheaterY + 2), &Toggles["Force Light Radius"].toggle, "");
+
+	new Texthook(cheaterTab, 6, (cheaterY += 20), "Reveal Type:");
 	vector<string> options;
 	options.push_back("Game");
 	options.push_back("Act");
 	options.push_back("Level");
-	new Combohook(settingsTab, 100, Y, 70, &revealType, options);
-
+	new Combohook(cheaterTab, 100, cheaterY, 70, &revealType, options);
 }
 
 void Maphack::OnKey(bool up, BYTE key, LPARAM lParam, bool* block) {
@@ -343,6 +363,12 @@ void Maphack::OnKey(bool up, BYTE key, LPARAM lParam, bool* block) {
 			if (up) {
 				(*it).second.state = !(*it).second.state;
 				ResetPatches();
+				if ((*it).second.state &&
+					((*it).first == "Auto Reveal" ||
+					 (*it).first == "Show Monsters" ||
+					 (*it).first == "Force Light Radius")) {
+					cheaterNoticeUntil = GetTickCount() + 5000;
+				}
 			}
 			return;
 		}
@@ -351,6 +377,7 @@ void Maphack::OnKey(bool up, BYTE key, LPARAM lParam, bool* block) {
 }
 
 void Maphack::OnUnload() {
+	lightingPatch->Remove();
 	weatherPatch->Remove();
 	infraPatch->Remove();
 	shakePatch->Remove();
@@ -365,6 +392,23 @@ void Maphack::OnLoop() {
 	//// Remove or install patchs based on state.
 	ResetPatches();
 	BH::settingsUI->SetVisible(Toggles["Show Settings"].state);
+
+	bool autoNow = Toggles["Auto Reveal"].state;
+	bool monstersNow = Toggles["Show Monsters"].state;
+	bool lightNow = Toggles["Force Light Radius"].state;
+	bool cheaterActiveNow = autoNow || monstersNow || lightNow;
+
+	if ((autoNow && !cheaterAutoLast) ||
+		(monstersNow && !cheaterMonstersLast) ||
+		(lightNow && !cheaterLightLast) ||
+		(cheaterActiveNow && !cheaterActiveLast)) {
+		cheaterNoticeUntil = GetTickCount() + 5000;
+	}
+
+	cheaterAutoLast = autoNow;
+	cheaterMonstersLast = monstersNow;
+	cheaterLightLast = lightNow;
+	cheaterActiveLast = cheaterActiveNow;
 
 	// Get the player unit for area information.
 	UnitAny* unit = D2CLIENT_GetPlayerUnit();
@@ -410,6 +454,20 @@ BYTE nChestLockedColour = 0x09;
 Act* lastAct = NULL;
 
 void Maphack::OnDraw() {
+	DWORD now = GetTickCount();
+	if (cheaterNoticeUntil && now < cheaterNoticeUntil && ((now / 400) % 2 == 0)) {
+		static const unsigned int cheaterFont = 3; // largest available font
+		unsigned int screenW = Hook::GetScreenWidth();
+		unsigned int screenH = Hook::GetScreenHeight();
+		int baseLine = Texthook::GetTextSize("A", cheaterFont).y;
+		int gap = baseLine * 2; // add blank line spacing between words
+		int startY = (int)screenH / 2 - (int)(gap * 1.5);
+		Texthook::Draw(screenW / 2, startY, Center, cheaterFont, Red, "I");
+		Texthook::Draw(screenW / 2, startY + gap, Center, cheaterFont, Red, "AM");
+		Texthook::Draw(screenW / 2, startY + (gap * 2), Center, cheaterFont, Red, "A");
+		Texthook::Draw(screenW / 2, startY + (gap * 3), Center, cheaterFont, Red, "CHEATER");
+	}
+
 	UnitAny* player = D2CLIENT_GetPlayerUnit();
 
 	if (!player || !player->pAct || player->pPath->pRoom1->pRoom2->pLevel->dwLevelNo == 0)
@@ -725,6 +783,10 @@ void Maphack::OnGameJoin() {
 	ResetRevealed();
 	automapLevels.clear();
 	*p_D2CLIENT_AutomapOn = Toggles["Show Automap On Join"].state;
+	if (Toggles["Auto Reveal"].state || Toggles["Show Monsters"].state || Toggles["Force Light Radius"].state)
+		cheaterNoticeUntil = GetTickCount() + 5000;
+	else
+		cheaterNoticeUntil = 0;
 }
 
 void Squelch(DWORD Id, BYTE button) {
@@ -1080,6 +1142,23 @@ BOOL __fastcall InfravisionPatch(UnitAny *unit)
 	return false;
 }
 
+
+void __declspec(naked) Lighting_Interception()
+{
+	__asm {
+		je lightold
+		mov eax,0xff
+		mov byte ptr [esp+4+0], al
+		mov byte ptr [esp+4+1], al
+		mov byte ptr [esp+4+2], al
+		add dword ptr [esp], 0x72;
+		ret
+		lightold:
+		push esi
+		call D2COMMON_GetLevelIdFromRoom_I;
+		ret
+	}
+}
 
 void __declspec(naked) Infravision_Interception()
 {

@@ -267,13 +267,8 @@ bool UI::OnLeftClick(bool up, unsigned int mouseX, unsigned int mouseY) {
 			if(GetAsyncKeyState(VK_CONTROL))
 			{
 				if (up) {
-					// Only open UI if tabs have been initialized
-					if (!Tabs.empty()) {
-						SetMinimized(false);
-						Sort(this);
-					} else {
-						PrintText(7, "Settings not ready yet. Please wait...");
-					}
+					SetMinimized(false);
+					Sort(this);
 				}
 				return true;
 			}
@@ -319,12 +314,10 @@ bool UI::OnLeftClick(bool up, unsigned int mouseX, unsigned int mouseY) {
 		SetActive(true);
 		Sort(this);
 		if (up) {
-			if (!Tabs.empty()) {
-				for (list<UITab*>::iterator it = Tabs.begin(); it != Tabs.end(); it++) {
-					if (*it != nullptr && (*it)->IsHovering(mouseX, mouseY)) {
-						SetCurrentTab(*it);
-						return true;
-					}
+			for (list<UITab*>::iterator it = Tabs.begin(); it != Tabs.end(); it++) {
+				if ((*it)->IsHovering(mouseX, mouseY)) {
+					SetCurrentTab(*it);
+					return true;
 				}
 			}
 		}

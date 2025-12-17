@@ -433,10 +433,21 @@ void ItemMover::OnLoop() {
 		return;
 	}
 
+	// Re-check player validity (could change between checks)
+	if (!player || !player->pPath || !player->pAct) {
+		return;
+	}
+
 	// Check if inventory gold is at max capacity
 	// Max gold formula: 10,000 per level (level 1 = 10,000, level 99 = 990,000)
 	DWORD currentGold = (DWORD)D2COMMON_GetUnitStat(player, STAT_GOLD, 0);
 	DWORD playerLevel = (DWORD)D2COMMON_GetUnitStat(player, STAT_LEVEL, 0);
+	
+	// Safety check: ensure playerLevel is valid (1-99)
+	if (playerLevel == 0 || playerLevel > 99) {
+		return;
+	}
+	
 	DWORD maxGold = playerLevel * 10000;
 	
 	// If inventory gold is at max capacity, temporarily disable auto pickup
@@ -450,8 +461,18 @@ void ItemMover::OnLoop() {
 		return;
 	}
 
+	// Re-check path validity before accessing
+	if (!player->pPath) {
+		return;
+	}
+	
 	DWORD playerX = player->pPath->xPos;
 	DWORD playerY = player->pPath->yPos;
+
+	// Re-check act validity before accessing
+	if (!player->pAct || !player->pAct->pRoom1) {
+		return;
+	}
 
 	// Iterate through all rooms and ground items to find gold
 	for (Room1* room1 = player->pAct->pRoom1; room1; room1 = room1->pRoomNext) {
@@ -465,9 +486,14 @@ void ItemMover::OnLoop() {
 				continue;
 			}
 
-			// Check if it's gold
-			char* code = D2COMMON_GetItemText(pUnit->dwTxtFileNo)->szCode;
-			if (!code || code[0] != 'g' || code[1] != 'l' || code[2] != 'd') {
+			// Check if it's gold - CRITICAL: GetItemText can return NULL!
+			ItemText* pItemText = D2COMMON_GetItemText(pUnit->dwTxtFileNo);
+			if (!pItemText || !pItemText->szCode) {
+				continue;
+			}
+			
+			char* code = pItemText->szCode;
+			if (code[0] != 'g' || code[1] != 'l' || code[2] != 'd') {
 				continue;
 			}
 

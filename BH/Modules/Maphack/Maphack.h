@@ -44,7 +44,13 @@ class Maphack : public Module {
 		std::list<LevelList*> automapLevels;
 		map<std::string, Toggle> Toggles;
 		Drawing::UITab* settingsTab;
+		Drawing::UITab* cheaterTab;
 		std::map<DWORD, std::vector<BaseSkill>> Skills;
+		DWORD cheaterNoticeUntil;
+		bool cheaterActiveLast;
+		bool cheaterAutoLast;
+		bool cheaterMonstersLast;
+		bool cheaterLightLast;
 
 	public:
 	Maphack();
@@ -76,6 +82,7 @@ class Maphack : public Module {
 };
 
 void Weather_Interception();
+void Lighting_Interception();
 void Infravision_Interception();
 void __stdcall Shake_Interception(LPDWORD lpX, LPDWORD lpY);
 void HoverObject_Interception();

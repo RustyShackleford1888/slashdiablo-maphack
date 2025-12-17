@@ -111,7 +111,7 @@ void ScreenInfo::OnGameJoin() {
 	killsPerMinute = 0;
 	BnetData* pInfo = (*p_D2LAUNCH_BnData);
 	UnitAny* unit = D2CLIENT_GetPlayerUnit();
-	if (unit) {
+	if (unit && unit->pPlayerData && pInfo) {
 		std::string title = (std::string)"Diablo II - ";
 		if (strlen(pInfo->szAccountName) > 0) {
 			title += (std::string)pInfo->szAccountName + " - ";
@@ -136,6 +136,15 @@ void ScreenInfo::OnGameJoin() {
 
 	gameTimer = GetTickCount();
 	UnitAny* pUnit = D2CLIENT_GetPlayerUnit();
+	if (!pUnit || !pUnit->pPlayerData) {
+		return; // Can't proceed without valid player unit
+	}
+	
+	BnetData* pData = (*p_D2LAUNCH_BnData);
+	if (!pData) {
+		return; // Can't proceed without BnetData
+	}
+
 	startExperience = (int)D2COMMON_GetUnitStat(pUnit, STAT_EXP, 0);
 	if (currentPlayer.compare(0, 16, pUnit->pPlayerData->szName) != 0) {
 		szGamesToLevel = "N/A";
@@ -146,12 +155,15 @@ void ScreenInfo::OnGameJoin() {
 	}
 	fill_n(aPlayerCountAverage, 8, 0);
 
-	BnetData* pData = (*p_D2LAUNCH_BnData);
-
 	char* szDiff[3] = { "Normal", "Nightmare", "Hell" };
 	currentPlayer = string(pUnit->pPlayerData->szName);
 	startLevel = (int)D2COMMON_GetUnitStat(pUnit, STAT_LEVEL, 0);
-	double startPctExp = ((double)startExperience - ExpByLevel[startLevel - 1]) / (ExpByLevel[startLevel] - ExpByLevel[startLevel - 1]) * 100.0;
+	
+	// Safety check for array bounds and division by zero
+	double startPctExp = 0.0;
+	if (startLevel > 0 && startLevel < 100 && ExpByLevel[startLevel] > ExpByLevel[startLevel - 1]) {
+		startPctExp = ((double)startExperience - ExpByLevel[startLevel - 1]) / (ExpByLevel[startLevel] - ExpByLevel[startLevel - 1]) * 100.0;
+	}
 
 	time_t t
 		= chrono::system_clock::to_time_t(chrono::system_clock::now());
@@ -180,8 +192,13 @@ void ScreenInfo::OnGameJoin() {
 	} else {
 		automap["GAMEIP"] = pData->szGameIP; // Fallback to BnetData
 	}
-	automap["GAMEDIFF"] = szDiff[D2CLIENT_GetDifficulty()];
-	automap["ACCOUNTNAME"] = pData->szAccountName;
+	int difficulty = D2CLIENT_GetDifficulty();
+	if (difficulty >= 0 && difficulty < 3) {
+		automap["GAMEDIFF"] = szDiff[difficulty];
+	} else {
+		automap["GAMEDIFF"] = "Unknown";
+	}
+	automap["ACCOUNTNAME"] = pData->szAccountName ? pData->szAccountName : "";
 	automap["CHARNAME"] = pUnit->pPlayerData->szName;
 	automap["SESSIONGAMECOUNT"] = to_string(++nTotalGames);
 	automap["TOTALKILLED"] = to_string(killscounter["total"]);
