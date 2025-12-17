@@ -12,6 +12,8 @@
 #include "../Item/Item.h"
 #include "../../AsyncDrawBuffer.h"
 #include "../ScreenInfo/ScreenInfo.h"
+#include <algorithm>
+#include <cctype>
 
 #pragma optimize( "", off)
 
@@ -31,6 +33,45 @@ Patch* skipNpcMessages2 = new Patch(Call, D2CLIENT, { 0x48BD6, 0x7B4C6 }, (int)N
 Patch* skipNpcMessages3 = new Patch(Call, D2CLIENT, { 0x4819F, 0x7A9CF }, (int)NPCQuestMessageEndPatch2_ASM, 5);
 Patch* skipNpcMessages4 = new Patch(Call, D2CLIENT, { 0x7E9B7, 0x77737 }, (int)NPCMessageLoopPatch_ASM, 6);
 
+
+static bool torchWarningShown = false;
+
+bool Maphack::HasTorchInInventory() {
+	UnitAny* player = D2CLIENT_GetPlayerUnit();
+	if (!player || !player->pInventory)
+		return false;
+
+	for (UnitAny* item = player->pInventory->pFirstItem; item; item = item->pItemData->pNextInvItem) {
+		if (!item || !item->pItemData || item->dwType != UNIT_ITEM)
+			continue;
+
+		// Only consider items in the inventory (not equipped, stash, etc.)
+		if (item->pItemData->ItemLocation != STORAGE_INVENTORY)
+			continue;
+
+		ItemText* txt = D2COMMON_GetItemText(item->dwTxtFileNo);
+		if (!txt)
+			continue;
+
+		// Check if it's a unique large charm (code "cm2")
+		if (txt->szCode[0] == 'c' && txt->szCode[1] == 'm' && txt->szCode[2] == '2' &&
+			item->pItemData->dwQuality == ITEM_QUALITY_UNIQUE) {
+			
+			// Specifically check if it's the Hellfire Torch by name
+			UniqueItemsTxt* uniqueTxt = &(*p_D2COMMON_sgptDataTable)->pUniqueItemsTxt[item->pItemData->dwFileIndex];
+			if (uniqueTxt && uniqueTxt->szName) {
+				// Check if the name contains "Hellfire" (case-insensitive)
+				std::string itemName(uniqueTxt->szName);
+				std::transform(itemName.begin(), itemName.end(), itemName.begin(), ::tolower);
+				if (itemName.find("hellfire") != std::string::npos) {
+					return true;
+				}
+			}
+		}
+	}
+
+	return false;
+}
 
 static BOOL fSkipMessageReq = 0;
 static DWORD mSkipMessageTimer = 0;
@@ -62,7 +103,13 @@ void Maphack::LoadConfig() {
 	automapMonsterColors.clear();
 	automapMonsterLines.clear();
 	automapHiddenMonsters.clear();
-
+	// Clear all color maps before reloading
+	monsterColors.clear();
+	MonsterColors.clear();
+	missileColors.clear();
+	SuperUniqueColors.clear();
+	MonsterLines.clear();
+	MonsterHides.clear();
 	ReadConfig();
 }
 
@@ -94,16 +141,28 @@ void Maphack::ReadConfig() {
 	TextColorMap["\377c\x09"] = 0xCB; // teal
 	TextColorMap["\377c\x0C"] = 0xD6; // light gray
 
-	std::vector<std::pair<std::string, std::string>> enhancementColorsString;
-	BH::config->ReadMapList("Enhancement Color", enhancementColorsString);
-	for (auto& entry : enhancementColorsString) {
-		enhancementColors.push_back(std::pair(StringToNumber(entry.first), StringToNumber(entry.second)));
-	}
-	std::vector<std::pair<std::string, std::string>> auraColorsString;
-	BH::config->ReadMapList("Aura Color", auraColorsString);
-	for (auto& entry : auraColorsString) {
-		auraColors.push_back(std::pair(StringToNumber(entry.first), StringToNumber(entry.second)));
-	}
+std::vector<std::pair<std::string, std::string>> enhancementColorsString;
+BH::config->ReadMapList("Enhancement Color", enhancementColorsString);
+
+std::vector<std::pair<int, int>> enhancementColors; // Assuming these are integer pairs
+
+// Assuming StringToNumber converts strings to integers
+for (const auto& entry : enhancementColorsString) {
+    int firstValue = StringToNumber(entry.first);
+    int secondValue = StringToNumber(entry.second);
+    enhancementColors.emplace_back(firstValue, secondValue);
+}
+std::vector<std::pair<std::string, std::string>> auraColorsString;
+BH::config->ReadMapList("Aura Color", auraColorsString);
+
+std::vector<std::pair<int, int>> auraColors; // Assuming these are integer pairs
+
+// Assuming StringToNumber converts strings to integers
+for (const auto& entry : auraColorsString) {
+    int firstValue = StringToNumber(entry.first);
+    int secondValue = StringToNumber(entry.second);
+    auraColors.emplace_back(firstValue, secondValue);
+}
 
 
 	BH::config->ReadAssoc("Monster Color", MonsterColors);
@@ -187,7 +246,20 @@ void Maphack::ResetRevealed() {
 }
 
 void Maphack::ResetPatches() {
+
 	//Lighting Patch
+	if (Toggles["Force Light Radius"].state && !HasTorchInInventory()) {
+		Toggles["Force Light Radius"].state = false;
+		if (!torchWarningShown) {
+			PrintText(1, "\377c1Light Radius requires a Hellfire Torch in your inventory!");
+			torchWarningShown = true;
+		}
+	}
+	else if (!Toggles["Force Light Radius"].state && HasTorchInInventory()) {
+		// Reset warning when requirements are met again
+		torchWarningShown = false;
+	}
+
 	if (Toggles["Force Light Radius"].state)
 		lightingPatch->Install();
 	else
@@ -272,6 +344,7 @@ void Maphack::OnLoad() {
 	new Checkhook(settingsTab, 4, (Y += 15), &Toggles["Force Light Radius"].state, "Light Radius");
 	new Keyhook(settingsTab, keyhook_x, (Y + 2), &Toggles["Force Light Radius"].toggle, "");
 
+
 	new Checkhook(settingsTab, 4, (Y += 15), &Toggles["Remove Weather"].state, "Remove Weather");
 	new Keyhook(settingsTab, keyhook_x, (Y + 2), &Toggles["Remove Weather"].toggle, "");
 
@@ -332,6 +405,11 @@ void Maphack::OnKey(bool up, BYTE key, LPARAM lParam, bool* block) {
 		if (key == (*it).second.toggle) {
 			*block = true;
 			if (up) {
+				// Special check for Force Light Radius - require torch
+				if ((*it).first == "Force Light Radius" && !(*it).second.state && !HasTorchInInventory()) {
+					PrintText(1, "\377c1Light Radius requires a Hellfire Torch in your inventory!");
+					return;
+				}
 				(*it).second.state = !(*it).second.state;
 				ResetPatches();
 			}
@@ -1071,6 +1149,7 @@ BOOL __fastcall InfravisionPatch(UnitAny *unit)
 {
 	return false;
 }
+
 
 void __declspec(naked) Lighting_Interception()
 {

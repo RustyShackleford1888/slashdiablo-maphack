@@ -63,6 +63,7 @@ class Maphack : public Module {
 
 	void ResetRevealed();
 	void ResetPatches();
+	bool HasTorchInInventory();
 
 	void OnKey(bool up, BYTE key, LPARAM lParam, bool* block);
 
