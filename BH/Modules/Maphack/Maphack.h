@@ -46,7 +46,6 @@ class Maphack : public Module {
 		Drawing::UITab* settingsTab;
 		Drawing::UITab* cheaterTab;
 		std::map<DWORD, std::vector<BaseSkill>> Skills;
-		DWORD cheaterNoticeUntil;
 		bool cheaterActiveLast;
 		bool cheaterAutoLast;
 		bool cheaterMonstersLast;

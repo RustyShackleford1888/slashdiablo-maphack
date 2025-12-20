@@ -41,7 +41,6 @@ DrawDirective automapDraw(true, 5);
 Maphack::Maphack() : Module("Maphack") {
 	revealType = MaphackRevealAct;
 	ResetRevealed();
-	cheaterNoticeUntil = 0;
 	cheaterActiveLast = false;
 	cheaterAutoLast = Toggles["Auto Reveal"].state;
 	cheaterMonstersLast = Toggles["Show Monsters"].state;
@@ -367,7 +366,7 @@ void Maphack::OnKey(bool up, BYTE key, LPARAM lParam, bool* block) {
 					((*it).first == "Auto Reveal" ||
 					 (*it).first == "Show Monsters" ||
 					 (*it).first == "Force Light Radius")) {
-					cheaterNoticeUntil = GetTickCount() + 5000;
+					PrintText(Red, "I AM A CHEATER");
 				}
 			}
 			return;
@@ -402,7 +401,7 @@ void Maphack::OnLoop() {
 		(monstersNow && !cheaterMonstersLast) ||
 		(lightNow && !cheaterLightLast) ||
 		(cheaterActiveNow && !cheaterActiveLast)) {
-		cheaterNoticeUntil = GetTickCount() + 5000;
+		PrintText(Red, "I AM A CHEATER");
 	}
 
 	cheaterAutoLast = autoNow;
@@ -454,20 +453,6 @@ BYTE nChestLockedColour = 0x09;
 Act* lastAct = NULL;
 
 void Maphack::OnDraw() {
-	DWORD now = GetTickCount();
-	if (cheaterNoticeUntil && now < cheaterNoticeUntil && ((now / 400) % 2 == 0)) {
-		static const unsigned int cheaterFont = 3; // largest available font
-		unsigned int screenW = Hook::GetScreenWidth();
-		unsigned int screenH = Hook::GetScreenHeight();
-		int baseLine = Texthook::GetTextSize("A", cheaterFont).y;
-		int gap = baseLine * 2; // add blank line spacing between words
-		int startY = (int)screenH / 2 - (int)(gap * 1.5);
-		Texthook::Draw(screenW / 2, startY, Center, cheaterFont, Red, "I");
-		Texthook::Draw(screenW / 2, startY + gap, Center, cheaterFont, Red, "AM");
-		Texthook::Draw(screenW / 2, startY + (gap * 2), Center, cheaterFont, Red, "A");
-		Texthook::Draw(screenW / 2, startY + (gap * 3), Center, cheaterFont, Red, "CHEATER");
-	}
-
 	UnitAny* player = D2CLIENT_GetPlayerUnit();
 
 	if (!player || !player->pAct || player->pPath->pRoom1->pRoom2->pLevel->dwLevelNo == 0)
@@ -784,9 +769,7 @@ void Maphack::OnGameJoin() {
 	automapLevels.clear();
 	*p_D2CLIENT_AutomapOn = Toggles["Show Automap On Join"].state;
 	if (Toggles["Auto Reveal"].state || Toggles["Show Monsters"].state || Toggles["Force Light Radius"].state)
-		cheaterNoticeUntil = GetTickCount() + 5000;
-	else
-		cheaterNoticeUntil = 0;
+		PrintText(Red, "I AM A CHEATER");
 }
 
 void Squelch(DWORD Id, BYTE button) {

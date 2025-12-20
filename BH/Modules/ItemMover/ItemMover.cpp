@@ -568,13 +568,28 @@ void ItemMover::OnKey(bool up, BYTE key, LPARAM lParam, bool* block)  {
 	if (!up && (key == TpKey)) {
 		DWORD tpId = 0;
 		int tp_quantity = 0;
+		bool isTome = false;
+		// First, search for individual TP scrolls (prefer scrolls)
 		for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
 			if (pItem->pItemData->ItemLocation == STORAGE_INVENTORY) {
 				char* code = D2COMMON_GetItemText(pItem->dwTxtFileNo)->szCode;
-				if (code[0] == 't' && code[1] == 'b' && code[2] =='k') {
-					tp_quantity = D2COMMON_GetUnitStat(pItem, STAT_AMMOQUANTITY, 0);
-					if (tp_quantity > 0) {
+				if (code[0] == 't' && code[1] == 's' && code[2] == 'c') {
+					tpId = pItem->dwUnitId;
+					tp_quantity = 1; // Individual scrolls have quantity 1
+					isTome = false;
+					break;
+				}
+			}
+		}
+		// If no scroll found, search for TP tomes
+		if (tpId == 0) {
+			for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
+				if (pItem->pItemData->ItemLocation == STORAGE_INVENTORY) {
+					char* code = D2COMMON_GetItemText(pItem->dwTxtFileNo)->szCode;
+					if (code[0] == 't' && code[1] == 'b' && code[2] =='k') {
+						tp_quantity = D2COMMON_GetUnitStat(pItem, STAT_AMMOQUANTITY, 0);
 						tpId = pItem->dwUnitId;
+						isTome = true;
 						break;
 					}
 				}
@@ -585,8 +600,12 @@ void ItemMover::OnKey(bool up, BYTE key, LPARAM lParam, bool* block)  {
 			*reinterpret_cast<int*>(PacketData + 1) = tpId;
 			*reinterpret_cast<WORD*>(PacketData + 5) = (WORD)unit->pPath->xPos;
 			*reinterpret_cast<WORD*>(PacketData + 9) = (WORD)unit->pPath->yPos;
-			if (tp_quantity < tp_warn_quantity) {
-				PrintText(Red, "TP tome is running low!");
+			if (isTome) {
+				if (tp_quantity > 1 && tp_quantity <= tp_warn_quantity) {
+					PrintText(Red, "TP tome is running low!");					
+				} else if (tp_quantity <= 1) {
+					PrintText(Red, "TP tome is empty");					
+				}
 			}
 			D2NET_SendPacket(13, 0, PacketData);
 			*block = true;

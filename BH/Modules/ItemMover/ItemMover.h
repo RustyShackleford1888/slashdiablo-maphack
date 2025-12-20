@@ -80,7 +80,7 @@ public:
 		stashLayout(NULL),
 		inventoryLayout(NULL),
 		cubeLayout(NULL),
-		tp_warn_quantity(3),
+		tp_warn_quantity(5),
 		goldPickupRange(5),
 		lastPickupTick(0) {
 
