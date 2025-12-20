@@ -48,6 +48,9 @@ enum TextColor {
 #define UI_UNK					0x06   //auto disabled
 #define UI_UNK_EX				0x07   //auto disabled
 #define UI_NPCMENU				0x08	
+
+// NPC Interaction Actions
+#define NPC_GAMBLE				0x0E
 #define UI_DIALOG				0x08
 #define UI_ESCMENU_MAIN			0x09
 #define UI_AUTOMAP				0x0A

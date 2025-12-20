@@ -14,3 +14,4 @@
 #include "Modules\StashExport\StashExport.h"
 #include "Modules\ChatColor\ChatColor.h"
 #include "Modules\MOTD\MOTD.h"
+#include "Modules\Gambling\Gambling.h"

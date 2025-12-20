@@ -129,6 +129,7 @@ public:
 	void OnRightClick(bool up, unsigned int x, unsigned int y, bool* block);
 	void OnGamePacketRecv(BYTE* packet, bool *block);
 	void OnGameExit();
+	Drawing::UITab* GetInteractionTab() { return settingsTab; }
 };
 
 

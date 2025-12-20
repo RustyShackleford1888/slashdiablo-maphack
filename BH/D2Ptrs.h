@@ -126,6 +126,9 @@ FUNCPTR(D2CLIENT, GetUnitY, int __fastcall, (UnitAny* pUnit), 0x1660, 0x1240)
 FUNCPTR(D2CLIENT, ShopAction, void __fastcall, (UnitAny* pItem, UnitAny* pNpc, UnitAny* pNpc2, DWORD dwSell, DWORD dwItemCost, DWORD dwMode, DWORD _2, DWORD _3), 0x47D60, 0x7D030)
 
 FUNCPTR(D2CLIENT, CloseNPCInteract, void __fastcall, (void), 0x492F0, 0x7BC10)
+FUNCPTR(D2CLIENT, NPCMenuHandler, void __fastcall, (DWORD dwAction), 0x242B0, 0x79160) // 1.13c: 0x242B0 (verified at 6FAD42B0), 1.14+: 0x79160 (needs verification)
+// Wrapper function that properly calls NPCMenuHandler (ECX=NPC unit, EAX=1, stack=action)
+FUNCPTR(D2CLIENT, NPCMenuHandlerWrapper, void __stdcall, (UnitAny* pNPC, DWORD dwAction), 0x24490, 0x79190) // 1.13c: 0x24490 (function at 6FAD4490), needs verification
 //FUNCPTR(D2CLIENT, ClearScreen, void __fastcall, (void), 0x492F0) // unused but I want to look into using it // wrong function
 FUNCPTR(D2CLIENT, CloseInteract, void __fastcall, (void), 0x43870, 0x44980)
 
@@ -274,6 +277,8 @@ ASMPTR(D2CLIENT, ClickParty_I, 0x9E180, 0xA2250)
 ASMPTR(D2CLIENT, ClickParty_II, 0x773A0, 0x88A50)
 
 ASMPTR(D2CLIENT, ShopAction_I, 0x47D60, 0x7D030)
+
+ASMPTR(D2CLIENT, StartGamble_I, 0x4ABE0, 0x4ABE0) // 1.13c: 0x4ABE0, 1.13d+: 0x4ABE0
 
 ASMPTR(D2CLIENT, GetUnitName_I, 0xA5D90, 0x622E0)
 ASMPTR(D2CLIENT, GetItemDesc_I, 0x560B0, 0x2E380)

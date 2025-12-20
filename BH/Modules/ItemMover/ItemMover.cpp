@@ -1,5 +1,6 @@
 #include "ItemMover.h"
 #include "../Item/Item.h"
+#include "../Gambling/Gambling.h"
 #include "../../BH.h"
 #include "../../D2Ptrs.h"
 #include "../../D2Stubs.h"
@@ -393,6 +394,12 @@ void ItemMover::OnLoad() {
 	new Drawing::Keyhook(settingsTab, x, (y += 15), &ManaKey,     "Use Mana Potion:       ");
 	new Drawing::Keyhook(settingsTab, x, (y += 15), &JuvKey,      "Use Rejuv Potion:      ");
 	new Drawing::Keyhook(settingsTab, x, (y += 15), &TransmuteKey,"Cube Transmute:        ");
+	
+	// Add Gambling Refresh keyhook if Gambling module is loaded
+	Gambling* gambling = (Gambling*)BH::moduleManager->Get("gambling");
+	if (gambling) {
+		new Drawing::Keyhook(settingsTab, x, (y += 15), gambling->GetRefreshKeyPtr(), "Gambling Refresh:     ");
+	}
 
 	y += 7;
 

@@ -143,6 +143,7 @@ void BH::Initialize()
 	new Maphack();
 	new ChatColor();
 	new MOTD();
+	new Gambling();
 
 	BnetInts = ((Bnet*)moduleManager->Get("bnet"))->GetInts();
 	BnetBools = ((Bnet*)moduleManager->Get("bnet"))->GetBools();
