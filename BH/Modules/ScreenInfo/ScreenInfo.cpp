@@ -263,7 +263,9 @@ string ScreenInfo::SimpleGameName(const string& gameName) {
 
 string ScreenInfo::FormatTime(time_t t, const char* format) {
 	stringstream ss;
-	ss << put_time(std::localtime(&t), format);
+	struct tm timeInfo;
+	localtime_s(&timeInfo, &t);
+	ss << put_time(&timeInfo, format);
 	return ss.str();
 }
 
@@ -533,7 +535,7 @@ void ScreenInfo::OnDraw() {
 			int y = activeBuffs[i].isBuff ? buffY : debuffY;
 			int col = activeBuffs[i].isBuff ? 3 : 1; //3=Blue, 1=Red;
 			D2GFX_DrawCellContextEx(&buffContext, x, y, -1, DRAW_MODE_NORMAL, col);
-			if (mouseX > x && mouseX < x + cf->cells[0]->width && mouseY > y - cf->cells[0]->height && mouseY < y) {
+			if ((int)mouseX > x && (int)mouseX < x + (int)cf->cells[0]->width && (int)mouseY > y - (int)cf->cells[0]->height && (int)mouseY < y) {
 				DrawPopup(buffNames[activeBuffs[i].index], x + cf->cells[0]->width / 2, y - cf->cells[0]->height);
 			}
 			if (activeBuffs[i].isBuff) {
@@ -638,7 +640,7 @@ void ScreenInfo::FormattedXPPerSec(char* buffer, double xpPerSec) {
 		xpPerSec /= 1E3;
 		unit = "K";
 	}
-	sprintf(buffer, "%s%.2f%s/s", xpPerSec >= 0 ? "+" : "", xpPerSec, unit);
+	sprintf_s(buffer, 128, "%s%.2f%s/s", xpPerSec >= 0 ? "+" : "", xpPerSec, unit);
 }
 
 std::string ScreenInfo::ReplaceAutomapTokens(std::string& v) {
@@ -772,7 +774,7 @@ void ScreenInfo::OnGameExit() {
 	double lastExpGainPct = currentExpGainPct;
 	double lastExpPerSecond = currentExpPerSecond;
 	int lastGameLength = endTimer;
-	int timeToLevel = gamesToLevel * lastGameLength;
+	int timeToLevel = (int)(gamesToLevel * lastGameLength);
 	killsPerMinute = (double)killscounter["total"];
 
 	char buffer[128];

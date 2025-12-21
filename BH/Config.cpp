@@ -472,7 +472,7 @@ bool Config::HasChanged(ConfigEntry entry, string& value) {
 		string ind = entry.key.substr(entry.key.find("[") + 1, entry.key.length() - entry.key.find("[") - 2);
 		int index = atoi(ind.c_str());
 
-		if (index >= valTest.size()) {
+		if (index >= 0 && (size_t)index >= valTest.size()) {
 			value = "";
 			return true;
 		}

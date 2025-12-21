@@ -50,6 +50,7 @@ class Maphack : public Module {
 		bool cheaterAutoLast;
 		bool cheaterMonstersLast;
 		bool cheaterLightLast;
+		bool justJoinedGame;
 
 	public:
 	Maphack();

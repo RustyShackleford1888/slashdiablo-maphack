@@ -45,6 +45,7 @@ Maphack::Maphack() : Module("Maphack") {
 	cheaterAutoLast = Toggles["Auto Reveal"].state;
 	cheaterMonstersLast = Toggles["Show Monsters"].state;
 	cheaterLightLast = Toggles["Force Light Radius"].state;
+	justJoinedGame = false;
 	missileColors["Player"] = 0x97;
 	missileColors["Neutral"] = 0x0A;
 	missileColors["Party"] = 0x84;
@@ -366,7 +367,7 @@ void Maphack::OnKey(bool up, BYTE key, LPARAM lParam, bool* block) {
 					((*it).first == "Auto Reveal" ||
 					 (*it).first == "Show Monsters" ||
 					 (*it).first == "Force Light Radius")) {
-					PrintText(Red, "I AM A CHEATER");
+					PrintText(Red, "Cheats enabled.");
 				}
 			}
 			return;
@@ -397,11 +398,16 @@ void Maphack::OnLoop() {
 	bool lightNow = Toggles["Force Light Radius"].state;
 	bool cheaterActiveNow = autoNow || monstersNow || lightNow;
 
-	if ((autoNow && !cheaterAutoLast) ||
-		(monstersNow && !cheaterMonstersLast) ||
-		(lightNow && !cheaterLightLast) ||
-		(cheaterActiveNow && !cheaterActiveLast)) {
-		PrintText(Red, "I AM A CHEATER");
+	// Skip printing if we just joined a game (OnGameJoin already printed)
+	if (!justJoinedGame) {
+		if ((autoNow && !cheaterAutoLast) ||
+			(monstersNow && !cheaterMonstersLast) ||
+			(lightNow && !cheaterLightLast) ||
+			(cheaterActiveNow && !cheaterActiveLast)) {
+			PrintText(Red, "Cheats Enabled");
+		}
+	} else {
+		justJoinedGame = false;
 	}
 
 	cheaterAutoLast = autoNow;
@@ -769,7 +775,13 @@ void Maphack::OnGameJoin() {
 	automapLevels.clear();
 	*p_D2CLIENT_AutomapOn = Toggles["Show Automap On Join"].state;
 	if (Toggles["Auto Reveal"].state || Toggles["Show Monsters"].state || Toggles["Force Light Radius"].state)
-		PrintText(Red, "I AM A CHEATER");
+		PrintText(Red, "Cheats Enabled");
+	// Update state tracking to prevent OnLoop from printing again
+	cheaterAutoLast = Toggles["Auto Reveal"].state;
+	cheaterMonstersLast = Toggles["Show Monsters"].state;
+	cheaterLightLast = Toggles["Force Light Radius"].state;
+	cheaterActiveLast = cheaterAutoLast || cheaterMonstersLast || cheaterLightLast;
+	justJoinedGame = true;
 }
 
 void Squelch(DWORD Id, BYTE button) {
