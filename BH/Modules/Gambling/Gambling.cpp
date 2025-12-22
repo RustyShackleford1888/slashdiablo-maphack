@@ -46,10 +46,22 @@ void Gambling::OnKey(bool up, BYTE key, LPARAM lParam, bool* block) {
     *block = true;
 }
 
+void Gambling::OnDraw() {
+    if (pendingGambleTime == 0) {
+        return;
+    }
+
+    D2CLIENT_DrawTradeScreen();
+    D2CLIENT_DrawLeftScreenBorder();
+    D2CLIENT_DrawRightScreenBorder();
+    D2CLIENT_DrawLifeGlobe();
+    D2CLIENT_DrawManaGlobe();
+}
+
 // ------------------------------------------------------------
 // Safe UI execution point (game thread)
 // ------------------------------------------------------------
-void Gambling::OnDraw() {
+void Gambling::OnLoop() {
     DWORD now = GetTickCount();
     
     // If we're waiting for the NPC menu to open before calling StartGamble
@@ -135,6 +147,7 @@ void Gambling::OnDraw() {
     
     // Close the shop UI
     D2CLIENT_SetUIVar(UI_NPCSHOP, 1, 0);
+    *p_D2CLIENT_LeftInventoryMode = 1;
     
     // Re-interact with NPC to reopen the NPC menu
     Interact(npcUnitId, npcUnitType);
