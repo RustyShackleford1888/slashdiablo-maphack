@@ -18,7 +18,8 @@ class Gambling : public Module {
 		void OnLoad();
 		void OnUnload();
 		void OnKey(bool up, BYTE key, LPARAM lParam, bool* block);
-		void OnDraw();
+		void OnDraw() override;
+		void OnLoop() override;
 		bool IsGambling();
 		void LoadConfig();
 		unsigned int* GetRefreshKeyPtr() { return &refreshKey; }

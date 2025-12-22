@@ -169,6 +169,11 @@ FUNCPTR(D2CLIENT, GetLevelName_I, wchar_t* __fastcall, (DWORD levelId), 0xBE240,
 FUNCPTR(D2GFX, DrawAutomapCell, void __stdcall, (CellContext *context, DWORD xpos, DWORD ypos, RECT *cliprect, DWORD bright), -10079, -10060)
 ASMPTR(D2CLIENT, OverrideShrinePatch_ORIG, 0x1155B8, 0x101B08)//Updated 1.13c
 
+FUNCPTR(D2CLIENT, DrawLeftScreenBorder, void __stdcall, (), 0x271C0, 0x0)
+FUNCPTR(D2CLIENT, DrawRightScreenBorder, void __stdcall, (), 0x270D0, 0x0)
+FUNCPTR(D2CLIENT, DrawTradeScreen, void __stdcall, (), 0x99440, 0x0)
+FUNCPTR(D2CLIENT, DrawLifeGlobe, void __stdcall, (), 0x27BD0, 0x0)
+FUNCPTR(D2CLIENT, DrawManaGlobe, void __stdcall, (), 0x27A90, 0x0)
 ////////////////////////////////////////////////////////////////////////////////////////////////
 // D2Client Globals
 ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -258,6 +263,8 @@ VARPTR(D2CLIENT, NoPickUp, DWORD, 0x11C2F0, 0x11D574) // unused but I want to ad
 
 VARPTR(D2CLIENT, ChatMsg, wchar_t*, 0x11EC80, 0x11D650)
 
+// 1 represents the NPC trade menu, 12 for stash, 10 and 11 and other values are not looked into
+VARPTR(D2CLIENT, LeftInventoryMode, int, 0x11BC34, 0x0)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 // D2Client Stubs
