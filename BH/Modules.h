@@ -15,3 +15,4 @@
 #include "Modules\ChatColor\ChatColor.h"
 #include "Modules\MOTD\MOTD.h"
 #include "Modules\Gambling\Gambling.h"
+#include "Modules\Glossary\Glossary.h"

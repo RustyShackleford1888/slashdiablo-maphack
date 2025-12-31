@@ -91,7 +91,25 @@ void Linehook::OnDraw() {
 		return;
 
 	Lock();
-	D2GFX_DrawLine(GetX(), GetY(), GetX2(), GetY2(), GetColor(), -1);
+	// Convert x2 and y2 to absolute coordinates if in a group (same as GetX()/GetY() do)
+	unsigned int absX = GetX();
+	unsigned int absY = GetY();
+	unsigned int absX2 = (GetVisibility() == Group) ? GetGroup()->GetX() + x2 : x2;
+	unsigned int absY2 = (GetVisibility() == Group) ? GetGroup()->GetY() + y2 : y2;
+	
+	// Try D2GFX_DrawLine first (works in most modes)
+	// If it fails or doesn't work in HD mod, we could fall back to rectangle drawing
+	// but for now, try using DrawRectangle as a fallback for horizontal/vertical lines
+	if (absX == absX2) {
+		// Vertical line - draw as 1-pixel wide rectangle
+		D2GFX_DrawRectangle(absX, absY, absX + 1, absY2, GetColor(), 0);
+	} else if (absY == absY2) {
+		// Horizontal line - draw as 1-pixel tall rectangle
+		D2GFX_DrawRectangle(absX, absY, absX2, absY + 1, GetColor(), 0);
+	} else {
+		// Diagonal line - use DrawLine
+		D2GFX_DrawLine(absX, absY, absX2, absY2, GetColor(), -1);
+	}
 	Unlock();
 }
 

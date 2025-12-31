@@ -144,6 +144,7 @@ void BH::Initialize()
 	new ChatColor();
 	new MOTD();
 	new Gambling();
+	new Glossary();
 
 	BnetInts = ((Bnet*)moduleManager->Get("bnet"))->GetInts();
 	BnetBools = ((Bnet*)moduleManager->Get("bnet"))->GetBools();

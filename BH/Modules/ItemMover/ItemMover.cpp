@@ -621,8 +621,16 @@ void ItemMover::OnKey(bool up, BYTE key, LPARAM lParam, bool* block)  {
 	if (!up && (key == TransmuteKey)) {
 		// Only transmute if the cube UI is open
 		if (D2CLIENT_GetUIState(UI_CUBE)) {
-			D2CLIENT_Transmute();
-			*block = true;
+			// Check if there's an item on the cursor
+			UnitAny* pCursorItem = D2CLIENT_GetCursorItem();
+			if (pCursorItem != NULL) {
+				PrintText(Red, "Cannot transmute while holding an item!");
+				*block = true;
+			} else {
+				// No item on cursor, transmute normally
+				D2CLIENT_Transmute();
+				*block = true;
+			}
 		}
 	}
 }
@@ -645,14 +653,21 @@ void ItemMover::OnGamePacketRecv(BYTE* packet, bool* block) {
 			}
 			break;
 		}
-	case 0x9c:
+		case 0x9c:
 		{
 			// We get this packet after placing an item in a container or on the ground
 			if (FirstInit) {
 				BYTE action = packet[1];
 				unsigned int itemId = *(unsigned int*)&packet[4];
+				
+				// Parse the item packet to get container information
+				bool parseSuccess = true;
+				ItemInfo item = {};
+				ParseItem((unsigned char*)packet, &item, &parseSuccess);
+				
 				Lock();
-				if (itemId == ActivePacket.itemId) {
+				// Clear ActivePacket if itemId matches
+				if (itemId == ActivePacket.itemId && ActivePacket.startTicks > 0) {
 					//PrintText(1, "Placed item id %d", itemId);
 					ActivePacket.itemId = 0;
 					ActivePacket.x = 0;
@@ -769,6 +784,8 @@ void ItemMover::OnGameExit() {
 	ActivePacket.y = 0;
 	ActivePacket.startTicks = 0;
 	ActivePacket.destination = 0;
+	previousHP = 0;
+	damageTakenTick = 0;
 }
 
 // Code for reading the 0x9c bitstream (borrowed from heroin_glands)

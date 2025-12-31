@@ -12,6 +12,7 @@ class Gambling : public Module {
 		bool pendingRefresh;
 		DWORD pendingGambleTime; // Timestamp when waiting for menu to open
 		bool inGamblingScreen; // Flag to track if we're in a gambling screen
+		bool automapWasEnabled; // Store original automap state during refresh
 		
 	public:
 		Gambling() : Module("Gambling") {};

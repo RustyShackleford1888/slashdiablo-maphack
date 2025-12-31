@@ -68,6 +68,8 @@ private:
 	unsigned int goldPickupRange;
 	ULONGLONG lastPickupTick;
 	std::map<DWORD, GoldItemData> trackedGoldItems;
+	DWORD previousHP;
+	ULONGLONG damageTakenTick;
 public:
 	ItemMover() : Module("Item Mover"),
 		ActivePacket(),
@@ -82,7 +84,9 @@ public:
 		cubeLayout(NULL),
 		tp_warn_quantity(5),
 		goldPickupRange(5),
-		lastPickupTick(0) {
+		lastPickupTick(0),
+		previousHP(0),
+		damageTakenTick(0) {
 
 		InitializeCriticalSection(&crit);
 		// Initialize toggle to safe defaults

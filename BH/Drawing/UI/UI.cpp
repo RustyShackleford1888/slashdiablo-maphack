@@ -74,7 +74,7 @@ void UI::SetY(unsigned int newY) {
 }
 
 void UI::SetXSize(unsigned int newXSize) {
-	if (newXSize >= 0 && newXSize <= (Hook::GetScreenHeight() - GetX())) {
+	if (newXSize >= 0 && newXSize <= (Hook::GetScreenWidth() - GetX())) {
 		Lock();
 		xSize = newXSize;
 		Unlock();
@@ -82,7 +82,7 @@ void UI::SetXSize(unsigned int newXSize) {
 }
 
 void UI::SetYSize(unsigned int newYSize) {
-	if (newYSize >= 0 && newYSize <= (Hook::GetScreenHeight() - GetX())) {
+	if (newYSize >= 0 && newYSize <= (Hook::GetScreenHeight() - GetY())) {
 		Lock();
 		ySize = newYSize + 20;
 		Unlock();

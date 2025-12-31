@@ -18,6 +18,7 @@ void Gambling::OnLoad() {
     pendingRefresh = false;
     pendingGambleTime = 0;
     inGamblingScreen = false;
+    automapWasEnabled = false;
 
     Toggles["Enabled"].toggle = 0;
     Toggles["Enabled"].state = true;
@@ -81,6 +82,11 @@ void Gambling::OnLoop() {
                 // If StartGamble crashes, user can click Gamble manually
                 inGamblingScreen = false;
             }
+            // Re-enable automap if it was enabled before
+            if (automapWasEnabled) {
+                *p_D2CLIENT_AutomapOn = 1;
+                automapWasEnabled = false;
+            }
             pendingGambleTime = 0;
             pendingRefresh = false;
             return;
@@ -90,6 +96,11 @@ void Gambling::OnLoop() {
                 inGamblingScreen = true;
             } else {
                 inGamblingScreen = false;
+            }
+            // Re-enable automap if it was enabled before
+            if (automapWasEnabled) {
+                *p_D2CLIENT_AutomapOn = 1;
+                automapWasEnabled = false;
             }
             pendingGambleTime = 0;
             pendingRefresh = false;
@@ -126,11 +137,21 @@ void Gambling::OnLoop() {
     // If trade screen is active, we're not gambling
     if (tradeState != 0) {
         inGamblingScreen = false;
+        // Re-enable automap if it was disabled during refresh
+        if (automapWasEnabled) {
+            *p_D2CLIENT_AutomapOn = 1;
+            automapWasEnabled = false;
+        }
         pendingRefresh = false;
         return;
     }
     
     if (!npcMenuState || !npcShopState || !inGamblingScreen) {
+        // Re-enable automap if it was disabled during refresh
+        if (automapWasEnabled) {
+            *p_D2CLIENT_AutomapOn = 1;
+            automapWasEnabled = false;
+        }
         pendingRefresh = false;
         return;
     }
@@ -138,12 +159,21 @@ void Gambling::OnLoop() {
     // Get NPC info BEFORE closing UI (since closing destroys NPC context)
     UnitAny* pNPC = D2CLIENT_GetCurrentInteractingNPC();
     if (!pNPC) {
+        // Re-enable automap if it was disabled during refresh
+        if (automapWasEnabled) {
+            *p_D2CLIENT_AutomapOn = 1;
+            automapWasEnabled = false;
+        }
         pendingRefresh = false;
         return;
     }
     
     DWORD npcUnitId = pNPC->dwUnitId;
     DWORD npcUnitType = pNPC->dwType;
+    
+    // Disable automap to reduce flickering during refresh
+    automapWasEnabled = (*p_D2CLIENT_AutomapOn != 0);
+    *p_D2CLIENT_AutomapOn = 0;
     
     // Close the shop UI
     D2CLIENT_SetUIVar(UI_NPCSHOP, 1, 0);
