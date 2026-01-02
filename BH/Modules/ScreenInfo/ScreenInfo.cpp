@@ -477,7 +477,7 @@ void ScreenInfo::OnDraw() {
 	localtime_s(&time, &tTime);
 	strftime(szTime, sizeof(szTime), "%I:%M:%S %p", &time);
 
-	if (cf) {
+	if (cf && pUnit) {
 		//dc6 is loaded!		
 		if (manageBuffs) {
 			//received packet 0xA8 or 0xA9. Change on one of players states.
@@ -497,6 +497,8 @@ void ScreenInfo::OnDraw() {
 					Buff newBuff = {};
 					newBuff.state = buffs[i];
 					newBuff.index = i;
+					newBuff.addedTicks = ticks;  // Record when buff was added
+					newBuff.lastCountdownMsg = 0;  // Initialize countdown message timer
 					if (manageConv && buffs[i] == STATE_CONVICTION) {
 						newBuff.isBuff = (int)D2COMMON_GetUnitStat(pUnit, STAT_FIRERESIST, 0) < resTracker ? false : true;
 						manageConv = false;
@@ -504,6 +506,21 @@ void ScreenInfo::OnDraw() {
 					else {
 						newBuff.isBuff = (i < 37 || i > 42) ? true : false;
 					}
+					
+					// Debug: Print message when Hurricane is cast
+					if (buffs[i] == STATE_HURRICANE) {
+						try {
+							const int framesPerSecond = 25;
+							double durationSeconds = state > 0 ? (double)state / (double)framesPerSecond : 0.0;
+							if (IsGameReady()) {
+								Print("Hurricane CAST! State value: %d frames (%.2f seconds)", state, durationSeconds);
+							}
+						}
+						catch (...) {
+							// Silently catch any exceptions from Print
+						}
+					}
+					
 					activeBuffs.push_back(newBuff);
 				}
 				else if (state == 0 && buffFound) {
@@ -534,7 +551,63 @@ void ScreenInfo::OnDraw() {
 			int x = activeBuffs[i].isBuff ? buffX : debuffX;
 			int y = activeBuffs[i].isBuff ? buffY : debuffY;
 			int col = activeBuffs[i].isBuff ? 3 : 1; //3=Blue, 1=Red;
-			D2GFX_DrawCellContextEx(&buffContext, x, y, -1, DRAW_MODE_NORMAL, col);
+			
+			// Determine draw mode for fading effect
+			int drawMode = DRAW_MODE_NORMAL;
+			if (activeBuffs[i].isBuff) {
+				// Auras (indices 18-36) don't have durations, so don't fade them
+				// Only fade buffs with durations (indices 0-17 and 43-44)
+				if (activeBuffs[i].index < 18 || activeBuffs[i].index >= 43) {
+					// GetUnitState returns the state value, which for states with durations
+					// is typically the remaining duration in frames (25 frames = 1 second)
+					int stateValue = D2COMMON_GetUnitState(pUnit, activeBuffs[i].state);
+					if (stateValue > 0) {
+						// Convert frames to milliseconds (assuming 25 frames per second)
+						const int framesPerSecond = 25;
+						double remainingSeconds = (double)stateValue / (double)framesPerSecond;
+						double remainingMs = remainingSeconds * 1000.0;
+						
+						// Debug: Print countdown messages for Hurricane every second
+						if (activeBuffs[i].state == STATE_HURRICANE) {
+							try {
+								ULONGLONG msSinceLastMsg = ticks - activeBuffs[i].lastCountdownMsg;
+								if (msSinceLastMsg >= 1000 && IsGameReady()) {  // Print every 1 second
+									Print("Hurricane countdown: State=%d frames, %.2f seconds remaining", stateValue, remainingSeconds);
+									activeBuffs[i].lastCountdownMsg = ticks;
+								}
+							}
+							catch (...) {
+								// Silently catch any exceptions from Print
+							}
+						}
+						
+						// Use a reasonable max duration to calculate fade ratio
+						// Most buffs last 120-300 seconds, use 300 seconds as max for fade calculation
+						const double maxDurationMs = 300000.0;
+						double remainingRatio = (remainingMs / maxDurationMs);
+						// Clamp to [0, 1] range
+						if (remainingRatio > 1.0) remainingRatio = 1.0;
+						if (remainingRatio < 0.0) remainingRatio = 0.0;
+						
+						// Fade gradually as duration decreases
+						if (remainingRatio < 0.25) {
+							drawMode = DRAW_MODE_ALPHA_25;  // Almost faded (25% opacity)
+						}
+						else if (remainingRatio < 0.5) {
+							drawMode = DRAW_MODE_ALPHA_50;  // Half faded (50% opacity)
+						}
+						else if (remainingRatio < 0.75) {
+							drawMode = DRAW_MODE_ALPHA_75;  // Slightly faded (75% opacity)
+						}
+						// else remainingRatio >= 0.75, use DRAW_MODE_NORMAL (full opacity)
+					}
+					else {
+						drawMode = DRAW_MODE_ALPHA_25;  // State expired, almost faded
+					}
+				}
+			}
+			
+			D2GFX_DrawCellContextEx(&buffContext, x, y, -1, drawMode, col);
 			if ((int)mouseX > x && (int)mouseX < x + (int)cf->cells[0]->width && (int)mouseY > y - (int)cf->cells[0]->height && (int)mouseY < y) {
 				DrawPopup(buffNames[activeBuffs[i].index], x + cf->cells[0]->width / 2, y - cf->cells[0]->height);
 			}

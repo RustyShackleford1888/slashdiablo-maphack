@@ -9,6 +9,7 @@
 #include "../../MPQInit.h"
 #include <vector>
 #include <map>
+#include <deque>
 
 extern int INVENTORY_WIDTH;
 extern int INVENTORY_HEIGHT;
@@ -42,6 +43,13 @@ struct GoldItemData {
 	DWORD y;
 };
 
+struct QueuedGoldPickup {
+	DWORD itemId;
+	DWORD x;
+	DWORD y;
+	ULONGLONG queueTime;
+};
+
 class ItemMover : public Module {
 private:
 	bool FirstInit;
@@ -68,6 +76,8 @@ private:
 	unsigned int goldPickupRange;
 	ULONGLONG lastPickupTick;
 	std::map<DWORD, GoldItemData> trackedGoldItems;
+	std::deque<QueuedGoldPickup> goldPickupQueue;
+	ULONGLONG lastQueuedPickupTick;
 	DWORD previousHP;
 	ULONGLONG damageTakenTick;
 public:
@@ -85,6 +95,7 @@ public:
 		tp_warn_quantity(5),
 		goldPickupRange(5),
 		lastPickupTick(0),
+		lastQueuedPickupTick(0),
 		previousHP(0),
 		damageTakenTick(0) {
 

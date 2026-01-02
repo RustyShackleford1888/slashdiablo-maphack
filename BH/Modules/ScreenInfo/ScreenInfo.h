@@ -20,6 +20,8 @@ struct Buff {
     BYTE state;
     int index;
     BOOL isBuff;
+    ULONGLONG addedTicks;  // Timestamp when buff was added
+    ULONGLONG lastCountdownMsg;  // Timestamp of last countdown message (for debugging)
 };
 
 class ScreenInfo : public Module {

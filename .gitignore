@@ -101,3 +101,13 @@ build/Project.sln
 build/ZERO_CHECK.vcxproj
 build/ZERO_CHECK.vcxproj.filters
 .vscode/settings.json
+build/.cmake/api/v1/reply/codemodel-v2-9f884fcf31a93cfb964f.json
+build/.cmake/api/v1/reply/index-2026-01-02T01-35-10-0694.json
+build/.cmake/api/v1/reply/target-ALL_BUILD-Debug-650518b75aa3b6ba2941.json
+build/.cmake/api/v1/reply/target-ALL_BUILD-Debug-db1b5db3314dddfd966d.json
+build/.cmake/api/v1/reply/target-ALL_BUILD-MinSizeRel-650518b75aa3b6ba2941.json
+build/.cmake/api/v1/reply/target-ALL_BUILD-MinSizeRel-db1b5db3314dddfd966d.json
+build/.cmake/api/v1/reply/target-ALL_BUILD-Release-650518b75aa3b6ba2941.json
+build/.cmake/api/v1/reply/target-ALL_BUILD-Release-db1b5db3314dddfd966d.json
+build/.cmake/api/v1/reply/target-ALL_BUILD-RelWithDebInfo-650518b75aa3b6ba2941.json
+build/.cmake/api/v1/reply/target-ALL_BUILD-RelWithDebInfo-db1b5db3314dddfd966d.json

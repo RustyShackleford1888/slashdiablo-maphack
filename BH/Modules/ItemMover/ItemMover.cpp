@@ -6,6 +6,7 @@
 #include "../../D2Stubs.h"
 #include "../../D2Helpers.h"
 #include "../ScreenInfo/ScreenInfo.h"
+#include <set>
 
 // This module was inspired by the RedVex plugin "Item Mover", written by kaiks.
 // Thanks to kaiks for sharing his code.
@@ -432,16 +433,15 @@ void ItemMover::OnLoad() {
 
 void ItemMover::OnLoop() {
 	if (!autoPickupGold.state) {
+		// Clear queue when auto pickup is disabled
+		goldPickupQueue.clear();
 		return;
 	}
 
 	UnitAny* player = D2CLIENT_GetPlayerUnit();
 	if (!player || !player->pPath || !player->pAct) {
-		return;
-	}
-
-	// Re-check player validity (could change between checks)
-	if (!player || !player->pPath || !player->pAct) {
+		// Clear queue if player is invalid
+		goldPickupQueue.clear();
 		return;
 	}
 
@@ -457,28 +457,79 @@ void ItemMover::OnLoop() {
 	
 	DWORD maxGold = playerLevel * 10000;
 	
-	// If inventory gold is at max capacity, temporarily disable auto pickup
+	// If inventory gold is at max capacity, clear queue and disable auto pickup
 	if (currentGold >= maxGold) {
+		goldPickupQueue.clear();
 		return;
 	}
 
-	// Throttle pickup attempts (100ms between attempts)
 	ULONGLONG currentTick = BHGetTickCount();
-	if (currentTick - lastPickupTick < 100) {
-		return;
-	}
-
-	// Re-check path validity before accessing
-	if (!player->pPath) {
-		return;
-	}
 	
+	// Get player position for distance checks
 	DWORD playerX = player->pPath->xPos;
 	DWORD playerY = player->pPath->yPos;
+	
+	// Remove items from queue that are too far away (more than 5 yards)
+	// Use a threshold slightly larger than pickup range to account for movement
+	const DWORD MAX_DISTANCE = 7;  // 7 yards threshold (pickup range is 5)
+	for (auto it = goldPickupQueue.begin(); it != goldPickupQueue.end();) {
+		DWORD distance = GetDistanceSquared(playerX, playerY, it->x, it->y);
+		if (distance > MAX_DISTANCE) {
+			it = goldPickupQueue.erase(it);  // Remove if too far
+		} else {
+			++it;
+		}
+	}
+	
+	// Remove stale entries from queue (older than 2 seconds)
+	for (auto it = goldPickupQueue.begin(); it != goldPickupQueue.end();) {
+		if ((currentTick - it->queueTime) > 2000) {
+			it = goldPickupQueue.erase(it);  // Remove if too old
+		} else {
+			++it;
+		}
+	}
+	
+	// Process the queue: send one pickup packet if enough time has passed (75ms delay between pickups)
+	if (!goldPickupQueue.empty()) {
+		QueuedGoldPickup& queuedItem = goldPickupQueue.front();
+		
+		// Double-check distance before processing (in case player moved)
+		DWORD distance = GetDistanceSquared(playerX, playerY, queuedItem.x, queuedItem.y);
+		if (distance <= 5) {
+			// Check if enough time has passed since last pickup (75ms delay)
+			if (currentTick - lastPickupTick >= 75) {
+				// Send packet 0x13 - player action on unit
+				BYTE PacketData[9] = {0x13, 0, 0, 0, 0, 0, 0, 0, 0};
+				*reinterpret_cast<DWORD*>(PacketData + 1) = 4;  // Action type 4
+				*reinterpret_cast<DWORD*>(PacketData + 5) = queuedItem.itemId;
+				D2NET_SendPacket(9, 1, PacketData);
 
-	// Re-check act validity before accessing
+				lastPickupTick = currentTick;
+				goldPickupQueue.pop_front();  // Remove from queue after sending
+			}
+		} else {
+			// Too far away, remove from queue
+			goldPickupQueue.pop_front();
+		}
+	}
+
+	// Limit queue size to prevent it from growing too large (max 20 items)
+	const size_t MAX_QUEUE_SIZE = 20;
+	if (goldPickupQueue.size() >= MAX_QUEUE_SIZE) {
+		return;  // Don't add more items if queue is full
+	}
+
+	// Scan for new gold piles and add them to the queue
+
 	if (!player->pAct || !player->pAct->pRoom1) {
 		return;
+	}
+
+	// Create a set to track already queued item IDs to avoid duplicates
+	std::set<DWORD> queuedItemIds;
+	for (const auto& queued : goldPickupQueue) {
+		queuedItemIds.insert(queued.itemId);
 	}
 
 	// Iterate through all rooms and ground items to find gold
@@ -490,6 +541,11 @@ void ItemMover::OnLoop() {
 		for (UnitAny* pUnit = room1->pUnitFirst; pUnit; pUnit = pUnit->pListNext) {
 			// Check if this is an item on the ground
 			if (pUnit->dwType != UNIT_ITEM || !pUnit->pItemPath) {
+				continue;
+			}
+
+			// Skip if already in queue
+			if (queuedItemIds.find(pUnit->dwUnitId) != queuedItemIds.end()) {
 				continue;
 			}
 
@@ -509,18 +565,26 @@ void ItemMover::OnLoop() {
 			DWORD goldY = pUnit->pItemPath->dwPosY;
 			DWORD distance = GetDistanceSquared(playerX, playerY, goldX, goldY);
 
-			// If gold is within 5 yards, pick it up (hardcoded range)
+			// If gold is within 5 yards, add it to the queue
 			if (distance <= 5) {
-				// Send packet 0x13 - player action on unit
-				BYTE PacketData[9] = {0x13, 0, 0, 0, 0, 0, 0, 0, 0};
-				*reinterpret_cast<DWORD*>(PacketData + 1) = 4;  // Action type 4
-				*reinterpret_cast<DWORD*>(PacketData + 5) = pUnit->dwUnitId;
-				D2NET_SendPacket(9, 1, PacketData);
-
-				lastPickupTick = currentTick;
-				// Only pick up one gold pile per loop iteration
-				return;
+				QueuedGoldPickup newPickup;
+				newPickup.itemId = pUnit->dwUnitId;
+				newPickup.x = goldX;
+				newPickup.y = goldY;
+				newPickup.queueTime = currentTick;
+				goldPickupQueue.push_back(newPickup);
+				queuedItemIds.insert(pUnit->dwUnitId);  // Track it to avoid duplicates
+				
+				// Limit how many we add per loop iteration
+				if (goldPickupQueue.size() >= MAX_QUEUE_SIZE) {
+					break;
+				}
 			}
+		}
+		
+		// Break outer loop if queue is full
+		if (goldPickupQueue.size() >= MAX_QUEUE_SIZE) {
+			break;
 		}
 	}
 }
@@ -784,6 +848,7 @@ void ItemMover::OnGameExit() {
 	ActivePacket.y = 0;
 	ActivePacket.startTicks = 0;
 	ActivePacket.destination = 0;
+	goldPickupQueue.clear();
 	previousHP = 0;
 	damageTakenTick = 0;
 }

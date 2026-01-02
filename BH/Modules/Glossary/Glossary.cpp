@@ -1720,8 +1720,8 @@ void Glossary::DisplayCharms() {
         
         // Table header
         int componentColX = startX;
-        int monsterColX = startX + 200;
-        int locationColX2 = startX + 400;
+        int monsterColX = startX + 400;  // Double the width of first column (was 200)
+        int locationColX2 = startX + 600;  // Adjusted to maintain spacing
         addText(componentColX, currentY, "Component", Gold, font);
         addText(monsterColX, currentY, "Monster", Gold, font);
         addText(locationColX2, currentY, "Location", Gold, font);
@@ -1730,36 +1730,38 @@ void Glossary::DisplayCharms() {
         // Table rows
         struct ComponentRow {
             std::string component;
+            std::string property;
             std::string monster;
             std::string location;
         };
         
         std::vector<ComponentRow> components = {
-            {"Heart of the Beast", "Minion of Destruction", "Throne of Destruction"},
-            {"Soul of the Beauty", "Hell Temptress", "Frozen River"},
-            {"Obsidian", "Hephasto the Armorer", "River of Flame"},
-            {"Gargantua Skin", "Gargantua", "Rigid Highlands"},
-            {"Adamantine", "The Smith", "Barracks"},
-            {"Infernal Eye", "Molten Brute", "Crystalline Passage"},
-            {"Evigfryse Ore", "Icehawk Riftwing", "Sewers Level 1"},
-            {"Fragment of Thunder", "Shock Fiend", "Glacial Trail"},
-            {"Pulsating Ooze", "Unraveler", "Tal Rasha's Tomb"},
-            {"Gheed's Fortune", "Griswold", "Tristram"},
-            {"Heart of Ankara", "AREA DROP", "Cathedral"},
-            {"Living Lava", "AREA DROP", "River of Flame"},
-            {"Core of Winter", "AREA DROP", "Frozen Tundra"},
-            {"Static Essence", "Rakanishu", "Stony Field"},
-            {"Corrupted Blood", "Slime Prince", "Flayer Jungle"},
-            {"Void Innoculation", "AREA DROP", "Arcane Sanctuary"},
-            {"Touch of Rime", "Snapchip Shatter", "Icy Cellar"}
+            {"Heart of the Beast", "5% Increased Maximum Life", "Minion of Destruction", "Throne of Destruction"},
+            {"Soul of the Beauty", "5% Increased Maximum Mana", "Hell Temptress", "Frozen River"},
+            {"Obsidian", "50% Enhanced Damage", "Hephasto the Armorer", "River of Flame"},
+            {"Gargantua Skin", "50% Enhanced Defense", "Gargantua", "Rigid Highlands"},
+            {"Adamantine", "6% Physical Resistance", "The Smith", "Barracks"},
+            {"Infernal Eye", "+400-600 Fire Damage", "Molten Brute", "Crystalline Passage"},
+            {"Evigfryse Ore", "+300-700 Cold Damage", "Icehawk Riftwing", "Sewers Level 1"},
+            {"Fragment of Thunder", "+1-900 Lightning Damage", "Shock Fiend", "Glacial Trail"},
+            {"Pulsating Ooze", "+2400 Poison Damage over 4 seconds", "Unraveler", "Tal Rasha's Tomb"},
+            {"Gheed's Fortune", "50% Better Chance of Finding Magical Items", "Griswold", "Tristram"},
+            {"Heart of Ankara", "2% Life Regenerated per second", "AREA DROP", "Cathedral"},
+            {"Living Lava", "+2% Maximum Fire Resistance", "AREA DROP", "River of Flame"},
+            {"Core of Winter", "+2% Maximum Cold Resistance", "AREA DROP", "Frozen Tundra"},
+            {"Static Essence", "+2% Maximum Lightning Resistance", "Rakanishu", "Stony Field"},
+            {"Corrupted Blood", "+2% Maximum Poison Resistance", "Slime Prince", "Flayer Jungle"},
+            {"Void Innoculation", "3% Chance to gain 5 seconds of Empower on Kill", "AREA DROP", "Arcane Sanctuary"},
+            {"Touch of Rime", "Freezes Target +7", "Snapchip Shatter", "Icy Cellar"}
         };
         
         for (const auto& row : components) {
             int rowStartY = currentY;
             int maxHeight = lineHeight;
             
-            // Wrap component name if needed
-            std::vector<std::string> componentWrapped = WrapText(row.component, 190, font);
+            // Combine component name and property in the same column
+            std::string componentWithProperty = row.component + " - " + row.property;
+            std::vector<std::string> componentWrapped = WrapText(componentWithProperty, 390, font);  // Double width (was 190)
             int componentY = rowStartY;
             for (const auto& line : componentWrapped) {
                 addText(componentColX, componentY, line, White, font);
