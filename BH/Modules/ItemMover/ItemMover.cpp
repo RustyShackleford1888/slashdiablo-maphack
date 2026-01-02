@@ -1,6 +1,7 @@
 #include "ItemMover.h"
 #include "../Item/Item.h"
 #include "../Gambling/Gambling.h"
+#include "../Glossary/Glossary.h"
 #include "../../BH.h"
 #include "../../D2Ptrs.h"
 #include "../../D2Stubs.h"
@@ -388,18 +389,30 @@ void ItemMover::OnLoad() {
 	settingsTab = new Drawing::UITab("Interaction", BH::settingsUI);
 
 	unsigned int x = 8;
+	unsigned int x2 = 220;  // Second column position
 	unsigned int y = 7;
+	unsigned int y2 = 7;    // Second column Y position
 	new Drawing::Texthook(settingsTab, x, y, "Keys (esc to clear)");
+	
+	// First column
 	new Drawing::Keyhook(settingsTab, x, (y += 15), &TpKey ,       "Quick Town Portal:     ");
 	new Drawing::Keyhook(settingsTab, x, (y += 15), &HealKey,     "Use Healing Potion:    ");
 	new Drawing::Keyhook(settingsTab, x, (y += 15), &ManaKey,     "Use Mana Potion:       ");
 	new Drawing::Keyhook(settingsTab, x, (y += 15), &JuvKey,      "Use Rejuv Potion:      ");
-	new Drawing::Keyhook(settingsTab, x, (y += 15), &TransmuteKey,"Cube Transmute:        ");
 	
-	// Add Gambling Refresh keyhook if Gambling module is loaded
+	// Second column
+	new Drawing::Keyhook(settingsTab, x2, (y2 += 15), &TransmuteKey,"Cube Transmute:        ");
+	
+	// Add Gambling Refresh keyhook if Gambling module is loaded (second column)
 	Gambling* gambling = (Gambling*)BH::moduleManager->Get("gambling");
 	if (gambling) {
-		new Drawing::Keyhook(settingsTab, x, (y += 15), gambling->GetRefreshKeyPtr(), "Gambling Refresh:     ");
+		new Drawing::Keyhook(settingsTab, x2, (y2 += 15), gambling->GetRefreshKeyPtr(), "Gambling Refresh:     ");
+	}
+	
+	// Add Glossary Toggle keyhook if Glossary module is loaded (second column)
+	Glossary* glossary = (Glossary*)BH::moduleManager->Get("glossary");
+	if (glossary) {
+		new Drawing::Keyhook(settingsTab, x2, (y2 += 15), glossary->GetGlossaryKeyPtr(), "Glossary Toggle:      ");
 	}
 
 	y += 7;

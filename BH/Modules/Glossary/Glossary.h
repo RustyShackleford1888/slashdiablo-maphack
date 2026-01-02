@@ -48,6 +48,9 @@ private:
     bool charmsDisplayed;  // Track if hooks have been created
     std::vector<Drawing::Texthook*> charmsTextHooks;  // Store text hooks to prevent leaks
     
+    // Hotkey for opening/closing glossary
+    unsigned int glossaryKey;
+    
     static bool IsEscMenuOpen();
     static bool IsMouseInRect(int x, int y, int w, int h);
     static int GetTextWidth(const wchar_t* text, int font);
@@ -84,7 +87,7 @@ public:
                  aurasData(nullptr), aurasDataLoaded(false),
                  aurasDisplayed(false), effectsData(nullptr),
                  effectsDataLoaded(false), effectsDisplayed(false),
-                 charmsDisplayed(false) {
+                 charmsDisplayed(false), glossaryKey(0) {
         InitializeCriticalSection(&dataCrit);
     };
     
@@ -94,8 +97,11 @@ public:
 
     void OnLoad();
     void OnUnload();
+    void LoadConfig();
     void OnDraw();
+    void OnKey(bool up, BYTE key, LPARAM lParam, bool* block);
     void OnLeftClick(bool up, unsigned int x, unsigned int y, bool* block);
     void OnRightClick(bool up, unsigned int x, unsigned int y, bool* block);
+    unsigned int* GetGlossaryKeyPtr() { return &glossaryKey; }
 };
 

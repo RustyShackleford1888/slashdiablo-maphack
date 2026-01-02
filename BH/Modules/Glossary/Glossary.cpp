@@ -206,7 +206,12 @@ void Glossary::OnGlossaryClick() {
     }
 }
 
+void Glossary::LoadConfig() {
+    BH::config->ReadKey("Glossary Toggle", "None", glossaryKey);
+}
+
 void Glossary::OnLoad() {
+    LoadConfig();
     // Don't create UI here - defer until first use to avoid startup delay
     // UI will be created lazily when Glossary option is clicked
     
@@ -432,10 +437,107 @@ void Glossary::OnLeftClick(bool up, unsigned int x, unsigned int y, bool* block)
     }
 }
 
+void Glossary::OnKey(bool up, BYTE key, LPARAM lParam, bool* block) {
+    // Only handle key up events (when key is released)
+    if (!up) {
+        return;
+    }
+    
+    // Handle glossary toggle key
+    if (glossaryKey != 0 && key == (BYTE)glossaryKey) {
+        // Only allow toggling if we're in a game
+        if (!D2CLIENT_GetPlayerUnit()) {
+            return;
+        }
+        
+        // Initialize UI if not already created
+        InitializeUI();
+        
+        if (!glossaryUI) {
+            return;
+        }
+        
+        // Toggle the glossary window
+        glossaryUI->Lock();
+        bool isVisible = glossaryUI->IsVisible() && !glossaryUI->IsMinimized();
+        glossaryUI->Unlock();
+        
+        if (isVisible) {
+            // Close the glossary window
+            glossaryUI->Lock();
+            glossaryUI->SetMinimized(true);
+            glossaryUI->SetVisible(false);
+            glossaryUI->SetActive(false);
+            glossaryUI->Unlock();
+        } else {
+            // Open the glossary window (same logic as OnGlossaryClick)
+            // Close the escape menu before opening the glossary
+            if (D2CLIENT_GetUIState(UI_ESCMENU_MAIN) != 0) {
+                D2CLIENT_SetUIVar(UI_ESCMENU_MAIN, 1, 0);
+            }
+            
+            glossaryUI->Lock();
+            if (glossaryUI->IsMinimized()) {
+                glossaryUI->SetMinimized(false);
+            }
+            glossaryUI->SetVisible(true);
+            glossaryUI->SetActive(true);
+            if (!glossaryUI->GetActiveTab() && !glossaryUI->Tabs.empty()) {
+                glossaryUI->SetCurrentTab(*(glossaryUI->Tabs.begin()));
+            }
+            CenterGlossaryWindow();
+            UI::Sort(glossaryUI);
+            glossaryUI->Unlock();
+            
+            // Display data for active tab if it's loaded
+            EnterCriticalSection(&dataCrit);
+            bool corruptionsReady = corruptionsDataLoaded && corruptionsData != nullptr;
+            bool aurasReady = aurasDataLoaded && aurasData != nullptr;
+            bool effectsReady = effectsDataLoaded && effectsData != nullptr;
+            LeaveCriticalSection(&dataCrit);
+            
+            if (corruptionsReady && corruptionsTab && corruptionsTab->IsActive()) {
+                DisplayCorruptions();
+            }
+            if (aurasReady && aurasTab && aurasTab->IsActive()) {
+                DisplayAuras();
+            }
+            if (effectsReady && gainEffectsTab && gainEffectsTab->IsActive()) {
+                DisplayEffects();
+            }
+        }
+        
+        *block = true;
+        return;
+    }
+    
+    // Handle ESC key to close glossary
+    if (key == VK_ESCAPE) {
+        // Only close if glossary is open (visible and not minimized)
+        if (!glossaryUI || !glossaryUI->IsVisible() || glossaryUI->IsMinimized()) {
+            return;
+        }
+        
+        // Close the glossary window (same as close button)
+        glossaryUI->Lock();
+        glossaryUI->SetMinimized(true);
+        glossaryUI->SetVisible(false);
+        glossaryUI->SetActive(false);
+        glossaryUI->Unlock();
+        
+        // Block the ESC key to prevent the escape menu from opening
+        *block = true;
+    }
+}
+
 void Glossary::OnRightClick(bool up, unsigned int x, unsigned int y, bool* block) {
-    // Handle right-click anywhere in the Glossary window to minimize it
-    // Note: UI system processes clicks first and minimizes on title bar, but we want it to work anywhere
-    if (glossaryUI && up && !glossaryUI->IsMinimized()) {
+    // Only handle right-clicks on the glossary window itself
+    if (!glossaryUI || !up) {
+        return;
+    }
+    
+    // Only block if the click is actually within the visible glossary window bounds
+    if (glossaryUI->IsVisible() && !glossaryUI->IsMinimized()) {
         // Check if right-click was anywhere within the window bounds
         if (glossaryUI->InWindow(x, y)) {
             // Minimize the window and hide it immediately to prevent drawing minimized bar
@@ -447,15 +549,8 @@ void Glossary::OnRightClick(bool up, unsigned int x, unsigned int y, bool* block
             return;
         }
     }
-    // Also handle if it was already minimized by UI system (title bar click)
-    if (glossaryUI && up && glossaryUI->IsMinimized()) {
-        // Hide it to prevent drawing minimized bar
-        glossaryUI->Lock();
-        glossaryUI->SetVisible(false);
-        glossaryUI->Unlock();
-        *block = true;
-        return;
-    }
+    // Don't block right-clicks when the glossary is minimized or not visible
+    // This allows normal game actions like skill casting to work properly
 }
 
 // Download JSON from URL using WinHTTP

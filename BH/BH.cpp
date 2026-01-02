@@ -120,7 +120,7 @@ void BH::Initialize()
 		SetWindowLong(D2GFX_GetHwnd(), GWL_WNDPROC, (LONG)GameWindowEvent);
 	});
 
-	settingsUI = new Drawing::UI(BH_VERSION, 400, 277);
+	settingsUI = new Drawing::UI(BH_VERSION, 440, 277);  // Increased width by 10% (400 -> 440) for tabs
 
 	Task::InitializeThreadPool(2);
 
