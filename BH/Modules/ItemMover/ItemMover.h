@@ -50,6 +50,12 @@ struct QueuedGoldPickup {
 	ULONGLONG queueTime;
 };
 
+struct CubeRecipe {
+	const char* inputCode;
+	const char* outputCode;
+	int maxQuantity;
+};
+
 class ItemMover : public Module {
 private:
 	bool FirstInit;
@@ -67,9 +73,49 @@ private:
 	unsigned int ManaKey;
 	unsigned int JuvKey;
 	unsigned int TransmuteKey;
+	unsigned int AutoCubeKey;
 	ItemPacketData ActivePacket;
 	CRITICAL_SECTION crit;
 	Drawing::UITab* settingsTab;
+	
+	// Auto-cube state variables
+	bool isAutoCubing;
+	int currentRecipeIdx;
+	int currentRecipeIteration;
+	ULONGLONG lastAutoCubeTick;
+	std::vector<int> validRecipeIndices;  // Indices of recipes that have matching items
+	bool validRecipesScanned;  // Whether we've scanned for valid recipes this cycle
+	int targetOutputCount;  // How many output items we're trying to move for current recipe
+	int movedOutputCount;   // How many output items we've moved so far
+	bool clearingNonRecipeItems;  // Are we currently clearing non-recipe items from cube?
+	DWORD clearingItemId;  // Item ID we're currently trying to clear
+	bool waitingForOutputTransmute;  // Did we just transmute output-only and are waiting for input to appear?
+	bool waitingForNormalTransmute;  // Did we just transmute input+output and are waiting for it to complete?
+	bool progressMadeThisCycle;  // Was any progress made in the current recipe cycle?
+	int failedOutputOnlyCount;  // Count of times output-only transmute failed for this recipe
+	bool processingLowerStatItem;  // Are we processing a lower stat 508 item (transmuting alone)?
+	bool waitingForLowerStatTransmute;  // Waiting for lower stat transmute to complete?
+	bool waitingForLowerStatOutputMove;  // Waiting for lower stat output item to be moved to inventory?
+	int lowerStatTargetOutputs;  // How many outputs we need to generate to fill the highest stat item to 100
+	int lowerStatOutputsGenerated;  // How many outputs we've generated so far from processing the lowest stat item
+	int highestStatValue;  // The stat 508 value of the highest item we're trying to fill
+	bool processingEssenceGems;  // Are we currently processing essence gems?
+	int essenceGemsMoved;  // How many gems we've moved for current essence gem recipe
+	bool essenceCubeInCube;  // Is the Horadric Cube (hcc) in the cube?
+	bool processingEssenceRunes;  // Are we currently processing essence runes?
+	int essenceRunesMoved;  // How many runes we've moved for current essence rune recipe
+	bool essenceRunesCubeInCube;  // Is the catalyst (hcc) in the cube for essence runes?
+	bool processingEssenceUniques;  // Are we currently processing essence uniques/sets?
+	bool essenceUniquesCubeInCube;  // Is the catalyst (hcc) in the cube for essence uniques?
+	ULONGLONG cursorItemStartTick;  // When did we first detect an item on cursor?
+	bool cursorItemRecoveryAttempted;  // Have we tried to recover from stuck cursor?
+	ULONGLONG cursorItemRecoveryTick;  // When did we last attempt recovery?
+	DWORD lastMovedItemId;  // Item ID of the last item we moved
+	unsigned int lastMovedDestination;  // Destination of the last item we moved (STORAGE_CUBE, STORAGE_INVENTORY, etc.)
+	unsigned int lastMovedX;  // Expected X coordinate of the last moved item
+	unsigned int lastMovedY;  // Expected Y coordinate of the last moved item
+	bool lastMoveVerified;  // Whether the last moved item has been verified as placed
+	ULONGLONG lastMoveCompleteTick;  // When did the last move complete (ActivePacket.startTicks became 0)?
 	
 	// Auto gold pickup members
 	Toggle autoPickupGold;
@@ -80,6 +126,15 @@ private:
 	ULONGLONG lastQueuedPickupTick;
 	DWORD previousHP;
 	ULONGLONG damageTakenTick;
+	
+	// Auto cube settings
+	Toggle autoStackItems;
+	Toggle autoEssenceGems;
+	Toggle autoEssenceRunes;
+	Toggle autoEssenceUniques;
+	unsigned int autoEssenceGemQuality;  // Index for gem quality dropdown
+	unsigned int autoEssenceRuneQuality;  // Index for rune quality dropdown
+	unsigned int autoEssenceUniqueTier;  // Index for unique/set tier dropdown
 public:
 	ItemMover() : Module("Item Mover"),
 		ActivePacket(),
@@ -97,12 +152,59 @@ public:
 		lastPickupTick(0),
 		lastQueuedPickupTick(0),
 		previousHP(0),
-		damageTakenTick(0) {
+		damageTakenTick(0),
+		isAutoCubing(false),
+		currentRecipeIdx(0),
+		currentRecipeIteration(0),
+		lastAutoCubeTick(0),
+		targetOutputCount(0),
+		movedOutputCount(0),
+		clearingNonRecipeItems(false),
+		clearingItemId(0),
+		waitingForOutputTransmute(false),
+		waitingForNormalTransmute(false),
+		progressMadeThisCycle(false),
+		failedOutputOnlyCount(0),
+		processingLowerStatItem(false),
+		waitingForLowerStatTransmute(false),
+		waitingForLowerStatOutputMove(false),
+		lowerStatTargetOutputs(0),
+		lowerStatOutputsGenerated(0),
+		highestStatValue(0),
+		processingEssenceGems(false),
+		essenceGemsMoved(0),
+		essenceCubeInCube(false),
+		processingEssenceRunes(false),
+		essenceRunesMoved(0),
+		essenceRunesCubeInCube(false),
+		processingEssenceUniques(false),
+		essenceUniquesCubeInCube(false),
+		validRecipesScanned(false),
+		cursorItemStartTick(0),
+		cursorItemRecoveryAttempted(false),
+		cursorItemRecoveryTick(0),
+		lastMovedItemId(0),
+		lastMovedDestination(0),
+		lastMovedX(0),
+		lastMovedY(0),
+		lastMoveVerified(true),
+		lastMoveCompleteTick(0),
+		autoEssenceGemQuality(0),
+		autoEssenceRuneQuality(0),
+		autoEssenceUniqueTier(0) {
 
 		InitializeCriticalSection(&crit);
-		// Initialize toggle to safe defaults
+		// Initialize toggles to safe defaults
 		autoPickupGold.toggle = 0;
 		autoPickupGold.state = false;
+		autoStackItems.toggle = 0;
+		autoStackItems.state = false;
+		autoEssenceGems.toggle = 0;
+		autoEssenceGems.state = false;
+		autoEssenceRunes.toggle = 0;
+		autoEssenceRunes.state = false;
+		autoEssenceUniques.toggle = 0;
+		autoEssenceUniques.state = false;
 	};
 
 	~ItemMover() {
@@ -134,6 +236,28 @@ public:
 	void PickUpItem();
 	void PutItemInContainer();
 	void PutItemOnGround();
+
+	// Auto-cube helper functions
+	bool MoveItemToInventory(UnitAny* unit, UnitAny* item);
+	// Returns: true if item moved, false if failed (inventory full or error)
+	// Returns: -1 if inventory full, 0 if no items to clear, 1 if item being moved
+	int ClearCube(UnitAny* unit);
+	// Returns: -1 if inventory full, 0 if no items to clear, 1 if item being moved
+	int ClearNonRecipeItemsFromCube(UnitAny* unit, const char* inputCode, const char* outputCode);
+	int CountItemsInCube(UnitAny* unit, const char* code);
+	int CountItemsInInventoryAndCube(UnitAny* unit, const char* code);
+	bool FindAndMoveItemsToCube(UnitAny* unit, const char* code, int needed);
+	bool FindAndMoveGemsToCube(UnitAny* unit, BYTE maxGemLevel, int maxCount);
+	bool FindAndMoveRunesToCube(UnitAny* unit, BYTE maxRuneNumber, int maxCount);
+	int GetItemTier(UnitAny* item);  // Get tier from ItemDisplay rules for unique/set items
+	int GetItemStat508(UnitAny* item);  // Get stat 508 value from an item (returns -1 if not found)
+	bool IsStat508LimitedRecipe(const char* inputCode);  // Check if recipe is stat 508 limited (checks against recipes array)
+	UnitAny* GetInputItemFromCube(UnitAny* unit, const char* inputCode);  // Get the input item from cube for a recipe
+	int GetMinMaxAllowedFromCubeInputs(UnitAny* unit, const char* inputCode, int recipeMaxQuantity);  // Get minimum maxAllowed from all input items in cube (for stat 508)
+	static const CubeRecipe* GetRecipesArray();  // Get the recipes array
+	static int GetRecipesArraySize();  // Get the size of the recipes array
+	bool PerformAutoCube();
+	void ProcessAutoCubeStep();
 
 	void LoadConfig();
 

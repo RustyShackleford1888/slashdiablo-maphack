@@ -968,7 +968,7 @@ void Glossary::LoadCorruptionsData() {
     
     // Download JSON asynchronously using Task system
     Task::Enqueue([this]() -> void {
-        std::string jsonData = DownloadJSON("https://rustyshackleford1888.github.io/js/Corruptions.json");
+        std::string jsonData = DownloadJSON("https://doctorwoot420.github.io/resurgence-armory/js/Corruptions.json");
         if (!jsonData.empty() && jsonData.length() > 10) {
             // Parse JSON
             JSONArray* parsed = ParseJSON(jsonData);
@@ -1003,7 +1003,7 @@ void Glossary::LoadAurasData() {
     
     // Download JSON asynchronously using Task system
     Task::Enqueue([this]() -> void {
-        std::string jsonData = DownloadJSON("https://rustyshackleford1888.github.io/js/auras.json");
+        std::string jsonData = DownloadJSON("https://doctorwoot420.github.io/resurgence-armory/js/auras.json");
         if (!jsonData.empty() && jsonData.length() > 10) {
             // Parse JSON
             JSONArray* parsed = ParseJSON(jsonData);
@@ -1487,7 +1487,7 @@ void Glossary::LoadEffectsData() {
     
     // Download JSON asynchronously using Task system
     Task::Enqueue([this]() -> void {
-        std::string jsonData = DownloadJSON("https://rustyshackleford1888.github.io/js/effects.json");
+        std::string jsonData = DownloadJSON("https://doctorwoot420.github.io/resurgence-armory/js/effects.json");
         if (!jsonData.empty() && jsonData.length() > 10) {
             // Parse JSON
             JSONArray* parsed = ParseJSON(jsonData);

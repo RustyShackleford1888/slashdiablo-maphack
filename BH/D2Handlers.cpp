@@ -1,6 +1,7 @@
 #include "D2Ptrs.h"
 #include "BH.h"
 #include "D2Stubs.h"
+#include "Drawing/Advanced/Colorhook/Colorhook.h"
 
 #include <iterator>
 
@@ -10,6 +11,10 @@ void GameDraw() {
 	Drawing::StatsDisplay::Draw();
 	Drawing::BreakpointsDisplay::Draw();
 	Drawing::Hook::Draw(Drawing::InGame);
+	// Draw Colorhook LAST, after everything else, to ensure it appears on top of UI
+	if (Drawing::Colorhook::current) {
+		Drawing::Colorhook::current->OnDraw();
+	}
 }
 
 void GameAutomapDraw() {

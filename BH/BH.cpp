@@ -120,7 +120,7 @@ void BH::Initialize()
 		SetWindowLong(D2GFX_GetHwnd(), GWL_WNDPROC, (LONG)GameWindowEvent);
 	});
 
-	settingsUI = new Drawing::UI(BH_VERSION, 440, 277);  // Increased width by 10% (400 -> 440) for tabs
+	settingsUI = new Drawing::UI(BH_VERSION, 550, 450);  // Increased size for more content
 
 	Task::InitializeThreadPool(2);
 
@@ -188,11 +188,18 @@ bool BH::Shutdown() {
 		delete breakpointsDisplay;
 
 		SetWindowLong(D2GFX_GetHwnd(), GWL_WNDPROC, (LONG)BH::OldWNDPROC);
+		
+		// Remove all patches before deleting them
+		for (int n = 0; n < (sizeof(patches) / sizeof(Patch*)); n++) {
+			patches[n]->Remove();
+		}
+		
+		oogDraw->Remove();
+		
+		// Delete patches after removing them
 		for (int n = 0; n < (sizeof(patches) / sizeof(Patch*)); n++) {
 			delete patches[n];
 		}
-
-		oogDraw->Remove();
 		delete config;
 		delete itemConfig;
 	}

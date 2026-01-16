@@ -4,6 +4,7 @@
 #include "../../BH.h"
 #include "../Basic/Texthook/Texthook.h"
 #include "../Basic/Framehook/Framehook.h"
+#include "../Advanced/Colorhook/Colorhook.h"
 
 using namespace Drawing;
 
@@ -169,7 +170,18 @@ void UI::OnDraw() {
 			SetX(newX);
 			SetY(newY);
 		}
-		Framehook::Draw(GetX(), GetY(), GetXSize(), GetYSize(), 0, (IsActive()?BTNormal:BTOneHalf));
+		// If Colorhook is active, don't draw UI background over the color picker area
+		// Color picker area: 310-500 x 180-400
+		bool colorPickerActive = (Colorhook::current != nullptr);
+		unsigned int pickerX = 310, pickerY = 180, pickerWidth = 190, pickerHeight = 220;
+		
+		if (!colorPickerActive || 
+		    GetX() + GetXSize() <= pickerX || GetX() >= pickerX + pickerWidth ||
+		    GetY() + GetYSize() <= pickerY || GetY() >= pickerY + pickerHeight) {
+			// UI doesn't overlap color picker, draw normally
+			Framehook::Draw(GetX(), GetY(), GetXSize(), GetYSize(), 0, (IsActive()?BTNormal:BTOneHalf));
+		}
+		// If UI overlaps color picker, skip drawing the background (color picker will cover it)
 		Framehook::Draw(GetX(), GetY(), GetXSize(), TITLE_BAR_HEIGHT, 0, BTNormal);
 		Texthook::Draw(GetX() + 4, GetY () + 3, false, 0, InTitle((*p_D2CLIENT_MouseX), (*p_D2CLIENT_MouseY))?Silver:White, GetName());
 		if (!Tabs.empty()) {
