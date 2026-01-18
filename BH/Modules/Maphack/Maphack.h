@@ -76,6 +76,7 @@ class Maphack : public Module {
 	void RevealAct(int act);
 	void RevealLevel(Level* level);
 	void RevealRoom(Room2* room);
+	bool IsKaaTomb(Level* level);
 
 	static Level* GetLevel(Act* pAct, int level);
 	static AutomapLayer* InitLayer(int level);

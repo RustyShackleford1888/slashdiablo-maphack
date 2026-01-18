@@ -751,19 +751,47 @@ void Maphack::OnAutomapDraw() {
 				}
 			}
 		}
+		// Draw line to Kaa room when inside a Kaa tomb
+		if (lkLinesColor > 0 && IsKaaTomb(player->pPath->pRoom1->pRoom2->pLevel)) {
+			for(Room2 *pRoom = player->pPath->pRoom1->pRoom2->pLevel->pRoom2First; pRoom; pRoom = pRoom->pRoom2Next) {
+				if (pRoom->pType2Info && pRoom->pType2Info->pdwSubNumber) {
+					DWORD subNumber = *(pRoom->pType2Info->pdwSubNumber);
+					if (subNumber >= 468 && subNumber <= 471) {
+						// Found the Kaa room, draw line to center of it
+						DWORD xPos = (pRoom->dwPosX * 5) + (pRoom->dwSizeX * 5 / 2);
+						DWORD yPos = (pRoom->dwPosY * 5) + (pRoom->dwSizeY * 5 / 2);
+						int kaaLineColor = lkLinesColor;
+						automapBuffer.push([xPos, yPos, MyPos, kaaLineColor]()->void{
+							POINT automapLoc;
+							Drawing::Hook::ScreenToAutomap(&automapLoc, xPos, yPos);
+							Drawing::Linehook::Draw(MyPos.x, MyPos.y, automapLoc.x, automapLoc.y, kaaLineColor);
+						});
+						break; // Only one Kaa room per tomb
+					}
+				}
+			}
+		}
 		if (!Toggles["Display Level Names"].state)
 			return;
 		for (list<LevelList*>::iterator it = automapLevels.begin(); it != automapLevels.end(); it++) {
 			if (player->pAct->dwAct == (*it)->act) {
 				string tombStar = ((*it)->levelId == player->pAct->pMisc->dwStaffTombLevel) ? "\377c2*" : "\377c4";
+				
+				// Check if this is a Kaa tomb
+				string kaaSuffix = "";
+				Level* pLevel = GetLevel(player->pAct, (*it)->levelId);
+				if (pLevel && IsKaaTomb(pLevel)) {
+					kaaSuffix = " \377c2*KAA TOMB*";
+				}
+				
 				POINT unitLoc;
 				Hook::ScreenToAutomap(&unitLoc, (*it)->x, (*it)->y);
 				char* name = UnicodeToAnsi(D2CLIENT_GetLevelName((*it)->levelId));
 				std::string nameStr = name;
 				delete[] name;
 
-				automapBuffer.push([nameStr, tombStar, unitLoc]()->void{
-					Texthook::Draw(unitLoc.x, unitLoc.y - 15, Center, 6, Gold, "%s%s", nameStr.c_str(), tombStar.c_str());
+				automapBuffer.push([nameStr, tombStar, kaaSuffix, unitLoc]()->void{
+					Texthook::Draw(unitLoc.x, unitLoc.y - 15, Center, 6, Gold, "%s%s%s", nameStr.c_str(), tombStar.c_str(), kaaSuffix.c_str());
 				});
 			}
 		}
@@ -934,6 +962,34 @@ void Maphack::RevealAct(int act) {
 	InitLayer(player->pPath->pRoom1->pRoom2->pLevel->dwLevelNo);
 	D2COMMON_UnloadAct(pAct);
 	revealedAct[act] = true;
+}
+
+bool Maphack::IsKaaTomb(Level* level) {
+	// Check if this is one of the tomb levels in Act 2
+	if (!level || level->dwLevelNo < MAP_A2_TAL_RASHAS_TOMB_1 || level->dwLevelNo > MAP_A2_TAL_RASHAS_TOMB_7)
+		return false;
+
+	// Make sure level is initialized
+	if (!level->pRoom2First) {
+		D2COMMON_InitLevel(level);
+	}
+
+	// Iterate through rooms and check for Kaa tomb indicators
+	// Kaa tomb ds1 files have IDs: 468, 469, 470, 471
+	for (Room2* room = level->pRoom2First; room; room = room->pRoom2Next) {
+		if (!room->pType2Info)
+			continue;
+		
+		// Check if SubNumber points to Kaa tomb ds1 IDs (468-471)
+		if (room->pType2Info->pdwSubNumber) {
+			DWORD subNumber = *(room->pType2Info->pdwSubNumber);
+			if (subNumber >= 468 && subNumber <= 471) {
+				return true;
+			}
+		}
+	}
+	
+	return false;
 }
 
 void Maphack::RevealLevel(Level* level) {
