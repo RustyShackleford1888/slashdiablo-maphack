@@ -56,6 +56,14 @@ struct CubeRecipe {
 	int maxQuantity;
 };
 
+// Stash item tracking for AutoCube stash interaction
+struct StashItemRecord {
+	DWORD itemId;
+	char itemCode[4];  // 3-char code + null terminator
+	unsigned int x;
+	unsigned int y;
+};
+
 class ItemMover : public Module {
 private:
 	bool FirstInit;
@@ -135,6 +143,19 @@ private:
 	unsigned int autoEssenceGemQuality;  // Index for gem quality dropdown
 	unsigned int autoEssenceRuneQuality;  // Index for rune quality dropdown
 	unsigned int autoEssenceUniqueTier;  // Index for unique/set tier dropdown
+	
+	// Stash interaction state for AutoCube
+	bool stashInteractionMode;           // True if AutoCube was started with stash open
+	std::vector<StashItemRecord> stashItemsToMove;  // Items to move from stash
+	int stashMoveIndex;                  // Current index in stashItemsToMove being moved
+	bool waitingForStashToInvMove;       // Waiting for stash->inventory move to complete
+	bool waitingForInvToStashMove;       // Waiting for inventory->stash move to complete
+	bool waitingForCubeToOpen;           // Waiting for cube to open
+	bool waitingForCubeToClose;          // Waiting for cube to close after AutoCube
+	bool waitingForStashToReopen;        // Waiting for stash to reopen
+	bool restoringItemsToStash;          // Currently restoring items back to stash
+	int stashRestoreIndex;               // Current index being restored
+	DWORD savedStashUnitId;              // Unit ID of stash object to reopen
 public:
 	ItemMover() : Module("Item Mover"),
 		ActivePacket(),
@@ -191,7 +212,17 @@ public:
 		lastMoveCompleteTick(0),
 		autoEssenceGemQuality(0),
 		autoEssenceRuneQuality(0),
-		autoEssenceUniqueTier(0) {
+		autoEssenceUniqueTier(0),
+		stashInteractionMode(false),
+		stashMoveIndex(0),
+		waitingForStashToInvMove(false),
+		waitingForInvToStashMove(false),
+		waitingForCubeToOpen(false),
+		waitingForCubeToClose(false),
+		waitingForStashToReopen(false),
+		restoringItemsToStash(false),
+		stashRestoreIndex(0),
+		savedStashUnitId(0) {
 
 		InitializeCriticalSection(&crit);
 		// Initialize toggles to safe defaults
@@ -258,6 +289,11 @@ public:
 	static int GetRecipesArraySize();  // Get the size of the recipes array
 	bool PerformAutoCube();
 	void ProcessAutoCubeStep();
+	
+	// Stash interaction functions for AutoCube
+	void ScanStashForInputItems(UnitAny* unit);  // Scan stash for INPUT code items
+	void ProcessStashInteraction();             // Main state machine for stash interaction
+	void ResetStashInteractionState();          // Reset all stash interaction state
 
 	void LoadConfig();
 

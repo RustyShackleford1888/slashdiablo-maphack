@@ -503,7 +503,11 @@ void ItemMover::OnLoad() {
 void ItemMover::OnLoop() {
 	// Handle auto-cubing incrementally (non-blocking)
 	if (isAutoCubing) {
-		ProcessAutoCubeStep();
+		if (stashInteractionMode) {
+			ProcessStashInteraction();
+		} else {
+			ProcessAutoCubeStep();
+		}
 	}
 	
 	if (!autoPickupGold.state) {
@@ -776,20 +780,107 @@ void ItemMover::OnKey(bool up, BYTE key, LPARAM lParam, bool* block)  {
 		// Start auto-cubing process (non-blocking)
 		if (!isAutoCubing) {
 			UnitAny* unit = D2CLIENT_GetPlayerUnit();
-			if (!unit || D2CLIENT_GetCursorItem() != NULL || !D2CLIENT_GetUIState(UI_CUBE)) {
-				PrintText(Red, "Auto Cube: Check cube open, no item on cursor");
+			if (!unit || D2CLIENT_GetCursorItem() != NULL) {
+				PrintText(Red, "Auto Cube: No item on cursor required");
 			} else {
-				isAutoCubing = true;
-				currentRecipeIdx = 0;
-				currentRecipeIteration = 0;
-				lastAutoCubeTick = BHGetTickCount();
-				targetOutputCount = 0;
-				movedOutputCount = 0;
-				PrintText(White, "Auto Cube: Started");
+				bool cubeOpen = D2CLIENT_GetUIState(UI_CUBE);
+				bool stashOpen = D2CLIENT_GetUIState(UI_STASH);
+				
+				if (!cubeOpen && !stashOpen) {
+					PrintText(Red, "Auto Cube: Cube or Stash must be open");
+				} else if (stashOpen && !cubeOpen) {
+					// Stash mode - scan stash for input items and move them
+					isAutoCubing = true;
+					stashInteractionMode = true;
+					ResetStashInteractionState();
+					
+					// Find and save the stash object unit ID for later reopening
+					// Stash objects are type 267 (bank) or 580/581 (expansion stash)
+					if (unit->pAct && unit->pAct->pRoom1) {
+						DWORD playerX = unit->pPath->xPos;
+						DWORD playerY = unit->pPath->yPos;
+						for (Room1* room = unit->pAct->pRoom1; room; room = room->pRoomNext) {
+							for (UnitAny* obj = room->pUnitFirst; obj; obj = obj->pListNext) {
+								if (obj->dwType == UNIT_OBJECT && obj->pObjectPath) {
+									// Check if it's a stash object (267=bank, 580/581=expansion stash)
+									DWORD objClass = obj->dwTxtFileNo;
+									if (objClass == 267 || objClass == 580 || objClass == 581) {
+										DWORD dx = (obj->pObjectPath->dwPosX > playerX) ? 
+											obj->pObjectPath->dwPosX - playerX : playerX - obj->pObjectPath->dwPosX;
+										DWORD dy = (obj->pObjectPath->dwPosY > playerY) ? 
+											obj->pObjectPath->dwPosY - playerY : playerY - obj->pObjectPath->dwPosY;
+										if (dx <= 10 && dy <= 10) {
+											savedStashUnitId = obj->dwUnitId;
+											break;
+										}
+									}
+								}
+							}
+							if (savedStashUnitId != 0) break;
+						}
+					}
+					
+					ScanStashForInputItems(unit);
+					
+					if (stashItemsToMove.empty()) {
+						// No stash items to move - skip stash mode, just open cube and run normal autocube
+						stashInteractionMode = false;
+						ResetStashInteractionState();
+						
+						// Find and open the cube automatically
+						DWORD cubeId = 0;
+						for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
+							if (pItem->pItemData->ItemLocation == STORAGE_INVENTORY) {
+								ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
+								if (pItemText && pItemText->szCode) {
+									char* code = pItemText->szCode;
+									if (code[0] == 'b' && code[1] == 'o' && code[2] == 'x') {
+										cubeId = pItem->dwUnitId;
+										break;
+									}
+								}
+							}
+						}
+						
+						if (cubeId > 0) {
+							// Send use item packet (0x20) to open cube
+							BYTE PacketData[13] = { 0x20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+							*reinterpret_cast<int*>(PacketData + 1) = cubeId;
+							*reinterpret_cast<WORD*>(PacketData + 5) = (WORD)unit->pPath->xPos;
+							*reinterpret_cast<WORD*>(PacketData + 9) = (WORD)unit->pPath->yPos;
+							D2NET_SendPacket(13, 0, PacketData);
+							PrintText(White, "Auto Cube: No stash items needed, opening cube...");
+							
+							// Set up for normal cube mode once cube opens
+							currentRecipeIdx = 0;
+							currentRecipeIteration = 0;
+							lastAutoCubeTick = BHGetTickCount();
+							targetOutputCount = 0;
+							movedOutputCount = 0;
+						} else {
+							PrintText(Red, "Auto Cube: Horadric Cube not found");
+							isAutoCubing = false;
+						}
+					} else {
+						PrintText(White, "Auto Cube: Started (Stash Mode) - Found %d items", stashItemsToMove.size());
+					}
+				} else {
+					// Normal cube mode (cube already open)
+					isAutoCubing = true;
+					stashInteractionMode = false;
+					currentRecipeIdx = 0;
+					currentRecipeIteration = 0;
+					lastAutoCubeTick = BHGetTickCount();
+					targetOutputCount = 0;
+					movedOutputCount = 0;
+					PrintText(White, "Auto Cube: Started");
+				}
 			}
 		} else {
 			// Stop auto-cubing if already running
 			isAutoCubing = false;
+			stashInteractionMode = false;
+			ResetStashInteractionState();
 			PrintText(White, "Auto Cube: Stopped");
 		}
 		*block = true;
@@ -1614,6 +1705,474 @@ int ItemMover::GetMinMaxAllowedFromCubeInputs(UnitAny* unit, const char* inputCo
 	}
 	
 	return minMaxAllowed;
+}
+
+// Reset all stash interaction state
+void ItemMover::ResetStashInteractionState() {
+	stashItemsToMove.clear();
+	stashMoveIndex = 0;
+	waitingForStashToInvMove = false;
+	waitingForInvToStashMove = false;
+	waitingForCubeToOpen = false;
+	waitingForCubeToClose = false;
+	waitingForStashToReopen = false;
+	restoringItemsToStash = false;
+	stashRestoreIndex = 0;
+	savedStashUnitId = 0;
+}
+
+// Scan stash for INPUT code items that can be used in recipes with OUTPUT items in inventory
+void ItemMover::ScanStashForInputItems(UnitAny* unit) {
+	if (!unit || !unit->pInventory) {
+		return;
+	}
+	
+	stashItemsToMove.clear();
+	
+	// Get the recipes array
+	const CubeRecipe* recipes = GetRecipesArray();
+	int numRecipes = GetRecipesArraySize();
+	
+	// First, scan inventory for OUTPUT codes and find which INPUT codes we need
+	std::vector<std::string> neededInputCodes;
+	
+	for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
+		if (pItem->pItemData->ItemLocation == STORAGE_INVENTORY) {
+			ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
+			if (pItemText && pItemText->szCode) {
+				char* itemCode = pItemText->szCode;
+				
+				// Check if this item matches any OUTPUT code in recipes
+				for (int i = 0; i < numRecipes; i++) {
+					if (recipes[i].outputCode && strlen(recipes[i].outputCode) >= 3 &&
+					    itemCode[0] == recipes[i].outputCode[0] &&
+					    itemCode[1] == recipes[i].outputCode[1] &&
+					    itemCode[2] == recipes[i].outputCode[2]) {
+						// Found an output item - we need the corresponding input
+						if (recipes[i].inputCode && strlen(recipes[i].inputCode) >= 3) {
+							std::string inputCode = std::string(recipes[i].inputCode);
+							// Avoid duplicates
+							bool alreadyAdded = false;
+							for (size_t j = 0; j < neededInputCodes.size(); j++) {
+								if (neededInputCodes[j] == inputCode) {
+									alreadyAdded = true;
+									break;
+								}
+							}
+							if (!alreadyAdded) {
+								neededInputCodes.push_back(inputCode);
+							}
+						}
+						break;
+					}
+				}
+			}
+		}
+	}
+	
+	// If no output items found in inventory, nothing to do
+	if (neededInputCodes.empty()) {
+		return;
+	}
+	
+	// Now scan stash for items matching the needed input codes
+	for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
+		if (pItem->pItemData->ItemLocation == STORAGE_STASH) {
+			ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
+			if (pItemText && pItemText->szCode) {
+				char* itemCode = pItemText->szCode;
+				
+				// Check if this item matches any needed input code
+				for (size_t i = 0; i < neededInputCodes.size(); i++) {
+					if (neededInputCodes[i].length() >= 3 &&
+					    itemCode[0] == neededInputCodes[i][0] &&
+					    itemCode[1] == neededInputCodes[i][1] &&
+					    itemCode[2] == neededInputCodes[i][2]) {
+						// Record this item
+						StashItemRecord record;
+						record.itemId = pItem->dwUnitId;
+						strncpy_s(record.itemCode, itemCode, 3);
+						record.itemCode[3] = '\0';
+						record.x = pItem->pObjectPath->dwPosX;
+						record.y = pItem->pObjectPath->dwPosY;
+						stashItemsToMove.push_back(record);
+						break;
+					}
+				}
+			}
+		}
+	}
+}
+
+// Process stash interaction state machine
+void ItemMover::ProcessStashInteraction() {
+	UnitAny* unit = D2CLIENT_GetPlayerUnit();
+	if (!unit || !unit->pInventory) {
+		isAutoCubing = false;
+		stashInteractionMode = false;
+		return;
+	}
+	
+	ULONGLONG currentTick = BHGetTickCount();
+	
+	// Check if cursor has an item (wait for it to clear)
+	if (D2CLIENT_GetCursorItem() != NULL) {
+		return;
+	}
+	
+	// Check if we're waiting for a move to complete
+	if (waitingForStashToInvMove) {
+		Lock();
+		bool moveComplete = (ActivePacket.startTicks == 0);
+		Unlock();
+		
+		if (moveComplete) {
+			waitingForStashToInvMove = false;
+			stashMoveIndex++;
+			lastAutoCubeTick = currentTick;
+		}
+		return;
+	}
+	
+	// Check if we're waiting for a restore move to complete
+	if (waitingForInvToStashMove) {
+		Lock();
+		bool moveComplete = (ActivePacket.startTicks == 0);
+		Unlock();
+		
+		if (moveComplete) {
+			waitingForInvToStashMove = false;
+			stashRestoreIndex++;
+			lastAutoCubeTick = currentTick;
+		}
+		return;
+	}
+	
+	// Phase 1: Move items from stash to inventory
+	if (!waitingForCubeToOpen && !waitingForCubeToClose && !waitingForStashToReopen && !restoringItemsToStash) {
+		// Check if stash is still open
+		if (!D2CLIENT_GetUIState(UI_STASH)) {
+			isAutoCubing = false;
+			stashInteractionMode = false;
+			PrintText(Red, "Auto Cube: Stash closed unexpectedly");
+			return;
+		}
+		
+		// Move items one by one
+		while (stashMoveIndex < (int)stashItemsToMove.size()) {
+			StashItemRecord& record = stashItemsToMove[stashMoveIndex];
+			
+			// Check if item is already in inventory
+			bool alreadyMoved = false;
+			for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
+				if (pItem->pItemData->ItemLocation == STORAGE_INVENTORY && pItem->dwUnitId == record.itemId) {
+					alreadyMoved = true;
+					break;
+				}
+			}
+			
+			if (alreadyMoved) {
+				stashMoveIndex++;
+				continue;
+			}
+			
+			// Find item in stash
+			UnitAny* item = NULL;
+			for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
+				if (pItem->pItemData->ItemLocation == STORAGE_STASH && pItem->dwUnitId == record.itemId) {
+					item = pItem;
+					break;
+				}
+			}
+			
+			if (!item) {
+				// Item not found, skip
+				stashMoveIndex++;
+				continue;
+			}
+			
+			// Move item from stash to inventory
+			if (!Init()) {
+				isAutoCubing = false;
+				stashInteractionMode = false;
+				return;
+			}
+			
+			int invUI = D2CLIENT_GetUIState(UI_INVENTORY);
+			int stashUI = D2CLIENT_GetUIState(UI_STASH);
+			bool moveItem = LoadInventory(unit, STORAGE_STASH, record.x, record.y, false, false, stashUI, invUI);
+			
+			if (moveItem) {
+				PickUpItem();
+				waitingForStashToInvMove = true;
+				lastAutoCubeTick = currentTick;
+				return;
+			} else {
+				PrintText(Red, "Auto Cube: Inventory full");
+				isAutoCubing = false;
+				stashInteractionMode = false;
+				return;
+			}
+		}
+		
+		// All items moved, try to open cube automatically
+		// Find the Horadric Cube in inventory and use it
+		DWORD cubeId = 0;
+		for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
+			if (pItem->pItemData->ItemLocation == STORAGE_INVENTORY) {
+				ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
+				if (pItemText && pItemText->szCode) {
+					char* code = pItemText->szCode;
+					if (code[0] == 'b' && code[1] == 'o' && code[2] == 'x') {
+						cubeId = pItem->dwUnitId;
+						break;
+					}
+				}
+			}
+		}
+		
+		if (cubeId > 0) {
+			// Send use item packet (0x20) to open cube
+			BYTE PacketData[13] = { 0x20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+			*reinterpret_cast<int*>(PacketData + 1) = cubeId;
+			*reinterpret_cast<WORD*>(PacketData + 5) = (WORD)unit->pPath->xPos;
+			*reinterpret_cast<WORD*>(PacketData + 9) = (WORD)unit->pPath->yPos;
+			D2NET_SendPacket(13, 0, PacketData);
+			PrintText(White, "Auto Cube: Opening cube...");
+		} else {
+			PrintText(Red, "Auto Cube: Horadric Cube not found in inventory");
+			isAutoCubing = false;
+			stashInteractionMode = false;
+			return;
+		}
+		
+		waitingForCubeToOpen = true;
+		lastAutoCubeTick = currentTick;
+		return;
+	}
+	
+	// Phase 2: Wait for cube to open
+	if (waitingForCubeToOpen) {
+		if (D2CLIENT_GetUIState(UI_CUBE)) {
+			// Cube is now open, switch to normal AutoCube mode
+			waitingForCubeToOpen = false;
+			stashInteractionMode = false;  // Let ProcessAutoCubeStep take over
+			
+			// Initialize normal AutoCube state
+			currentRecipeIdx = 0;
+			currentRecipeIteration = 0;
+			lastAutoCubeTick = currentTick;
+			targetOutputCount = 0;
+			movedOutputCount = 0;
+			clearingNonRecipeItems = false;
+			progressMadeThisCycle = false;
+			failedOutputOnlyCount = 0;
+			validRecipeIndices.clear();
+			validRecipesScanned = false;
+			processingLowerStatItem = false;
+			waitingForLowerStatTransmute = false;
+			waitingForLowerStatOutputMove = false;
+			processingEssenceGems = false;
+			processingEssenceRunes = false;
+			processingEssenceUniques = false;
+			
+			PrintText(White, "Auto Cube: Processing...");
+			return;
+		}
+		
+		// Retry opening cube or prompt if it doesn't work
+		if (currentTick - lastAutoCubeTick > 500) {
+			// Try to open cube again
+			DWORD cubeId = 0;
+			for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
+				if (pItem->pItemData->ItemLocation == STORAGE_INVENTORY) {
+					ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
+					if (pItemText && pItemText->szCode) {
+						char* code = pItemText->szCode;
+						if (code[0] == 'b' && code[1] == 'o' && code[2] == 'x') {
+							cubeId = pItem->dwUnitId;
+							break;
+						}
+					}
+				}
+			}
+			
+			if (cubeId > 0) {
+				BYTE PacketData[13] = { 0x20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+				*reinterpret_cast<int*>(PacketData + 1) = cubeId;
+				*reinterpret_cast<WORD*>(PacketData + 5) = (WORD)unit->pPath->xPos;
+				*reinterpret_cast<WORD*>(PacketData + 9) = (WORD)unit->pPath->yPos;
+				D2NET_SendPacket(13, 0, PacketData);
+			}
+			lastAutoCubeTick = currentTick;
+		}
+		return;
+	}
+	
+	// Phase 3: Wait for cube to close (after AutoCube finishes)
+	if (waitingForCubeToClose) {
+		if (!D2CLIENT_GetUIState(UI_CUBE)) {
+			// Cube closed, now reopen stash
+			waitingForCubeToClose = false;
+			waitingForStashToReopen = true;
+			lastAutoCubeTick = currentTick;
+			PrintText(Yellow, "Auto Cube: Open stash to restore items");
+			return;
+		}
+		
+		// Send ESC to close cube
+		if (currentTick - lastAutoCubeTick > 300) {
+			keybd_event(VK_ESCAPE, 0, 0, 0);
+			keybd_event(VK_ESCAPE, 0, KEYEVENTF_KEYUP, 0);
+			lastAutoCubeTick = currentTick;
+		}
+		return;
+	}
+	
+	// Phase 4: Wait for stash to reopen
+	if (waitingForStashToReopen) {
+		if (D2CLIENT_GetUIState(UI_STASH)) {
+			// Stash reopened, start restoring items
+			waitingForStashToReopen = false;
+			restoringItemsToStash = true;
+			stashRestoreIndex = 0;
+			lastAutoCubeTick = currentTick;
+			PrintText(White, "Auto Cube: Restoring items to stash...");
+			return;
+		}
+		
+		// Try to reopen stash automatically using saved unit ID
+		if (currentTick - lastAutoCubeTick > 500) {
+			if (savedStashUnitId != 0) {
+				// Send interact packet (0x13) to open stash
+				BYTE PacketData[9] = {0x13, 0, 0, 0, 0, 0, 0, 0, 0};
+				*(DWORD*)&PacketData[1] = UNIT_OBJECT;
+				*(DWORD*)&PacketData[5] = savedStashUnitId;
+				D2NET_SendPacket(9, 1, PacketData);
+			} else {
+				PrintText(Yellow, "Auto Cube: Open stash to restore items");
+			}
+			lastAutoCubeTick = currentTick;
+		}
+		return;
+	}
+	
+	// Phase 5: Restore items to stash
+	if (restoringItemsToStash) {
+		// Check if stash is still open
+		if (!D2CLIENT_GetUIState(UI_STASH)) {
+			PrintText(Red, "Auto Cube: Stash closed during restore");
+			isAutoCubing = false;
+			stashInteractionMode = false;
+			ResetStashInteractionState();
+			return;
+		}
+		
+		// Process one item at a time
+		while (stashRestoreIndex < (int)stashItemsToMove.size()) {
+			StashItemRecord& record = stashItemsToMove[stashRestoreIndex];
+			
+			// Find item in inventory by matching item code
+			UnitAny* item = NULL;
+			for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
+				if (pItem->pItemData->ItemLocation == STORAGE_INVENTORY) {
+					ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
+					if (pItemText && pItemText->szCode) {
+						char* itemCode = pItemText->szCode;
+						if (itemCode[0] == record.itemCode[0] &&
+						    itemCode[1] == record.itemCode[1] &&
+						    itemCode[2] == record.itemCode[2]) {
+							item = pItem;
+							break;
+						}
+					}
+				}
+			}
+			
+			if (!item) {
+				// Item not found (was cubed), skip
+				stashRestoreIndex++;
+				continue;
+			}
+			
+			// Check if original position is free
+			if (!Init()) {
+				isAutoCubing = false;
+				stashInteractionMode = false;
+				return;
+			}
+			
+			// Build stash grid
+			memset(StashItemIds, 0, STASH_WIDTH * STASH_HEIGHT * sizeof(int));
+			for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
+				if (pItem->pItemData->ItemLocation == STORAGE_STASH) {
+					int xStart = pItem->pObjectPath->dwPosX;
+					int yStart = pItem->pObjectPath->dwPosY;
+					BYTE xSize = D2COMMON_GetItemText(pItem->dwTxtFileNo)->xSize;
+					BYTE ySize = D2COMMON_GetItemText(pItem->dwTxtFileNo)->ySize;
+					for (int x = xStart; x < xStart + xSize && x < STASH_WIDTH; x++) {
+						for (int y = yStart; y < yStart + ySize && y < STASH_HEIGHT; y++) {
+							StashItemIds[y * STASH_WIDTH + x] = pItem->dwUnitId;
+						}
+					}
+				}
+			}
+			
+			// Check if original position is free
+			ItemText* pItemText = D2COMMON_GetItemText(item->dwTxtFileNo);
+			if (!pItemText) {
+				stashRestoreIndex++;
+				continue;
+			}
+			
+			BYTE xSize = pItemText->xSize;
+			BYTE ySize = pItemText->ySize;
+			bool positionFree = true;
+			for (unsigned int x = record.x; x < record.x + xSize && x < (unsigned int)STASH_WIDTH; x++) {
+				for (unsigned int y = record.y; y < record.y + ySize && y < (unsigned int)STASH_HEIGHT; y++) {
+					if (StashItemIds[y * STASH_WIDTH + x] != 0) {
+						positionFree = false;
+						break;
+					}
+				}
+				if (!positionFree) break;
+			}
+			
+			if (!positionFree) {
+				PrintText(Orange, "Auto Cube: Original position blocked, skipping item");
+				stashRestoreIndex++;
+				continue;
+			}
+			
+			// Manually set up ActivePacket with original stash position
+			Lock();
+			if (ActivePacket.startTicks == 0) {
+				ActivePacket.itemId = item->dwUnitId;
+				ActivePacket.x = record.x;  // Original X position
+				ActivePacket.y = record.y;  // Original Y position
+				ActivePacket.startTicks = BHGetTickCount();
+				ActivePacket.destination = STORAGE_STASH;
+				Unlock();
+				
+				// Pick up item - packet handler will place it at ActivePacket coordinates
+				PickUpItem();
+				waitingForInvToStashMove = true;
+				lastAutoCubeTick = currentTick;
+				return;
+			} else {
+				Unlock();
+				// Another move in progress, wait
+				return;
+			}
+		}
+		
+		// All items restored
+		PrintText(Green, "Auto Cube: Complete! Items restored to stash");
+		isAutoCubing = false;
+		stashInteractionMode = false;
+		ResetStashInteractionState();
+		return;
+	}
 }
 
 bool ItemMover::PerformAutoCube() {
@@ -2689,8 +3248,16 @@ void ItemMover::ProcessAutoCubeStep() {
 		
 		// If no valid recipes found, stop auto-cubing
 		if (validRecipeIndices.empty()) {
-			isAutoCubing = false;
-			PrintText(White, "Auto Cube: Finished (no matching recipes)");
+			// Check if we need to restore stash items
+			if (!stashItemsToMove.empty()) {
+				stashInteractionMode = true;
+				waitingForCubeToClose = true;
+				lastAutoCubeTick = currentTick;
+				PrintText(White, "Auto Cube: Finished - restoring stash items...");
+			} else {
+				isAutoCubing = false;
+				PrintText(White, "Auto Cube: Finished (no matching recipes)");
+			}
 			return;
 		}
 	}
@@ -2705,8 +3272,16 @@ void ItemMover::ProcessAutoCubeStep() {
 		// Only show error if we haven't just finished scanning (which would have handled it already)
 		if (validRecipesScanned) {
 			// We scanned but found no recipes - this is normal, just stop
-			isAutoCubing = false;
-			PrintText(White, "Auto Cube: Finished (no matching recipes)");
+			// Check if we need to restore stash items
+			if (!stashItemsToMove.empty()) {
+				stashInteractionMode = true;
+				waitingForCubeToClose = true;
+				lastAutoCubeTick = currentTick;
+				PrintText(White, "Auto Cube: Finished - restoring stash items...");
+			} else {
+				isAutoCubing = false;
+				PrintText(White, "Auto Cube: Finished (no matching recipes)");
+			}
 			return;
 		} else {
 			// Invalid state - recipes haven't been scanned but indices are empty
@@ -2730,8 +3305,16 @@ void ItemMover::ProcessAutoCubeStep() {
 		// Check if we made any progress in the previous cycle
 		if (!progressMadeThisCycle && currentRecipeIteration > 1) {
 			// No progress was made in the last full cycle - no more recipes to process
-			isAutoCubing = false;
-			PrintText(White, "Auto Cube: Finished (no more recipes)");
+			// Check if we need to restore stash items
+			if (!stashItemsToMove.empty()) {
+				stashInteractionMode = true;
+				waitingForCubeToClose = true;
+				lastAutoCubeTick = currentTick;
+				PrintText(White, "Auto Cube: Finished - restoring stash items...");
+			} else {
+				isAutoCubing = false;
+				PrintText(White, "Auto Cube: Finished (no more recipes)");
+			}
 			return;
 		}
 		
@@ -2765,8 +3348,16 @@ void ItemMover::ProcessAutoCubeStep() {
 		
 		// Safety limit - stop after many full cycles (fallback)
 		if (currentRecipeIteration > 100) {
-			isAutoCubing = false;
-			PrintText(White, "Auto Cube: Finished (safety limit)");
+			// Check if we need to restore stash items
+			if (!stashItemsToMove.empty()) {
+				stashInteractionMode = true;
+				waitingForCubeToClose = true;
+				lastAutoCubeTick = currentTick;
+				PrintText(White, "Auto Cube: Finished - restoring stash items...");
+			} else {
+				isAutoCubing = false;
+				PrintText(White, "Auto Cube: Finished (safety limit)");
+			}
 			return;
 		}
 		
@@ -2872,8 +3463,16 @@ void ItemMover::ProcessAutoCubeStep() {
 		// Check if we made any progress in the previous cycle
 		if (!progressMadeThisCycle && currentRecipeIteration > 1) {
 			// No progress was made in the last full cycle - no more recipes to process
-			isAutoCubing = false;
-			PrintText(White, "Auto Cube: Finished (no more recipes)");
+			// Check if we need to restore stash items
+			if (!stashItemsToMove.empty()) {
+				stashInteractionMode = true;
+				waitingForCubeToClose = true;
+				lastAutoCubeTick = currentTick;
+				PrintText(White, "Auto Cube: Finished - restoring stash items...");
+			} else {
+				isAutoCubing = false;
+				PrintText(White, "Auto Cube: Finished (no more recipes)");
+			}
 			return;
 		}
 		
@@ -2906,8 +3505,16 @@ void ItemMover::ProcessAutoCubeStep() {
 		
 		// Safety limit - stop after many full cycles (fallback)
 		if (currentRecipeIteration > 100) {
-			isAutoCubing = false;
-			PrintText(White, "Auto Cube: Finished (safety limit)");
+			// Check if we need to restore stash items
+			if (!stashItemsToMove.empty()) {
+				stashInteractionMode = true;
+				waitingForCubeToClose = true;
+				lastAutoCubeTick = currentTick;
+				PrintText(White, "Auto Cube: Finished - restoring stash items...");
+			} else {
+				isAutoCubing = false;
+				PrintText(White, "Auto Cube: Finished (safety limit)");
+			}
 			return;
 		}
 	}
