@@ -6,6 +6,7 @@
 #include "../../D2Ptrs.h"
 #include "../../D2Stubs.h"
 #include "../../D2Helpers.h"
+#include "../../TableReader.h"
 #include "../ScreenInfo/ScreenInfo.h"
 #include <set>
 #include <vector>
@@ -473,6 +474,12 @@ void ItemMover::OnLoad() {
 	new Drawing::Checkhook(settingsTab, leftX, (bottomY += 15), &autoEssenceUniques.state, "Auto Essence Uniques/Sets >=");
 	std::vector<std::string> uniqueTiers = {"Tier 1", "Tier 2", "Tier 3", "Tier 4", "Tier 5", "Tier 6"};
 	new Drawing::Combohook(settingsTab, leftX + 20, (bottomY += 15), 100, &autoEssenceUniqueTier, uniqueTiers);
+	bottomY += 5;  // Extra spacing to prevent overlap
+	
+	// Auto Essence Messages checkbox with dropdown (dropdown on next line with extra spacing)
+	new Drawing::Checkhook(settingsTab, leftX, (bottomY += 15), &autoEssenceHccMisc.state, "Auto Essence Messages >=");
+	std::vector<std::string> hccMiscTiers = {"Tier 1", "Tier 2", "Tier 3", "Tier 4", "Tier 5", "Tier 6"};
+	new Drawing::Combohook(settingsTab, leftX + 20, (bottomY += 15), 100, &autoEssenceHccMiscTier, hccMiscTiers);
 	bottomY += 5;  // Extra spacing to prevent overlap
 
 	// Right side: QoL features and Auto Pickup
@@ -1551,6 +1558,73 @@ int ItemMover::GetItemTier(UnitAny* item) {
 	
 	// No matching rule found, return 0 (no tier)
 	return 0;
+}
+
+// Helper function to get the tier of any item from ItemDisplay rules (without quality restriction)
+int ItemMover::GetItemTierForType(UnitAny* item) {
+	if (!item || !item->pItemData) {
+		return 0;
+	}
+	
+	// Initialize ItemDisplay rules if needed
+	ItemDisplay::InitializeItemRules();
+	
+	// Create UnitItemInfo from the item (same pattern as map_action_cache uses)
+	UnitItemInfo uInfo;
+	if (CreateUnitItemInfo(&uInfo, item) != 0) {
+		return 0; // Failed to create UnitItemInfo
+	}
+	
+	// Use map_action_cache to get actions (same as existing ping/tier code)
+	// This evaluates MapRuleList which should contain tier information
+	const vector<Action> actions = map_action_cache.Get(&uInfo);
+	for (auto &action : actions) {
+		// Return the first matching action's tier (pingLevel)
+		// Tier is stored in pingLevel (0 = no tier, 1-6 = Tier 1-6)
+		if (action.pingLevel > 0) {
+			return action.pingLevel;
+		}
+	}
+	
+	// If no tier found in map rules, check all rules as fallback
+	for (vector<Rule*>::iterator it = RuleList.begin(); it != RuleList.end(); it++) {
+		if ((*it)->Evaluate(&uInfo, NULL)) {
+			if ((*it)->action.pingLevel > 0) {
+				return (*it)->action.pingLevel;
+			}
+		}
+	}
+	
+	// No matching rule found, return 0 (no tier)
+	return 0;
+}
+
+// Check if item is of type "augr"
+bool ItemMover::IsAugrType(UnitAny* item) {
+	if (!item || item->dwType != UNIT_ITEM) {
+		return false;
+	}
+	
+	// Get item code from ItemText
+	ItemText* pItemText = D2COMMON_GetItemText(item->dwTxtFileNo);
+	if (!pItemText || !pItemText->szCode) {
+		return false;
+	}
+	
+	// Convert item code to string for lookup
+	std::string itemCodeStr(pItemText->szCode, 3); // First 3 characters
+	
+	// Look up item in ItemAttributeMap (loaded from misc.txt, weapons.txt, armor.txt)
+	std::map<std::string, ItemAttributes*>::iterator it = ItemAttributeMap.find(itemCodeStr);
+	if (it != ItemAttributeMap.end()) {
+		ItemAttributes* attrs = it->second;
+		// Check if category (type from misc.txt) is "augr"
+		if (attrs->category == "augr") {
+			return true;
+		}
+	}
+	
+	return false;
 }
 
 // Get stat 508 value from an item (returns -1 if not found or invalid)
@@ -2955,7 +3029,250 @@ void ItemMover::ProcessAutoCubeStep() {
 		return;
 	}
 	
-	// Process Auto Essence Uniques/Sets recipe if enabled (process after essence gems and runes, before regular recipes)
+	// Process Auto Essence HCC Misc recipe if enabled (process after essence gems and runes, before uniques)
+	// Only process essence HCC misc if the checkbox is enabled
+	if (autoEssenceHccMisc.state) {
+		// Convert dropdown index to tier (0=Tier 1, 1=Tier 2, 2=Tier 3, 3=Tier 4, 4=Tier 5, 5=Tier 6)
+		// We process items with tier >= selected tier (selected tier is autoEssenceHccMiscTier + 1)
+		int minTier = (int)(autoEssenceHccMiscTier + 1);
+		
+		// First, check if there are any matching HCC misc items (type "augr") in inventory before moving catalyst
+		int matchingHccMiscInInventory = 0;
+		for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
+			if (pItem->pItemData->ItemLocation == STORAGE_INVENTORY) {
+				// Check if it's an "augr" type item
+				if (IsAugrType(pItem)) {
+					int itemTier = GetItemTierForType(pItem);
+					// Process items with tier >= minTier (if tier is 0, it means no tier assigned, skip it)
+					if (itemTier > 0 && itemTier >= minTier) {
+						matchingHccMiscInInventory++;
+					}
+				}
+			}
+		}
+		
+		// Only process essence HCC misc if we have matching items OR if we're already processing (catalyst in cube with HCC misc)
+		int catalystInCube = CountItemsInCube(unit, "hcc");
+		int hccMiscInCube = 0;
+		if (catalystInCube > 0) {
+			// Check if there's an HCC misc item already in cube
+			for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
+				if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
+					if (IsAugrType(pItem)) {
+						int itemTier = GetItemTierForType(pItem);
+						if (itemTier > 0 && itemTier >= minTier) {
+							hccMiscInCube++;
+						}
+					}
+				}
+			}
+		}
+		
+		// Only process essence HCC misc if we have items to process (in inventory or already in cube)
+		if (matchingHccMiscInInventory > 0 || hccMiscInCube > 0) {
+			if (catalystInCube == 0 && !essenceHccMiscCubeInCube) {
+				// Need to move catalyst to cube first
+				if (FindAndMoveItemsToCube(unit, "hcc", 1)) {
+					essenceHccMiscCubeInCube = true;
+					processingEssenceHccMisc = true;
+					lastAutoCubeTick = currentTick;
+					return; // Wait for catalyst to be moved
+				} else {
+					// Can't find catalyst, skip essence HCC misc and continue to regular recipes
+					processingEssenceHccMisc = false;
+					essenceHccMiscCubeInCube = false;
+				}
+			} else if (catalystInCube > 0) {
+				essenceHccMiscCubeInCube = true;
+				processingEssenceHccMisc = true;
+			}
+		} else {
+			// No matching items available, skip essence HCC misc and continue to regular recipes
+			processingEssenceHccMisc = false;
+			essenceHccMiscCubeInCube = false;
+		}
+		
+		if (essenceHccMiscCubeInCube && processingEssenceHccMisc) {
+			// Check if we have an HCC misc item in cube
+			bool hasHccMiscInCube = false;
+			UnitAny* hccMiscInCubeItem = NULL;
+			for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
+				if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
+					if (IsAugrType(pItem)) {
+						int itemTier = GetItemTierForType(pItem);
+						if (itemTier > 0 && itemTier >= minTier) {
+							hasHccMiscInCube = true;
+							hccMiscInCubeItem = pItem;
+							break;
+						}
+					}
+				}
+			}
+			
+			// Clear any non-catalyst, non-HCC misc items first
+			for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
+				if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
+					ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
+					if (pItemText && pItemText->szCode) {
+						char* itemCode = pItemText->szCode;
+						bool isCatalyst = (itemCode[0] == 'h' && itemCode[1] == 'c' && itemCode[2] == 'c');
+						if (!isCatalyst) {
+							// Check if it's an HCC misc item with matching tier
+							bool isMatchingHccMisc = false;
+							if (IsAugrType(pItem)) {
+								int itemTier = GetItemTierForType(pItem);
+								if (itemTier > 0 && itemTier >= minTier) {
+									isMatchingHccMisc = true;
+								}
+							}
+							if (!isMatchingHccMisc) {
+								// Not a matching HCC misc item, clear it
+								if (!MoveItemToInventory(unit, pItem)) {
+									// Inventory full, stop auto-cubing
+									isAutoCubing = false;
+									processingEssenceHccMisc = false;
+									PrintText(Red, "Auto Cube: Stopped - inventory full (cannot move items from cube)");
+									return;
+								}
+								lastAutoCubeTick = currentTick;
+								return; // Wait for item to be moved
+							}
+						}
+					}
+				}
+			}
+			
+			// If we don't have an HCC misc item in cube, try to move one
+			if (!hasHccMiscInCube) {
+				// Find a matching HCC misc item in inventory
+				UnitAny* itemToMove = NULL;
+				for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
+					if (pItem->pItemData->ItemLocation == STORAGE_INVENTORY) {
+						if (IsAugrType(pItem)) {
+							int itemTier = GetItemTierForType(pItem);
+							if (itemTier > 0 && itemTier >= minTier) {
+								itemToMove = pItem;
+								break;
+							}
+						}
+					}
+				}
+				
+				if (itemToMove) {
+					// Move the HCC misc item to cube
+					ItemText* pItemText = D2COMMON_GetItemText(itemToMove->dwTxtFileNo);
+					if (pItemText && pItemText->szCode) {
+						int itemGridX = itemToMove->pObjectPath->dwPosX;
+						int itemGridY = itemToMove->pObjectPath->dwPosY;
+						
+						int invUI = D2CLIENT_GetUIState(UI_INVENTORY);
+						int stashUI = D2CLIENT_GetUIState(UI_STASH);
+						bool moveItem = LoadInventory(unit, STORAGE_INVENTORY, itemGridX, itemGridY, true, false, stashUI, invUI);
+						
+						if (moveItem) {
+							PickUpItem();
+							lastAutoCubeTick = currentTick;
+							return; // Wait for item to be moved
+						}
+					}
+				} else {
+					// No more matching HCC misc items available
+					// Done with essence HCC misc - clear cube and reset state for regular recipes
+					processingEssenceHccMisc = false;
+					essenceHccMiscCubeInCube = false;
+					
+					// Clear the cube completely before starting regular recipes
+					int clearResult = ClearCube(unit);
+					if (clearResult == -1) {
+						// Inventory full, stop auto-cubing
+						isAutoCubing = false;
+						PrintText(Red, "Auto Cube: Stopped - inventory full (cannot move items from cube)");
+						return;
+					} else if (clearResult == 1) {
+						// Item is being moved, wait for it
+						lastAutoCubeTick = currentTick;
+						return;
+					}
+					
+					// Reset recipe state when switching from essence HCC misc to regular recipes
+					currentRecipeIdx = 0;
+					targetOutputCount = 0;
+					movedOutputCount = 0;
+					clearingNonRecipeItems = false;
+					clearingItemId = 0;
+					waitingForOutputTransmute = false;
+					validRecipesScanned = false; // Force rescan
+				}
+			} else {
+				// We have an HCC misc item in cube with catalyst, transmute
+				D2CLIENT_Transmute();
+				lastAutoCubeTick = currentTick;
+				return; // Wait for transmute, then continue processing essence HCC misc
+			}
+		}
+	} else {
+		// Auto Essence HCC Misc is disabled, reset state and clear any catalyst from cube
+		if (processingEssenceHccMisc || essenceHccMiscCubeInCube) {
+			// We were processing essence HCC misc, now switching to regular recipes
+			processingEssenceHccMisc = false;
+			essenceHccMiscCubeInCube = false;
+			
+			// Reset recipe state when switching from essence HCC misc to regular recipes
+			currentRecipeIdx = 0;
+			targetOutputCount = 0;
+			movedOutputCount = 0;
+			clearingNonRecipeItems = false;
+			clearingItemId = 0;
+			waitingForOutputTransmute = false;
+			validRecipesScanned = false; // Force rescan
+		}
+		
+		// If catalyst is in cube and essence HCC misc is disabled, move it back to inventory
+		// But only if we're not processing essence gems/runes/uniques (they might be using the catalyst)
+		if (!processingEssenceGems && !processingEssenceRunes && !processingEssenceUniques) {
+			int catalystInCube = CountItemsInCube(unit, "hcc");
+			if (catalystInCube > 0) {
+				// Check if there's an HCC misc item in cube - if so, we might be in the middle of processing
+				bool hasHccMiscInCube = false;
+				for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
+					if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
+						if (IsAugrType(pItem)) {
+							hasHccMiscInCube = true;
+							break;
+						}
+					}
+				}
+				
+				// Only move catalyst back if there's no HCC misc item in cube
+				if (!hasHccMiscInCube) {
+					// Find and move catalyst back to inventory
+					for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
+						if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
+							ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
+							if (pItemText && pItemText->szCode) {
+								char* itemCode = pItemText->szCode;
+								bool isCatalyst = (itemCode[0] == 'h' && itemCode[1] == 'c' && itemCode[2] == 'c');
+								if (isCatalyst) {
+									if (MoveItemToInventory(unit, pItem)) {
+										lastAutoCubeTick = currentTick;
+										return; // Wait for catalyst to be moved back
+									}
+									break;
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	// If we're still processing essence HCC misc, don't process regular recipes yet
+	if (processingEssenceHccMisc) {
+		return;
+	}
+	
+	// Process Auto Essence Uniques/Sets recipe if enabled (process after essence gems, runes, and HCC misc, before regular recipes)
 	// Only process essence uniques if the checkbox is enabled
 	if (autoEssenceUniques.state) {
 		// Convert dropdown index to tier (0=Tier 1, 1=Tier 2, 2=Tier 3, 3=Tier 4, 4=Tier 5, 5=Tier 6)
@@ -3159,8 +3476,8 @@ void ItemMover::ProcessAutoCubeStep() {
 		}
 		
 		// If catalyst is in cube and essence uniques are disabled, move it back to inventory
-		// But only if we're not processing essence gems (they might be using the catalyst)
-		if (!processingEssenceGems) {
+		// But only if we're not processing essence gems/HCC misc (they might be using the catalyst)
+		if (!processingEssenceGems && !processingEssenceHccMisc) {
 			int catalystInCube = CountItemsInCube(unit, "hcc");
 			if (catalystInCube > 0) {
 				// Check if there's a unique/set item in cube - if so, we might be in the middle of processing

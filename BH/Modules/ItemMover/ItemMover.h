@@ -115,6 +115,8 @@ private:
 	bool essenceRunesCubeInCube;  // Is the catalyst (hcc) in the cube for essence runes?
 	bool processingEssenceUniques;  // Are we currently processing essence uniques/sets?
 	bool essenceUniquesCubeInCube;  // Is the catalyst (hcc) in the cube for essence uniques?
+	bool processingEssenceHccMisc;  // Are we currently processing essence HCC misc items?
+	bool essenceHccMiscCubeInCube;  // Is the catalyst (hcc) in the cube for essence HCC misc?
 	ULONGLONG cursorItemStartTick;  // When did we first detect an item on cursor?
 	bool cursorItemRecoveryAttempted;  // Have we tried to recover from stuck cursor?
 	ULONGLONG cursorItemRecoveryTick;  // When did we last attempt recovery?
@@ -140,9 +142,11 @@ private:
 	Toggle autoEssenceGems;
 	Toggle autoEssenceRunes;
 	Toggle autoEssenceUniques;
+	Toggle autoEssenceHccMisc;
 	unsigned int autoEssenceGemQuality;  // Index for gem quality dropdown
 	unsigned int autoEssenceRuneQuality;  // Index for rune quality dropdown
 	unsigned int autoEssenceUniqueTier;  // Index for unique/set tier dropdown
+	unsigned int autoEssenceHccMiscTier;  // Index for HCC misc tier dropdown
 	
 	// Stash interaction state for AutoCube
 	bool stashInteractionMode;           // True if AutoCube was started with stash open
@@ -200,6 +204,8 @@ public:
 		essenceRunesCubeInCube(false),
 		processingEssenceUniques(false),
 		essenceUniquesCubeInCube(false),
+		processingEssenceHccMisc(false),
+		essenceHccMiscCubeInCube(false),
 		validRecipesScanned(false),
 		cursorItemStartTick(0),
 		cursorItemRecoveryAttempted(false),
@@ -213,6 +219,7 @@ public:
 		autoEssenceGemQuality(0),
 		autoEssenceRuneQuality(0),
 		autoEssenceUniqueTier(0),
+		autoEssenceHccMiscTier(0),
 		stashInteractionMode(false),
 		stashMoveIndex(0),
 		waitingForStashToInvMove(false),
@@ -236,6 +243,8 @@ public:
 		autoEssenceRunes.state = false;
 		autoEssenceUniques.toggle = 0;
 		autoEssenceUniques.state = false;
+		autoEssenceHccMisc.toggle = 0;
+		autoEssenceHccMisc.state = false;
 	};
 
 	~ItemMover() {
@@ -281,6 +290,8 @@ public:
 	bool FindAndMoveGemsToCube(UnitAny* unit, BYTE maxGemLevel, int maxCount);
 	bool FindAndMoveRunesToCube(UnitAny* unit, BYTE maxRuneNumber, int maxCount);
 	int GetItemTier(UnitAny* item);  // Get tier from ItemDisplay rules for unique/set items
+	int GetItemTierForType(UnitAny* item);  // Get tier from ItemDisplay rules for any item type
+	bool IsAugrType(UnitAny* item);  // Check if item is of type "augr" (from misc.txt category)
 	int GetItemStat508(UnitAny* item);  // Get stat 508 value from an item (returns -1 if not found)
 	bool IsStat508LimitedRecipe(const char* inputCode);  // Check if recipe is stat 508 limited (checks against recipes array)
 	UnitAny* GetInputItemFromCube(UnitAny* unit, const char* inputCode);  // Get the input item from cube for a recipe
