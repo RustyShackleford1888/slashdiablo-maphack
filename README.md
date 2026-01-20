@@ -64,6 +64,22 @@ Mustache[item]: {{>header}}{{>stats}}{{^isRuneword}}{{#socketed}}\n\n  * {{>>ite
 Mustache[stash]: {{#this}}* {{>item}}\n\n{{/this}}
 ```
 
+# Release Notes for 2.0.RBeta
+* Auto Gold Pickup
+* Transmute Cube Hotkey
+* Gamble Refresh Hotkey
+* AutoCube Feature for resurgence
+  -  Automatically Cube Multiple stacks of same items into one (or more if you have more than 100)
+  -  Automatically stack stackable items into a stack if a stack is available or not
+  -  Automatically Cube Gems by tier based on what you choose to be dusted
+  -  Automatically Cube Runes base on what you choose to be automatically dusted
+  -  Automatically Cube uniques/sets based on Tier(BH.cfg) based on your preference.
+  -  Automatically cube messages based on Tier(BH.cfg) based on your preference.
+  -  Automatically pull and restore stacks from stash needed for cubing recipes when AutoCube is used with stash open
+  -  All of these features can be turned on or off in the interaction tab of the menu
+
+* Ancient Kaa's Tomb is now identified on the maphack with a line being drawn to him when entering the tomb.
+
 # Release Notes for 1.9.9
 * Add new text replacement colors for glide (with default non-glide colors)
   * coral (red), sage (green), teal (blue), light_gray (gray)

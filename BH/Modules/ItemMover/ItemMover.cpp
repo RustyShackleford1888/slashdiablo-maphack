@@ -402,9 +402,11 @@ void ItemMover::LoadConfig() {
 	BH::config->ReadToggle("Auto Essence Gems", "None", false, autoEssenceGems);
 	BH::config->ReadToggle("Auto Essence Runes", "None", false, autoEssenceRunes);
 	BH::config->ReadToggle("Auto Essence Uniques", "None", false, autoEssenceUniques);
+	BH::config->ReadToggle("Auto Essence Messages", "None", false, autoEssenceHccMisc);
 	BH::config->ReadInt("Auto Essence Gem Quality", autoEssenceGemQuality);
 	BH::config->ReadInt("Auto Essence Rune Quality", autoEssenceRuneQuality);
 	BH::config->ReadInt("Auto Essence Unique Tier", autoEssenceUniqueTier);
+	BH::config->ReadInt("Auto Essence Messages Tier", autoEssenceHccMiscTier);
 }
 
 void ItemMover::OnLoad() {
@@ -432,6 +434,8 @@ void ItemMover::OnLoad() {
 	Gambling* gambling = (Gambling*)BH::moduleManager->Get("gambling");
 	if (gambling) {
 		new Drawing::Keyhook(settingsTab, x2, (y2 += 15), gambling->GetRefreshKeyPtr(), "Gambling Refresh:     ");
+		colored_text = new Drawing::Texthook(settingsTab, x2, (y2 += 15), "Warning: Flashing effects - Epilepsy risk");
+		colored_text->SetColor(Red);
 	}
 	
 	// Add Glossary Toggle keyhook if Glossary module is loaded (second column)
@@ -452,6 +456,8 @@ void ItemMover::OnLoad() {
 
 	// Left side: Auto Cube settings
 	new Drawing::Texthook(settingsTab, leftX, (bottomY += 15), "Auto Cube");
+	colored_text = new Drawing::Texthook(settingsTab, leftX, (bottomY += 15), "Warning - experimental feature");
+	colored_text->SetColor(Red);
 	new Drawing::Keyhook(settingsTab, leftX, (bottomY += 15), &AutoCubeKey, "Auto Cube:            ");
 	
 	new Drawing::Checkhook(settingsTab, leftX, (bottomY += 15), &autoStackItems.state, "Auto Stack Items");
@@ -2651,43 +2657,12 @@ void ItemMover::ProcessAutoCubeStep() {
 			}
 		}
 	} else {
-		// Auto Essence Gems is disabled, reset state and clear any catalyst from cube
+		// Auto Essence Gems is disabled, reset state (but leave catalyst in cube for other essence recipes)
 		if (processingEssenceGems || essenceCubeInCube) {
-			// We were processing essence gems, now switching to regular recipes
+			// We were processing essence gems, now switching to other recipes
 			processingEssenceGems = false;
 			essenceCubeInCube = false;
 			essenceGemsMoved = 0;
-			
-			// Reset recipe state when switching from essence gems to regular recipes
-			currentRecipeIdx = 0;
-			targetOutputCount = 0;
-			movedOutputCount = 0;
-			clearingNonRecipeItems = false;
-			clearingItemId = 0;
-			waitingForOutputTransmute = false;
-			validRecipesScanned = false; // Force rescan
-		}
-		
-		// If catalyst is in cube and essence gems are disabled, move it back to inventory
-		int catalystInCube = CountItemsInCube(unit, "hcc");
-		if (catalystInCube > 0) {
-			// Find and move catalyst back to inventory
-			for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
-				if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-					ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-					if (pItemText && pItemText->szCode) {
-						char* itemCode = pItemText->szCode;
-						bool isCatalyst = (itemCode[0] == 'h' && itemCode[1] == 'c' && itemCode[2] == 'c');
-						if (isCatalyst) {
-							if (MoveItemToInventory(unit, pItem)) {
-								lastAutoCubeTick = currentTick;
-								return; // Wait for catalyst to be moved back
-							}
-							break;
-						}
-					}
-				}
-			}
 		}
 	}
 	
@@ -2758,11 +2733,12 @@ void ItemMover::ProcessAutoCubeStep() {
 					lastAutoCubeTick = currentTick;
 					return; // Wait for catalyst to be moved
 				} else {
-					// Can't find catalyst, skip essence runes and continue to regular recipes
+					// Can't find catalyst, skip essence runes and continue to other recipes
 					processingEssenceRunes = false;
 					essenceRunesCubeInCube = false;
 				}
 			} else if (catalystInCube > 0) {
+				// Catalyst already in cube, use it directly
 				essenceRunesCubeInCube = true;
 				processingEssenceRunes = true;
 			}
@@ -2958,69 +2934,12 @@ void ItemMover::ProcessAutoCubeStep() {
 			}
 		}
 	} else {
-		// Auto Essence Runes is disabled, reset state and clear any catalyst from cube
+		// Auto Essence Runes is disabled, reset state (but leave catalyst in cube for other essence recipes)
 		if (processingEssenceRunes || essenceRunesCubeInCube) {
-			// We were processing essence runes, now switching to regular recipes
+			// We were processing essence runes, now switching to other recipes
 			processingEssenceRunes = false;
 			essenceRunesCubeInCube = false;
 			essenceRunesMoved = 0;
-			
-			// Reset recipe state when switching from essence runes to regular recipes
-			currentRecipeIdx = 0;
-			targetOutputCount = 0;
-			movedOutputCount = 0;
-			clearingNonRecipeItems = false;
-			clearingItemId = 0;
-			waitingForOutputTransmute = false;
-			validRecipesScanned = false; // Force rescan
-		}
-		
-		// If catalyst is in cube and essence runes are disabled, move it back to inventory
-		// But only if we're not processing essence gems (they might be using the catalyst)
-		if (!processingEssenceGems) {
-			int catalystInCube = CountItemsInCube(unit, "hcc");
-			if (catalystInCube > 0) {
-				// Check if there's a rune in cube - if so, we might be in the middle of processing
-				bool hasRuneInCube = false;
-				for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
-					if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-						ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-						if (pItemText && pItemText->szCode) {
-							// Convert item code to string for lookup
-							std::string itemCodeStr(pItemText->szCode, 3); // First 3 characters
-							std::map<std::string, ItemAttributes*>::iterator it = ItemAttributeMap.find(itemCodeStr);
-							if (it != ItemAttributeMap.end()) {
-								ItemAttributes* attrs = it->second;
-								if (attrs->flags2 & ITEM_GROUP_RUNE) {
-									hasRuneInCube = true;
-									break;
-								}
-							}
-						}
-					}
-				}
-				
-				// Only move catalyst back if there's no rune in cube
-				if (!hasRuneInCube) {
-					// Find and move catalyst back to inventory
-					for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
-						if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-							ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-							if (pItemText && pItemText->szCode) {
-								char* itemCode = pItemText->szCode;
-								bool isCatalyst = (itemCode[0] == 'h' && itemCode[1] == 'c' && itemCode[2] == 'c');
-								if (isCatalyst) {
-									if (MoveItemToInventory(unit, pItem)) {
-										lastAutoCubeTick = currentTick;
-										return; // Wait for catalyst to be moved back
-									}
-									break;
-								}
-							}
-						}
-					}
-				}
-			}
 		}
 	}
 	
@@ -3078,11 +2997,12 @@ void ItemMover::ProcessAutoCubeStep() {
 					lastAutoCubeTick = currentTick;
 					return; // Wait for catalyst to be moved
 				} else {
-					// Can't find catalyst, skip essence HCC misc and continue to regular recipes
+					// Can't find catalyst, skip essence HCC misc and continue to other recipes
 					processingEssenceHccMisc = false;
 					essenceHccMiscCubeInCube = false;
 				}
 			} else if (catalystInCube > 0) {
+				// Catalyst already in cube, use it directly
 				essenceHccMiscCubeInCube = true;
 				processingEssenceHccMisc = true;
 			}
@@ -3211,59 +3131,11 @@ void ItemMover::ProcessAutoCubeStep() {
 			}
 		}
 	} else {
-		// Auto Essence HCC Misc is disabled, reset state and clear any catalyst from cube
+		// Auto Essence HCC Misc is disabled, reset state (but leave catalyst in cube for other essence recipes)
 		if (processingEssenceHccMisc || essenceHccMiscCubeInCube) {
-			// We were processing essence HCC misc, now switching to regular recipes
+			// We were processing essence HCC misc, now switching to other recipes
 			processingEssenceHccMisc = false;
 			essenceHccMiscCubeInCube = false;
-			
-			// Reset recipe state when switching from essence HCC misc to regular recipes
-			currentRecipeIdx = 0;
-			targetOutputCount = 0;
-			movedOutputCount = 0;
-			clearingNonRecipeItems = false;
-			clearingItemId = 0;
-			waitingForOutputTransmute = false;
-			validRecipesScanned = false; // Force rescan
-		}
-		
-		// If catalyst is in cube and essence HCC misc is disabled, move it back to inventory
-		// But only if we're not processing essence gems/runes/uniques (they might be using the catalyst)
-		if (!processingEssenceGems && !processingEssenceRunes && !processingEssenceUniques) {
-			int catalystInCube = CountItemsInCube(unit, "hcc");
-			if (catalystInCube > 0) {
-				// Check if there's an HCC misc item in cube - if so, we might be in the middle of processing
-				bool hasHccMiscInCube = false;
-				for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
-					if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-						if (IsAugrType(pItem)) {
-							hasHccMiscInCube = true;
-							break;
-						}
-					}
-				}
-				
-				// Only move catalyst back if there's no HCC misc item in cube
-				if (!hasHccMiscInCube) {
-					// Find and move catalyst back to inventory
-					for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
-						if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-							ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-							if (pItemText && pItemText->szCode) {
-								char* itemCode = pItemText->szCode;
-								bool isCatalyst = (itemCode[0] == 'h' && itemCode[1] == 'c' && itemCode[2] == 'c');
-								if (isCatalyst) {
-									if (MoveItemToInventory(unit, pItem)) {
-										lastAutoCubeTick = currentTick;
-										return; // Wait for catalyst to be moved back
-									}
-									break;
-								}
-							}
-						}
-					}
-				}
-			}
 		}
 	}
 	
@@ -3328,6 +3200,7 @@ void ItemMover::ProcessAutoCubeStep() {
 					essenceUniquesCubeInCube = false;
 				}
 			} else if (catalystInCube > 0) {
+				// Catalyst already in cube, use it directly
 				essenceUniquesCubeInCube = true;
 				processingEssenceUniques = true;
 			}
@@ -3459,66 +3332,76 @@ void ItemMover::ProcessAutoCubeStep() {
 			}
 		}
 	} else {
-		// Auto Essence Uniques is disabled, reset state and clear any catalyst from cube
+		// Auto Essence Uniques is disabled, reset state (but leave catalyst in cube for other essence recipes)
 		if (processingEssenceUniques || essenceUniquesCubeInCube) {
-			// We were processing essence uniques, now switching to regular recipes
+			// We were processing essence uniques, now switching to other recipes
 			processingEssenceUniques = false;
 			essenceUniquesCubeInCube = false;
-			
-			// Reset recipe state when switching from essence uniques to regular recipes
-			currentRecipeIdx = 0;
-			targetOutputCount = 0;
-			movedOutputCount = 0;
-			clearingNonRecipeItems = false;
-			clearingItemId = 0;
-			waitingForOutputTransmute = false;
-			validRecipesScanned = false; // Force rescan
 		}
-		
-		// If catalyst is in cube and essence uniques are disabled, move it back to inventory
-		// But only if we're not processing essence gems/HCC misc (they might be using the catalyst)
-		if (!processingEssenceGems && !processingEssenceHccMisc) {
-			int catalystInCube = CountItemsInCube(unit, "hcc");
-			if (catalystInCube > 0) {
-				// Check if there's a unique/set item in cube - if so, we might be in the middle of processing
-				bool hasUniqueInCube = false;
-				for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
-					if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-						if (pItem->pItemData->dwQuality == ITEM_QUALITY_UNIQUE || 
-						    pItem->pItemData->dwQuality == ITEM_QUALITY_SET) {
-							hasUniqueInCube = true;
-							break;
+	}
+	
+	// If we're still processing ANY essence recipe, don't process regular recipes yet
+	// Process ALL essence recipes first (gems, runes, HCC misc, uniques) before regular recipes
+	if (processingEssenceGems || processingEssenceRunes || processingEssenceHccMisc || processingEssenceUniques) {
+		return;
+	}
+	
+	// All essence recipes are done. If catalyst is still in cube and no essence recipes are enabled, move it back
+	// But only if NO essence recipes are enabled at all
+	if (!autoEssenceGems.state && !autoEssenceRunes.state && !autoEssenceHccMisc.state && !autoEssenceUniques.state) {
+		int catalystInCube = CountItemsInCube(unit, "hcc");
+		if (catalystInCube > 0) {
+			// Check if cube has any items that might be from essence recipes
+			bool hasEssenceItemInCube = false;
+			for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
+				if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
+					ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
+					if (pItemText && pItemText->szCode) {
+						char* itemCode = pItemText->szCode;
+						bool isCatalyst = (itemCode[0] == 'h' && itemCode[1] == 'c' && itemCode[2] == 'c');
+						if (!isCatalyst) {
+							// Check if it's a gem, rune, unique/set, or HCC misc item
+							std::string itemCodeStr(itemCode, 3);
+							std::map<std::string, ItemAttributes*>::iterator it = ItemAttributeMap.find(itemCodeStr);
+							if (it != ItemAttributeMap.end()) {
+								ItemAttributes* attrs = it->second;
+								if (attrs->flags2 & ITEM_GROUP_GEM || attrs->flags2 & ITEM_GROUP_RUNE) {
+									hasEssenceItemInCube = true;
+									break;
+								}
+							}
+							if (pItem->pItemData->dwQuality == ITEM_QUALITY_UNIQUE || 
+							    pItem->pItemData->dwQuality == ITEM_QUALITY_SET ||
+							    IsAugrType(pItem)) {
+								hasEssenceItemInCube = true;
+								break;
+							}
 						}
 					}
 				}
-				
-				// Only move catalyst back if there's no unique/set item in cube
-				if (!hasUniqueInCube) {
-					// Find and move catalyst back to inventory
-					for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
-						if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-							ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-							if (pItemText && pItemText->szCode) {
-								char* itemCode = pItemText->szCode;
-								bool isCatalyst = (itemCode[0] == 'h' && itemCode[1] == 'c' && itemCode[2] == 'c');
-								if (isCatalyst) {
-									if (MoveItemToInventory(unit, pItem)) {
-										lastAutoCubeTick = currentTick;
-										return; // Wait for catalyst to be moved back
-									}
-									break;
+			}
+			
+			// Only move catalyst back if there's no essence-related item in cube
+			if (!hasEssenceItemInCube) {
+				// Find and move catalyst back to inventory
+				for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
+					if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
+						ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
+						if (pItemText && pItemText->szCode) {
+							char* itemCode = pItemText->szCode;
+							bool isCatalyst = (itemCode[0] == 'h' && itemCode[1] == 'c' && itemCode[2] == 'c');
+							if (isCatalyst) {
+								if (MoveItemToInventory(unit, pItem)) {
+									lastAutoCubeTick = currentTick;
+									return; // Wait for catalyst to be moved back
 								}
+								break;
 							}
 						}
 					}
 				}
 			}
 		}
-	}
-	
-	// If we're still processing essence uniques, don't process regular recipes yet
-	if (processingEssenceUniques) {
-		return;
 	}
 	
 	// Use the recipes array from GetRecipesArray() (single source of truth)
