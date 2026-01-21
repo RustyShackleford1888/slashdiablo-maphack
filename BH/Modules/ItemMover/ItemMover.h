@@ -10,6 +10,8 @@
 #include <vector>
 #include <map>
 #include <deque>
+#include <set>
+#include <string>
 
 extern int INVENTORY_WIDTH;
 extern int INVENTORY_HEIGHT;
@@ -150,7 +152,9 @@ private:
 	
 	// Stash interaction state for AutoCube
 	bool stashInteractionMode;           // True if AutoCube was started with stash open
-	std::vector<StashItemRecord> stashItemsToMove;  // Items to move from stash
+	std::vector<StashItemRecord> allStashInputItems;  // ALL items found in stash to process
+	std::vector<StashItemRecord> stashItemsToMove;  // Current batch of items to move
+	int stashBatchStartIndex;            // Index in allStashInputItems for current batch start
 	int stashMoveIndex;                  // Current index in stashItemsToMove being moved
 	bool waitingForStashToInvMove;       // Waiting for stash->inventory move to complete
 	bool waitingForInvToStashMove;       // Waiting for inventory->stash move to complete
@@ -160,6 +164,8 @@ private:
 	bool restoringItemsToStash;          // Currently restoring items back to stash
 	int stashRestoreIndex;               // Current index being restored
 	DWORD savedStashUnitId;              // Unit ID of stash object to reopen
+	bool processingStashBatch;           // True during autocube phase for stash items (limits recipes)
+	std::set<std::string> stashMovedItemCodes;  // Item codes moved from stash for filtering recipes
 public:
 	ItemMover() : Module("Item Mover"),
 		ActivePacket(),
@@ -221,6 +227,7 @@ public:
 		autoEssenceUniqueTier(0),
 		autoEssenceHccMiscTier(0),
 		stashInteractionMode(false),
+		stashBatchStartIndex(0),
 		stashMoveIndex(0),
 		waitingForStashToInvMove(false),
 		waitingForInvToStashMove(false),
@@ -229,7 +236,8 @@ public:
 		waitingForStashToReopen(false),
 		restoringItemsToStash(false),
 		stashRestoreIndex(0),
-		savedStashUnitId(0) {
+		savedStashUnitId(0),
+		processingStashBatch(false) {
 
 		InitializeCriticalSection(&crit);
 		// Initialize toggles to safe defaults
