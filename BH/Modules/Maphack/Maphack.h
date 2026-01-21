@@ -32,11 +32,14 @@ class Maphack : public Module {
 		std::map<string, string> SuperUniqueColors;
 		std::map<string, string> MonsterLines;
 		std::map<string, string> MonsterHides;
+		std::map<string, string> ImpactMissileColor;
+		std::map<string, string> ImpactSkillColor;
 		std::map<string, unsigned int> TextColorMap; 
 		std::map<string, unsigned int> monsterColors;
 		std::vector<std::pair<unsigned int, unsigned int>> enhancementColors;
 		std::vector<std::pair<unsigned int, unsigned int>> auraColors;
 		std::map<string, unsigned int> missileColors;
+		std::map<int, unsigned int> impactMissileColors;
 		std::map<int, unsigned int> automapMonsterColors;
 		std::map<int, unsigned int> automapSuperUniqueColors;
 		std::map<int, unsigned int> automapMonsterLines;

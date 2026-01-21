@@ -71,6 +71,9 @@ void Maphack::LoadConfig() {
 	monsterColors.clear();
 	MonsterColors.clear();
 	missileColors.clear();
+	impactMissileColors.clear();
+	ImpactMissileColor.clear();
+	ImpactSkillColor.clear();
 	SuperUniqueColors.clear();
 	MonsterLines.clear();
 	MonsterHides.clear();
@@ -170,6 +173,42 @@ for (const auto& entry : auraColorsString) {
 		}
 	}
 
+	// Impact Missile Color[id]: color (missile ID from Missiles.txt). Impact Skill Color[id]: color (skill ID from Skills.txt, e.g. 480=mon-meteor). Draws where delayed skills will land.
+	BH::config->ReadAssoc("Impact Missile Color", ImpactMissileColor);
+	BH::config->ReadAssoc("Impact Skill Color", ImpactSkillColor);
+	impactMissileColors.clear();
+	for (auto it = ImpactMissileColor.cbegin(); it != ImpactMissileColor.cend(); it++) {
+		int missileId = -1;
+		stringstream ss((*it).first);
+		if ((ss >> missileId).fail())
+			continue;
+		impactMissileColors[missileId] = (unsigned int)StringToNumber((*it).second);
+	}
+	// Resolve skill IDs to missile IDs via Skills.txt
+	if (p_D2COMMON_sgptDataTable) {
+		SkillsTxt* pSkills = (*p_D2COMMON_sgptDataTable)->pSkillsTxt;
+		DWORD nSkills = (*p_D2COMMON_sgptDataTable)->dwSkillsRecs;
+		if (pSkills && nSkills) {
+			for (auto it = ImpactSkillColor.cbegin(); it != ImpactSkillColor.cend(); it++) {
+				int skillId = -1;
+				stringstream ss((*it).first);
+				if ((ss >> skillId).fail())
+					continue;
+				unsigned int color = (unsigned int)StringToNumber((*it).second);
+				for (DWORD i = 0; i < nSkills; i++) {
+					if ((int)pSkills[i].wSkillId != skillId)
+						continue;
+					SkillsTxt& sk = pSkills[i];
+					WORD missiles[] = { sk.wSrvMissile, sk.wSrvMissileA, sk.wSrvMissileB, sk.wSrvMissileC,
+						sk.wCltMissile, sk.wCltMissileA, sk.wCltMissileB, sk.wCltMissileC, sk.wCltMissileD };
+					for (WORD w : missiles)
+						if (w) impactMissileColors[w] = color;
+					break;
+				}
+			}
+		}
+	}
+
 	BH::config->ReadAssoc("Monster Hide", MonsterHides);
 	for (auto it = MonsterHides.cbegin(); it != MonsterHides.cend(); it++) {
 		// If the key is a number, it means do not draw this monster on map
@@ -185,6 +224,7 @@ for (const auto& entry : auraColorsString) {
 	BH::config->ReadToggle("Reveal Map", "None", true, Toggles["Auto Reveal"]);
 	BH::config->ReadToggle("Show Monsters", "None", true, Toggles["Show Monsters"]);
 	BH::config->ReadToggle("Show Missiles", "None", true, Toggles["Show Missiles"]);
+	BH::config->ReadToggle("Show Skill Impact", "None", true, Toggles["Show Skill Impact"]);
 	BH::config->ReadToggle("Show Chests", "None", true, Toggles["Show Chests"]);
 	BH::config->ReadToggle("Force Light Radius", "None", true, Toggles["Force Light Radius"]);
 	BH::config->ReadToggle("Remove Weather", "None", true, Toggles["Remove Weather"]);
@@ -284,6 +324,9 @@ void Maphack::OnLoad() {
 	
 	new Checkhook(settingsTab, 4, (Y += 15), &Toggles["Show Missiles"].state, "Show Missiles");
 	new Keyhook(settingsTab, keyhook_x, (Y + 2), &Toggles["Show Missiles"].toggle, "");
+
+	new Checkhook(settingsTab, 4, (Y += 15), &Toggles["Show Skill Impact"].state, "Show Skill Impact");
+	new Keyhook(settingsTab, keyhook_x, (Y + 2), &Toggles["Show Skill Impact"].toggle, "");
 
 	new Checkhook(settingsTab, 4, (Y += 15), &Toggles["Show Chests"].state, "Show Chests");
 	new Keyhook(settingsTab, keyhook_x, (Y + 2), &Toggles["Show Chests"].toggle, "");
@@ -652,33 +695,51 @@ void Maphack::OnAutomapDraw() {
 						}
 					});
 				}
-				else if (unit->dwType == UNIT_MISSILE && Toggles["Show Missiles"].state) {
-					int color = 255;
-					switch (GetRelation(unit)) {
-					case 0:
-						continue;
-						break;
-					case 1://Me
-						color = missileColors["Player"];
-						break;
-					case 2://Neutral
-						color = missileColors["Neutral"];
-						break;
-					case 3://Partied
-						color = missileColors["Party"];
-						break;
-					case 4://Hostile
-						color = missileColors["Hostile"];
-						break;
+				else if (unit->dwType == UNIT_MISSILE) {
+					// Draw impact point for delayed skills (Meteor, Blizzard, etc.) – where the skill will land
+					if (Toggles["Show Skill Impact"].state) {
+						auto it = impactMissileColors.find((int)unit->dwTxtFileNo);
+						if (it != impactMissileColors.end()) {
+							DWORD ix = unit->pPath->xTarget, iy = unit->pPath->yTarget;
+							if (ix == 0 && iy == 0) { ix = unit->pPath->xPos; iy = unit->pPath->yPos; }
+							unsigned int icolor = it->second;
+							automapBuffer.push([ix, iy, icolor]()->void{
+								if ((GetTickCount() / 300) % 2 == 0) {
+									POINT p;
+									Drawing::Hook::ScreenToAutomap(&p, ix, iy);
+									Drawing::Crosshook::Draw(p.x, p.y, icolor, 2);
+								}
+							});
+						}
 					}
+					if (Toggles["Show Missiles"].state) {
+						int color = 255;
+						switch (GetRelation(unit)) {
+						case 0:
+							continue;
+							break;
+						case 1://Me
+							color = missileColors["Player"];
+							break;
+						case 2://Neutral
+							color = missileColors["Neutral"];
+							break;
+						case 3://Partied
+							color = missileColors["Party"];
+							break;
+						case 4://Hostile
+							color = missileColors["Hostile"];
+							break;
+						}
 
-					xPos = unit->pPath->xPos;
-					yPos = unit->pPath->yPos;					
-					automapBuffer.push([color, unit, xPos, yPos]()->void{
-						POINT automapLoc;
-						Drawing::Hook::ScreenToAutomap(&automapLoc, xPos, yPos);
-						Drawing::Boxhook::Draw(automapLoc.x - 1, automapLoc.y - 1, 2, 2, color, Drawing::BTHighlight);
-					});
+						xPos = unit->pPath->xPos;
+						yPos = unit->pPath->yPos;					
+						automapBuffer.push([color, unit, xPos, yPos]()->void{
+							POINT automapLoc;
+							Drawing::Hook::ScreenToAutomap(&automapLoc, xPos, yPos);
+							Drawing::Boxhook::Draw(automapLoc.x - 1, automapLoc.y - 1, 2, 2, color, Drawing::BTHighlight);
+						});
+					}
 				}
 				else if (unit->dwType == UNIT_ITEM && (unit->dwFlags & UNITFLAG_REVEALED) == UNITFLAG_REVEALED) {
 					UnitItemInfo uInfo;

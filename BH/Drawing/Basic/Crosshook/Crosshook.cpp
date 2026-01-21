@@ -62,9 +62,11 @@ void Crosshook::OnDraw() {
 	Unlock();
 }
 
-bool Crosshook::Draw(unsigned int x, unsigned int y, unsigned int color) {
+bool Crosshook::Draw(unsigned int x, unsigned int y, unsigned int color, int scale) {
 	CHAR szLines[][2] = {0,-2, 4,-4, 8,-2, 4,0, 8,2, 4,4, 0,2, -4,4, -8,2, -4,0, -8,-2, -4,-4, 0,-2};
+	int cx = (int)x, cy = (int)y;
 	for(unsigned int n = 0; n < 12; n++)
-		D2GFX_DrawLine(x + szLines[n][0], y + szLines[n][1], x + szLines[n+1][0], y + szLines[n+1][1], color, -1);
+		D2GFX_DrawLine(cx + (int)szLines[n][0] * scale, cy + (int)szLines[n][1] * scale,
+		               cx + (int)szLines[n+1][0] * scale, cy + (int)szLines[n+1][1] * scale, color, -1);
 	return true;
 }
