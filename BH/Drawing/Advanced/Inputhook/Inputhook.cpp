@@ -2,6 +2,7 @@
 #include "../../../D2Ptrs.h"
 #include "../../Basic/Framehook/Framehook.h"
 #include "../../../Common.h"
+#include "../../../Constants.h"
 
 using namespace std;
 using namespace Drawing;
@@ -22,6 +23,9 @@ Inputhook::Inputhook(HookVisibility visibility, unsigned int x, unsigned int y, 
 	va_end(arg);
 	text = buffer;
 	SetCursorPosition(text.length());
+	Lock();
+	cursorTick = 1;
+	Unlock();
 }
 
 Inputhook::Inputhook(HookGroup* group, unsigned int x, unsigned int y, unsigned int xSize, std::string formatString, ...) :
@@ -40,7 +44,10 @@ Inputhook::Inputhook(HookGroup* group, unsigned int x, unsigned int y, unsigned 
 	va_end(arg);
 	text = buffer;
 	SetCursorPosition(text.length());
- }
+	Lock();
+	cursorTick = 1;
+	Unlock();
+}
 
  void Inputhook::SetText(string newText, ...) {
 	char buffer[4096];
@@ -75,6 +82,13 @@ Inputhook::Inputhook(HookGroup* group, unsigned int x, unsigned int y, unsigned 
 	  cursorTick++;
  }
 
+ void Inputhook::NotifyCaretFromUserAction() {
+	 Lock();
+	 showCursor = true;
+	 cursorTick = 1;
+	 Unlock();
+ }
+
  void Inputhook::SetCursorPosition(unsigned int newPosition) {
 	 if (newPosition >= 0 && newPosition <= text.length()) {
 		Lock();
@@ -104,6 +118,8 @@ void Inputhook::IncreaseCursorPosition(unsigned int len) {
 	 SetCursorPosition(cursorPos + len); 
 	 if ((textPos + GetCharacterLimit()) < cursorPos)
 		 textPos = cursorPos - GetCharacterLimit();
+	 showCursor = true;
+	 cursorTick = 1;
 	 Unlock();
 };
 
@@ -112,6 +128,8 @@ void Inputhook::DecreaseCursorPosition(unsigned int len) {
 	SetCursorPosition(cursorPos - len); 
 	 if ((cursorPos - textPos) == -1 && textPos > 0)
 		 textPos -= len;
+	showCursor = true;
+	cursorTick = 1;
 	Unlock();
 }; 
 
@@ -148,15 +166,18 @@ unsigned int Inputhook::GetCharacterLimit() {
 	
 	 DWORD oldFont = D2WIN_SetTextSize(GetFont());
 	 wchar_t* wText = AnsiToUnicode(drawnText.c_str());
-	 D2WIN_DrawText(wText, GetX() + 3, GetY() + 3 + height[GetFont()], 0, 0);
+	 D2WIN_DrawText(wText, GetX() + 3, GetY() + 3 + height[GetFont()], (DWORD)Gold, 0);
 	 delete[] wText;
-	 D2WIN_SetTextSize(oldFont);
 
-	 //Draw the cursor!
+	 //Draw the cursor! — blinking underscore (D2-style), same y as main line
 	 CursorTick();
-	 if (ShowCursor() && IsActive())
-		 D2GFX_DrawLine(GetX() + textSize.x + 2, GetY() + 3, GetX() + textSize.x + 2, GetY() + textSize.y, 255, 0);
+	 if (ShowCursor() && IsActive()) {
+		 const int caretX = (int)(GetX() + 3 + (unsigned int)textSize.x);
+		 const int yText = (int)(GetY() + 3 + height[GetFont()]);
+		 D2WIN_DrawText(L"_", caretX, yText, (DWORD)White, 0);
+	 }
 
+	 D2WIN_SetTextSize(oldFont);
 	 Unlock();
  }
 
@@ -216,6 +237,9 @@ unsigned int Inputhook::GetCharacterLimit() {
 				}
 				IncreaseCursorPosition(1);
 			}
+		break;
+		case VK_RETURN:
+			// no newline; do not run default/ToAscii (Leader / single-line fields)
 		break;
 		default:
 			if (up)
@@ -277,8 +301,10 @@ unsigned int Inputhook::GetCharacterLimit() {
 
  bool Inputhook::OnLeftClick(bool up, unsigned int x, unsigned int y) {
 	 if (InRange(x, y)) {
-		 if (up)
+		 if (up) {
 			 SetActive(true);
+			 NotifyCaretFromUserAction();
+		 }
 		 if (GetLeftClickHandler())
 			 GetLeftClickHandler()(up, this, GetLeftClickVoid());
 		 return true;
@@ -333,6 +359,8 @@ void Inputhook::Replace(unsigned int pos, unsigned int len, std::string str) {
 	Lock();
 	text.replace(pos, len, str);
 	SetCursorPosition(pos + str.length());
+	showCursor = true;
+	cursorTick = 1;
 	Unlock();
 }
 
@@ -342,5 +370,7 @@ void Inputhook::Erase(unsigned int pos, unsigned int len) {
 	Lock();
 	text.erase(pos,len);
 	SetCursorPosition(pos);
+	showCursor = true;
+	cursorTick = 1;
 	Unlock();
 }

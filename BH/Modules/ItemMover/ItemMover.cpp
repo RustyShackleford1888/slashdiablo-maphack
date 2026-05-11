@@ -280,6 +280,9 @@ void ItemMover::PutItemOnGround() {
 }
 
 void ItemMover::OnLeftClick(bool up, unsigned int x, unsigned int y, bool* block) {
+	if (!up) {
+		StopAutoCubeFromUserClick();
+	}
 	UnitAny *unit = D2CLIENT_GetPlayerUnit();
 	bool shiftState = ((GetKeyState(VK_LSHIFT) & 0x80) || (GetKeyState(VK_RSHIFT) & 0x80));
 	
@@ -344,6 +347,9 @@ void ItemMover::OnLeftClick(bool up, unsigned int x, unsigned int y, bool* block
 }
 
 void ItemMover::OnRightClick(bool up, unsigned int x, unsigned int y, bool* block) {
+	if (!up) {
+		StopAutoCubeFromUserClick();
+	}
 	UnitAny *unit = D2CLIENT_GetPlayerUnit();
 	bool shiftState = ((GetKeyState(VK_LSHIFT) & 0x80) || (GetKeyState(VK_RSHIFT) & 0x80));
 	bool ctrlState = ((GetKeyState(VK_LCONTROL) & 0x80) || (GetKeyState(VK_RCONTROL) & 0x80));
@@ -1815,7 +1821,19 @@ void ItemMover::ResetStashInteractionState() {
 	stashMovedItemCodes.clear();
 }
 
-// Scan stash for INPUT code items that can be used in recipes with OUTPUT items in inventory
+void ItemMover::StopAutoCubeFromUserClick() {
+	if (!isAutoCubing) {
+		return;
+	}
+	isAutoCubing = false;
+	stashInteractionMode = false;
+	ResetStashInteractionState();
+	PrintText(White, "Auto Cube: Stopped");
+}
+
+// Scan stash for recipe counterpart items:
+// - if inventory has OUTPUT, pull INPUT from stash
+// - if inventory has INPUT, pull OUTPUT from stash
 void ItemMover::ScanStashForInputItems(UnitAny* unit) {
 	if (!unit || !unit->pInventory) {
 		return;
@@ -1828,62 +1846,139 @@ void ItemMover::ScanStashForInputItems(UnitAny* unit) {
 	// Get the recipes array
 	const CubeRecipe* recipes = GetRecipesArray();
 	int numRecipes = GetRecipesArraySize();
+
+	// Read stack amount from stat 508 only.
+	// Returns -1 when stat 508 is unavailable.
+	auto getStackAmount = [this](UnitAny* item) -> int {
+		if (!item) {
+			return -1;
+		}
+
+		int stat508 = GetItemStat508(item);
+
+		// Auto Cube stack logic uses ONLY stat 508.
+		return stat508;
+	};
 	
-	// First, scan inventory for OUTPUT codes and find which INPUT codes we need
-	std::vector<std::string> neededInputCodes;
-	
+	// Build sets of 3-char item codes present in inventory and stash.
+	// Keep stash code detection broad; stack-cap filtering is applied later per-item.
+	std::set<std::string> inventoryCodes;
+	std::set<std::string> stashCodes;
 	for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
+		if (pItem->pItemData->ItemLocation != STORAGE_INVENTORY &&
+		    pItem->pItemData->ItemLocation != STORAGE_STASH) {
+			continue;
+		}
+		ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
+		if (!pItemText || !pItemText->szCode) {
+			continue;
+		}
+		std::string itemCodeStr(pItemText->szCode, 3);
 		if (pItem->pItemData->ItemLocation == STORAGE_INVENTORY) {
-			ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-			if (pItemText && pItemText->szCode) {
-				char* itemCode = pItemText->szCode;
-				
-				// Check if this item matches any OUTPUT code in recipes
-				for (int i = 0; i < numRecipes; i++) {
-					if (recipes[i].outputCode && strlen(recipes[i].outputCode) >= 3 &&
-					    itemCode[0] == recipes[i].outputCode[0] &&
-					    itemCode[1] == recipes[i].outputCode[1] &&
-					    itemCode[2] == recipes[i].outputCode[2]) {
-						// Found an output item - we need the corresponding input
-						if (recipes[i].inputCode && strlen(recipes[i].inputCode) >= 3) {
-							std::string inputCode = std::string(recipes[i].inputCode);
-							// Avoid duplicates
-							bool alreadyAdded = false;
-							for (size_t j = 0; j < neededInputCodes.size(); j++) {
-								if (neededInputCodes[j] == inputCode) {
-									alreadyAdded = true;
-									break;
-								}
-							}
-							if (!alreadyAdded) {
-								neededInputCodes.push_back(inputCode);
-							}
-						}
-						break;
-					}
-				}
+			inventoryCodes.insert(itemCodeStr);
+		} else {
+			stashCodes.insert(itemCodeStr);
+		}
+	}
+
+	// Build the set of stash codes we need to pull for recipe processing
+	std::vector<std::string> neededStashCodes;
+	auto addNeededCode = [&neededStashCodes](const char* code) {
+		if (!code || strlen(code) < 3) {
+			return;
+		}
+		std::string codeStr(code);
+		for (size_t j = 0; j < neededStashCodes.size(); j++) {
+			if (neededStashCodes[j] == codeStr) {
+				return;
 			}
+		}
+		neededStashCodes.push_back(codeStr);
+	};
+	
+	// Determine which stash codes to pull based on recipe code presence:
+	// 1) inventory has OUTPUT and stash has INPUT -> pull INPUT
+	// 2) inventory has INPUT and stash has OUTPUT -> pull OUTPUT
+	// 3) stash has both INPUT and OUTPUT -> pull both (enables stash-only stack combining)
+	for (int i = 0; i < numRecipes; i++) {
+		if (!recipes[i].inputCode || strlen(recipes[i].inputCode) < 3 ||
+		    !recipes[i].outputCode || strlen(recipes[i].outputCode) < 3) {
+			continue;
+		}
+
+		std::string inputCode(recipes[i].inputCode, 3);
+		std::string outputCode(recipes[i].outputCode, 3);
+
+		bool inputInInventory = (inventoryCodes.find(inputCode) != inventoryCodes.end());
+		bool outputInInventory = (inventoryCodes.find(outputCode) != inventoryCodes.end());
+		bool inputInStash = (stashCodes.find(inputCode) != stashCodes.end());
+		bool outputInStash = (stashCodes.find(outputCode) != stashCodes.end());
+
+		// If both sides are in stash, pull both (stash-only pairing)
+		if (inputInStash && outputInStash) {
+			addNeededCode(recipes[i].inputCode);
+			addNeededCode(recipes[i].outputCode);
+			continue;
+		}
+
+		// If inventory has either side and stash has either side, pull whichever side exists in stash.
+		// This handles all inv+stash pairing combinations without assuming which code is input/output.
+		bool anyInInventory = (inputInInventory || outputInInventory);
+		bool anyInStash = (inputInStash || outputInStash);
+		if (anyInInventory && anyInStash) {
+			if (inputInStash) {
+				addNeededCode(recipes[i].inputCode);
+			}
+			if (outputInStash) {
+				addNeededCode(recipes[i].outputCode);
+			}
+		}
+
+		// Stash-only fallback: allow output-only stack processing to bootstrap from stash.
+		// This handles cases like stash stacks 6,100,94,56,100 with nothing in inventory.
+		if (!anyInInventory && outputInStash) {
+			addNeededCode(recipes[i].outputCode);
 		}
 	}
 	
-	// If no output items found in inventory, nothing to do
-	if (neededInputCodes.empty()) {
+	// Fallback for stash-only stack combining:
+	// If normal pairing found nothing, directly pull stash output stacks (<100)
+	// so output-only recipes can bootstrap without any inventory seed item.
+	if (neededStashCodes.empty()) {
+		for (int i = 0; i < numRecipes; i++) {
+			if (!recipes[i].outputCode || strlen(recipes[i].outputCode) < 3) {
+				continue;
+			}
+			std::string outputCode(recipes[i].outputCode, 3);
+			if (stashCodes.find(outputCode) != stashCodes.end()) {
+				addNeededCode(recipes[i].outputCode);
+			}
+		}
+	}
+
+	// If still empty, nothing to do
+	if (neededStashCodes.empty()) {
 		return;
 	}
 	
-	// Now scan stash for items matching the needed input codes
+	// Now scan stash for items matching the needed counterpart codes
 	for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
 		if (pItem->pItemData->ItemLocation == STORAGE_STASH) {
 			ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
 			if (pItemText && pItemText->szCode) {
 				char* itemCode = pItemText->szCode;
 				
-					// Check if this item matches any needed input code
-				for (size_t i = 0; i < neededInputCodes.size(); i++) {
-					if (neededInputCodes[i].length() >= 3 &&
-					    itemCode[0] == neededInputCodes[i][0] &&
-					    itemCode[1] == neededInputCodes[i][1] &&
-					    itemCode[2] == neededInputCodes[i][2]) {
+					// Check if this item matches any needed counterpart code
+				for (size_t i = 0; i < neededStashCodes.size(); i++) {
+					if (neededStashCodes[i].length() >= 3 &&
+					    itemCode[0] == neededStashCodes[i][0] &&
+					    itemCode[1] == neededStashCodes[i][1] &&
+					    itemCode[2] == neededStashCodes[i][2]) {
+						// Only pull stacks with a valid stat 508 that are not full.
+						int stackAmount = getStackAmount(pItem);
+						if (stackAmount < 0 || stackAmount >= 100) {
+							break;
+						}
 						// Record this item in the master list
 						StashItemRecord record;
 						record.itemId = pItem->dwUnitId;
@@ -1896,6 +1991,53 @@ void ItemMover::ScanStashForInputItems(UnitAny* unit) {
 					}
 				}
 			}
+		}
+	}
+
+	// Final fallback: if nothing matched, bootstrap stash-only stack combining by code.
+	// Queue stash stacks with stat508 < 100 when there is another same-code stack in stash.
+	// This intentionally avoids recipe-table dependencies when stash-only pairing is detected.
+	if (allStashInputItems.empty()) {
+		std::map<std::string, int> stashCodeCounts;
+
+		for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
+			if (pItem->pItemData->ItemLocation != STORAGE_STASH) {
+				continue;
+			}
+			ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
+			if (!pItemText || !pItemText->szCode) {
+				continue;
+			}
+			std::string code(pItemText->szCode, 3);
+			stashCodeCounts[code]++;
+		}
+
+		for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
+			if (pItem->pItemData->ItemLocation != STORAGE_STASH) {
+				continue;
+			}
+			ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
+			if (!pItemText || !pItemText->szCode) {
+				continue;
+			}
+
+			std::string code(pItemText->szCode, 3);
+			if (stashCodeCounts[code] < 2) {
+				continue;  // Not combinable (only one stash stack for this code)
+			}
+
+			int stackAmount = getStackAmount(pItem);
+			if (stackAmount < 0 || stackAmount >= 100) {
+				continue;  // Only move non-full stacks with valid stat508
+			}
+
+			StashItemRecord record;
+			record.itemId = pItem->dwUnitId;
+			strncpy_s(record.itemCode, pItemText->szCode, 3);
+			record.itemCode[3] = '\0';
+			record.x = pItem->pObjectPath->dwPosX;
+			record.y = pItem->pObjectPath->dwPosY;
+			allStashInputItems.push_back(record);
 		}
 	}
 }
@@ -2517,7 +2659,7 @@ void ItemMover::ProcessAutoCubeStep() {
 	}
 	
 	// Rate limit operations - minimum 150ms between operations
-	if (currentTick - lastAutoCubeTick < 150) {
+	if (currentTick - lastAutoCubeTick < 100) {
 		return;
 	}
 	
@@ -3217,12 +3359,15 @@ void ItemMover::ProcessAutoCubeStep() {
 				// Check if it's a unique or set item
 				if (pItem->pItemData->dwQuality == ITEM_QUALITY_UNIQUE || 
 				    pItem->pItemData->dwQuality == ITEM_QUALITY_SET) {
-					// Skip charms (cm1, cm2, cm3)
+					// Skip charms (cm1, cm2, cm3, nva, nvb, nvc, nvd, nve, nvf, nvg)
 					ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
 					if (pItemText && pItemText->szCode) {
 						char* itemCode = pItemText->szCode;
-						bool isCharm = (itemCode[0] == 'c' && itemCode[1] == 'm' && 
-						                (itemCode[2] == '1' || itemCode[2] == '2' || itemCode[2] == '3'));
+						bool isCharm = ((itemCode[0] == 'c' && itemCode[1] == 'm' && 
+						                (itemCode[2] == '1' || itemCode[2] == '2' || itemCode[2] == '3')) ||
+						               (itemCode[0] == 'n' && itemCode[1] == 'v' &&
+						                (itemCode[2] == 'a' || itemCode[2] == 'b' || itemCode[2] == 'c' ||
+						                 itemCode[2] == 'd' || itemCode[2] == 'e' || itemCode[2] == 'f' || itemCode[2] == 'g')));
 						if (isCharm) {
 							continue; // Skip charms
 						}
@@ -3245,12 +3390,15 @@ void ItemMover::ProcessAutoCubeStep() {
 				if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
 					if (pItem->pItemData->dwQuality == ITEM_QUALITY_UNIQUE || 
 					    pItem->pItemData->dwQuality == ITEM_QUALITY_SET) {
-						// Skip charms (cm1, cm2, cm3)
+						// Skip charms (cm1, cm2, cm3, nva, nvb, nvc, nvd, nve, nvf, nvg)
 						ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
 						if (pItemText && pItemText->szCode) {
 							char* itemCode = pItemText->szCode;
-							bool isCharm = (itemCode[0] == 'c' && itemCode[1] == 'm' && 
-							                (itemCode[2] == '1' || itemCode[2] == '2' || itemCode[2] == '3'));
+							bool isCharm = ((itemCode[0] == 'c' && itemCode[1] == 'm' && 
+							                (itemCode[2] == '1' || itemCode[2] == '2' || itemCode[2] == '3')) ||
+							               (itemCode[0] == 'n' && itemCode[1] == 'v' &&
+							                (itemCode[2] == 'a' || itemCode[2] == 'b' || itemCode[2] == 'c' ||
+							                 itemCode[2] == 'd' || itemCode[2] == 'e' || itemCode[2] == 'f' || itemCode[2] == 'g')));
 							if (isCharm) {
 								continue; // Skip charms
 							}
@@ -3297,12 +3445,15 @@ void ItemMover::ProcessAutoCubeStep() {
 				if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
 					if (pItem->pItemData->dwQuality == ITEM_QUALITY_UNIQUE || 
 					    pItem->pItemData->dwQuality == ITEM_QUALITY_SET) {
-						// Skip charms (cm1, cm2, cm3)
+						// Skip charms (cm1, cm2, cm3, nva, nvb, nvc, nvd, nve, nvf, nvg)
 						ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
 						if (pItemText && pItemText->szCode) {
 							char* itemCode = pItemText->szCode;
-							bool isCharm = (itemCode[0] == 'c' && itemCode[1] == 'm' && 
-							                (itemCode[2] == '1' || itemCode[2] == '2' || itemCode[2] == '3'));
+							bool isCharm = ((itemCode[0] == 'c' && itemCode[1] == 'm' && 
+							                (itemCode[2] == '1' || itemCode[2] == '2' || itemCode[2] == '3')) ||
+							               (itemCode[0] == 'n' && itemCode[1] == 'v' &&
+							                (itemCode[2] == 'a' || itemCode[2] == 'b' || itemCode[2] == 'c' ||
+							                 itemCode[2] == 'd' || itemCode[2] == 'e' || itemCode[2] == 'f' || itemCode[2] == 'g')));
 							if (isCharm) {
 								continue; // Skip charms
 							}
@@ -3329,9 +3480,12 @@ void ItemMover::ProcessAutoCubeStep() {
 							bool isMatchingUnique = false;
 							if (pItem->pItemData->dwQuality == ITEM_QUALITY_UNIQUE || 
 							    pItem->pItemData->dwQuality == ITEM_QUALITY_SET) {
-								// Skip charms (cm1, cm2, cm3)
-								bool isCharm = (itemCode[0] == 'c' && itemCode[1] == 'm' && 
-								                (itemCode[2] == '1' || itemCode[2] == '2' || itemCode[2] == '3'));
+								// Skip charms (cm1, cm2, cm3, nva, nvb, nvc, nvd, nve, nvf, nvg)
+								bool isCharm = ((itemCode[0] == 'c' && itemCode[1] == 'm' && 
+								                (itemCode[2] == '1' || itemCode[2] == '2' || itemCode[2] == '3')) ||
+								               (itemCode[0] == 'n' && itemCode[1] == 'v' &&
+								                (itemCode[2] == 'a' || itemCode[2] == 'b' || itemCode[2] == 'c' ||
+								                 itemCode[2] == 'd' || itemCode[2] == 'e' || itemCode[2] == 'f' || itemCode[2] == 'g')));
 								if (!isCharm) {
 									int itemTier = GetItemTier(pItem);
 									if (itemTier > 0 && itemTier >= minTier) {
@@ -3364,12 +3518,15 @@ void ItemMover::ProcessAutoCubeStep() {
 					if (pItem->pItemData->ItemLocation == STORAGE_INVENTORY) {
 						if (pItem->pItemData->dwQuality == ITEM_QUALITY_UNIQUE || 
 						    pItem->pItemData->dwQuality == ITEM_QUALITY_SET) {
-							// Skip charms (cm1, cm2, cm3)
+							// Skip charms (cm1, cm2, cm3, nva, nvb, nvc, nvd, nve, nvf, nvg)
 							ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
 							if (pItemText && pItemText->szCode) {
 								char* itemCode = pItemText->szCode;
-								bool isCharm = (itemCode[0] == 'c' && itemCode[1] == 'm' && 
-								                (itemCode[2] == '1' || itemCode[2] == '2' || itemCode[2] == '3'));
+								bool isCharm = ((itemCode[0] == 'c' && itemCode[1] == 'm' && 
+								                (itemCode[2] == '1' || itemCode[2] == '2' || itemCode[2] == '3')) ||
+								               (itemCode[0] == 'n' && itemCode[1] == 'v' &&
+								                (itemCode[2] == 'a' || itemCode[2] == 'b' || itemCode[2] == 'c' ||
+								                 itemCode[2] == 'd' || itemCode[2] == 'e' || itemCode[2] == 'f' || itemCode[2] == 'g')));
 								if (isCharm) {
 									continue; // Skip charms
 								}
@@ -3535,10 +3692,11 @@ void ItemMover::ProcessAutoCubeStep() {
 			std::string inputCodeStr(recipe.inputCode, 3);
 			std::string outputCodeStr(recipe.outputCode, 3);
 			
-			// If processing stash batch, ONLY allow recipes that use items moved from stash
+			// If processing stash batch, only allow recipes that use items moved from stash
 			if (processingStashBatch && !stashMovedItemCodes.empty()) {
 				bool inputFromStash = (stashMovedItemCodes.find(inputCodeStr) != stashMovedItemCodes.end());
-				if (!inputFromStash) {
+				bool outputFromStash = (stashMovedItemCodes.find(outputCodeStr) != stashMovedItemCodes.end());
+				if (!inputFromStash && !outputFromStash) {
 					continue;  // Skip recipes that don't use stash items
 				}
 			}
@@ -4109,7 +4267,7 @@ void ItemMover::ProcessAutoCubeStep() {
 		int cubeOutputCount = CountItemsInCube(unit, recipe.outputCode);
 		
 		// Wait a bit for transmute to complete
-		if (currentTick - lastAutoCubeTick < 500) {
+		if (currentTick - lastAutoCubeTick < 100) {
 			return; // Still waiting
 		}
 		
@@ -4661,7 +4819,7 @@ void ItemMover::ProcessAutoCubeStep() {
 		// Check if we're waiting for a normal transmute to complete
 		if (waitingForNormalTransmute) {
 			// Wait a bit for transmute to complete
-			if (currentTick - lastAutoCubeTick < 500) {
+			if (currentTick - lastAutoCubeTick < 100) {
 				return; // Still waiting
 			}
 			

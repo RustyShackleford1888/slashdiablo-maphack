@@ -313,6 +313,7 @@ public:
 	void ScanStashForInputItems(UnitAny* unit);  // Scan stash for INPUT code items
 	void ProcessStashInteraction();             // Main state machine for stash interaction
 	void ResetStashInteractionState();          // Reset all stash interaction state
+	void StopAutoCubeFromUserClick();           // While auto-cubing, any left/right click down stops the process
 
 	void LoadConfig();
 

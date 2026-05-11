@@ -446,6 +446,8 @@ VARPTR(D2GFX, VideoMode, WORD, 0x11258, 0x14A38)
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 FUNCPTR(D2MULTI, DoChat, void __fastcall, (void), 0xCB30, 0x11770)
+// Switches lobby sub-panel (LOBBY_PANEL_JOIN = 0x02). 113d RVA uses same +0x880 step as removePass (low-RVA D2MULTI cluster).
+FUNCPTR(D2MULTI, SetScreen, void __fastcall, (int panelId), 0x58C0, 0x6140)
 FUNCPTR(D2MULTI, PrintChannelText, void __stdcall, (char *szText, DWORD dwColor), 0xFC90, 0x13F30)
 
 

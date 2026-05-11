@@ -16,6 +16,11 @@ typedef struct Vector_t
 
 class AutoTele : public Module {
 	private:
+		Drawing::Inputhook* followLeaderAccInput;
+		Drawing::Inputhook* followLeaderCharInput;
+		Drawing::Inputhook* defaultGameNameInput;
+		Drawing::Inputhook* defaultPasswordInput;
+		bool settingsInputsInited;
 		std::map<string, Toggle> Toggles;
 		unsigned int NextKey, OtherKey, WPKey, PrevKey;
 		unsigned int Colors[6];
@@ -46,7 +51,7 @@ class AutoTele : public Module {
 		bool WaitingForMapData();
 
 	public:
-		AutoTele() : Module("AutoTele"), LoadHandle(NULL) {};
+		AutoTele() : Module("AutoTele"), followLeaderAccInput(nullptr), followLeaderCharInput(nullptr), defaultGameNameInput(nullptr), defaultPasswordInput(nullptr), settingsInputsInited(false), LoadHandle(NULL) {};
 		void OnLoad();
 		void LoadConfig();
 		void OnLoop();
@@ -55,6 +60,8 @@ class AutoTele : public Module {
 		void OnGamePacketRecv(BYTE* packet, bool* block);
 
 		std::map<string, Toggle>* GetToggles() { return &Toggles; }
+		/** Call before BH::config->Write() when the settings window is closed or minimized. */
+		void FlushSettingsInputsToBnet();
 		void GetVectors();
 
 		static Level* GetLevel(Act* pAct, int level);

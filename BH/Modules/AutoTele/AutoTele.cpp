@@ -1,5 +1,6 @@
 #include "AutoTele.h"
 #include "../../BH.h"
+#include "../Bnet/Bnet.h"
 #include "ATIncludes\CMapIncludes.h"
 #include "ATIncludes\Vectors.h"
 
@@ -44,6 +45,14 @@ void AutoTele::OnLoad() {
 			&(*gamefilterBools)["Show Difficulty"], "Show Difficulty");
 	new Checkhook(settingsTab, col, (Y += 15),
 			&(*gamefilterBools)["Show Gameserver"], "Show Gameserver");
+	new Checkhook(settingsTab, col, (Y += 15),
+			&(*bnetBools)["Follow Leader"], "Follow Leader");
+	new Texthook(settingsTab, col + 5, (Y += 14), "Leader (B.net account):");
+	followLeaderAccInput = new Inputhook(settingsTab, col + 5, (Y += 12), 200, "%s", "");
+	followLeaderAccInput->SetFont(0);
+	new Texthook(settingsTab, col + 5, (Y += 16), "Leader Character Name:");
+	followLeaderCharInput = new Inputhook(settingsTab, col + 5, (Y += 12), 200, "%s", "");
+	followLeaderCharInput->SetFont(0);
 
 	//this doesn't change the path.  I can't figure out how to make it work either.
 	//new Checkhook(settingsTab, 40, 42, &Toggles["CP to cave"].state, "CP to cave");
@@ -62,18 +71,37 @@ void AutoTele::OnLoad() {
 
 	new Colorhook(settingsTab, 250, 102, &Colors[5], "Other Extra");
 
-	new Texthook(settingsTab, col + 20, (Y += 22), "Default Game Settings");
-	new Texthook(settingsTab, col + 5, Y + 30, "Default Gs:");
+	new Texthook(settingsTab, col + 20, (Y += 28), "Default Game Settings");
+	new Texthook(settingsTab, col + 5, Y + 26, "Default Gs:");
 	vector<string> gs_options;
 	gs_options.push_back("1 - New York");
 	gs_options.push_back("2 - Los Angeles");
 	gs_options.push_back("3 - Amsterdam");
 	gs_options.push_back("4 - Singapore");
 	new Combohook(settingsTab, col + 80, Y + 26, 130, &(*bnetInts)["Default Gs"], gs_options);
+	Y += 30;
+	new Texthook(settingsTab, col + 5, (Y += 16), "Default Game Name:");
+	defaultGameNameInput = new Inputhook(settingsTab, col + 5, (Y += 12), 200, "%s", "");
+	defaultGameNameInput->SetFont(0);
+	new Texthook(settingsTab, col + 5, (Y += 16), "Default Password:");
+	defaultPasswordInput = new Inputhook(settingsTab, col + 5, (Y += 12), 200, "%s", "");
+	defaultPasswordInput->SetFont(0);
 
 }
 
+void AutoTele::FlushSettingsInputsToBnet() {
+	if (!followLeaderAccInput || !followLeaderCharInput
+			|| !defaultGameNameInput || !defaultPasswordInput || !BH::moduleManager)
+		return;
+	Bnet* bnet = (Bnet*)BH::moduleManager->Get("bnet");
+	if (bnet) {
+		bnet->ApplyFollowLeaderFromUI(followLeaderAccInput->GetText(), followLeaderCharInput->GetText());
+		Bnet::ApplyDefaultGameSettingsFromUI(defaultGameNameInput->GetText(), defaultPasswordInput->GetText());
+	}
+}
+
 void AutoTele::LoadConfig() {
+	settingsInputsInited = false;
 	BH::config->ReadToggle("CP to cave", "None", false, Toggles["CP to cave"]);
 	BH::config->ReadToggle("Display Messages", "None", true, Toggles["Display Messages"]);
 	BH::config->ReadToggle("Draw Path", "None", true, Toggles["Draw Path"]);
@@ -129,6 +157,20 @@ void AutoTele::OnLoop() {
 	//if (WaitingForMapData()) {
 	//	return;
 	//}
+
+	if (followLeaderAccInput && followLeaderCharInput && defaultGameNameInput && defaultPasswordInput
+			&& BH::moduleManager) {
+		Bnet* bnet = (Bnet*)BH::moduleManager->Get("bnet");
+		if (bnet) {
+			if (!settingsInputsInited) {
+				followLeaderAccInput->SetText("%s", bnet->leaderAccount.c_str());
+				followLeaderCharInput->SetText("%s", bnet->leaderCharacter.c_str());
+				defaultGameNameInput->SetText("%s", Bnet::GetDefaultGamename().c_str());
+				defaultPasswordInput->SetText("%s", Bnet::GetDefaultPassword().c_str());
+				settingsInputsInited = true;
+			}
+		}
+	}
 
 	DWORD playerArea = GetPlayerArea();
 	if(playerArea && LastArea != playerArea && D2CLIENT_GetPlayerUnit()) {

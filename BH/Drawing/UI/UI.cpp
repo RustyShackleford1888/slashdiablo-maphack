@@ -2,6 +2,7 @@
 #include "../../D2Ptrs.h"
 #include "UITab.h"
 #include "../../BH.h"
+#include "../../Modules/AutoTele/AutoTele.h"
 #include "../Basic/Texthook/Texthook.h"
 #include "../Basic/Framehook/Framehook.h"
 #include "../Advanced/Colorhook/Colorhook.h"
@@ -241,6 +242,21 @@ void UI::SetDragged(bool state) {
     SetDragged(state, false);
 }
 
+void UI::SetActive(bool newState) {
+	Lock();
+	const bool wasActive = active;
+	active = newState;
+	if (wasActive && !newState) {
+		if (BH::moduleManager) {
+			AutoTele* at = (AutoTele*)BH::moduleManager->Get("autotele");
+			if (at)
+				at->FlushSettingsInputsToBnet();
+		}
+		BH::config->Write();
+	}
+	Unlock();
+}
+
 void UI::SetVisible(bool newState) {
 	visible = newState;
 }
@@ -251,6 +267,11 @@ void UI::SetMinimized(bool newState) {
 	Lock();  
 	if (newState) {
 		Minimized.push_back(this);
+		if (BH::moduleManager) {
+			AutoTele* at = (AutoTele*)BH::moduleManager->Get("autotele");
+			if (at)
+				at->FlushSettingsInputsToBnet();
+		}
 		BH::config->Write();
 	} else {
 		Minimized.remove(this);

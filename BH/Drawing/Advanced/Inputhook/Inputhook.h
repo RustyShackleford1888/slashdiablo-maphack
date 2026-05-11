@@ -44,8 +44,9 @@ namespace Drawing {
 			void SetCursorState(bool state) { Lock(); showCursor = state; Unlock(); };
 			void ToggleCursor() { SetCursorState(!ShowCursor()); };
 
-			void CursorTick();
-			void ResetCursorTick() { cursorTick = 0; };
+		void CursorTick();
+		void ResetCursorTick() { cursorTick = 0; };
+		void NotifyCaretFromUserAction();
 
 			unsigned int GetCursorPosition() { return cursorPos; };
 			void SetCursorPosition(unsigned int newPosition);
