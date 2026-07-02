@@ -65,18 +65,105 @@ Mustache[stash]: {{#this}}* {{>item}}\n\n{{/this}}
 ```
 
 # Release Notes for 2.0.RBeta
-* Auto Gold Pickup
-* Transmute Cube Hotkey
-* Gamble Refresh Hotkey
-* AutoCube Feature for resurgence
-  -  Automatically Cube Multiple stacks of same items into one (or more if you have more than 100)
-  -  Automatically stack stackable items into a stack if a stack is available or not
-  -  Automatically Cube Gems by tier based on what you choose to be dusted
-  -  Automatically Cube Runes base on what you choose to be automatically dusted
-  -  Automatically Cube uniques/sets based on Tier(BH.cfg) based on your preference.
-  -  Automatically cube messages based on Tier(BH.cfg) based on your preference.
-  -  Automatically pull and restore stacks from stash needed for cubing recipes when AutoCube is used with stash open
-  -  All of these features can be turned on or off in the interaction tab of the menu
+
+## StatsPoints & SkillsPoints
+
+**What:** Caps how many stat/skill points a single Shift+click assigns on the character screen.
+
+**How to use:**
+
+* Open settings → **Interaction** tab → right column
+* Set **Stats per Shift+Click** and **Skills per Shift+Click** (`0` = unlimited / vanilla)
+* On character screen: **Shift+click** a `+` stat/skill → assigns up to the limit
+* **Ctrl+Shift+click** → still assigns all remaining points
+
+**Config keys:** `Shift Click Stat Points Limit`, `Shift Click Skill Points Limit`
+
+## Announce Item Stats (Item tab)
+
+**What:** Scans hovered/selected items for known Resurgence CTC procs, auras, and merc-only stats and prints gold chat messages.
+
+**How to use:**
+
+* Hover an item (inventory, ground, or vendor) or select it
+* Press **`** (backtick) — default key `Announce Item Stats`
+* Prints messages like "Empower: +5 all skills", aura descriptions, etc. from the built-in `g_announcements[]` table
+
+**Config key:** `Announce Item Stats` (default `VK_BACKTICK`)
+
+## Glossary
+
+**What:** In-game reference for Resurgence corruptions, auras, and gain effects (loaded from remote JSON).
+
+**How to use:**
+
+* **ESC menu → click "GLOSSARY"**, or assign **Glossary Toggle** in Interaction tab
+* Browse tabs: Corruptions / Auras / Gain Effects
+
+**Config key:** `Glossary Toggle`
+
+## Gambling (refresh)
+
+**What:** Refresh the gamble screen without closing/reopening Anya's (or other gambler's) window.
+
+**How to use:**
+
+* Assign **Gambling Refresh** key in Interaction tab
+* Open gamble screen → press the key → inventory refreshes (reduced flashing vs early versions)
+
+**Config key:** `Gambling Refresh`
+
+## ItemMover — Auto Cube system
+
+**What:** Automated horadric cube workflows — stacking, gem/rune cubing, unique/set dusting, batch stash processing.
+
+**How to use:**
+
+* Settings → **Interaction** tab (left column)
+* Assign **Auto Cube** hotkey
+* Enable toggles:
+  * **Auto Stack Items**
+  * **Auto Essence Gems / Runes / Uniques** (+ tier dropdowns)
+  * **Auto Essence Messages** (HCC/misc tier)
+* **Normal mode:** Open cube → press Auto Cube key → runs recipes
+* **Stash batch mode:** Open stash (with items to process) → press Auto Cube key → moves items from stash → cubes → restores to stash
+* Press key again or click elsewhere to stop; chat shows progress/errors
+
+Also included in this release:
+
+* **Auto Pickup Gold** toggle (pauses at max gold)
+* **Cube Transmute** hotkey
+
+Auto Cube capabilities:
+
+* Automatically cube multiple stacks of the same item into one (or more if you have more than 100)
+* Automatically stack stackable items into an existing stack when available
+* Automatically cube gems by tier based on what you choose to be dusted
+* Automatically cube runes based on what you choose to be automatically dusted
+* Automatically dust uniques/sets based on tier (`BH.cfg`) based on your preference
+* Automatically cube messages based on tier (`BH.cfg`) based on your preference
+* Automatically pull and restore stacks from stash needed for cubing recipes when Auto Cube is used with stash open
+* All of these features can be turned on or off in the Interaction tab of the menu
+
+## BreakpointsDisplay
+
+**What:** Live FCR, FHR, and IAS breakpoint readout per class (including merc/werewolf forms).
+
+**How to use:**
+
+* Open **character screen (C)** — panel appears automatically alongside stats
+* Shows current frames and "points to next breakpoint"
+
+## Bnet / AutoTele — Default gameserver
+
+**What:** Pick a default Resurgence GS when creating games.
+
+**How to use:**
+
+* Settings → **Misc** tab → **Default Gs:** dropdown
+* Persists to `BH_settings.cfg` as `Default Gs`
+
+## Maphack
 
 * Ancient Kaa's Tomb is now identified on the maphack with a line being drawn to him when entering the tomb.
 
