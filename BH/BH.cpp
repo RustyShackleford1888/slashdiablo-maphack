@@ -43,6 +43,9 @@ Patch* patches[] = {
 	new Patch(Call, D2MULTI, { 0x10781, 0x14A9A }, (int)ChannelWhisper_Interception, 5),
 	new Patch(Jump, D2MULTI, { 0x108A0, 0x14BE0 }, (int)ChannelChat_Interception, 6),
 	new Patch(Jump, D2MULTI, { 0x107A0, 0x14850 }, (int)ChannelEmote_Interception, 6),
+
+	// D2Client+0xBDEF5: shift-click stat assignment GetKeyState call (clamps EDI).
+	new Patch(Call, D2CLIENT, { 0xBDEF5, 0xC0695 }, (int)StatsPoints_LimitShiftClickInterception, 6),
 };
 
 Patch* BH::oogDraw = new Patch(Call, D2WIN, { 0x18911, 0xEC61 }, (int)OOGDraw_Interception, 5);
@@ -145,12 +148,18 @@ void BH::Initialize()
 	new MOTD();
 	new Gambling();
 	new Glossary();
+	new StatsPoints();
+	new SkillsPoints();
 
 	BnetInts = ((Bnet*)moduleManager->Get("bnet"))->GetInts();
 	BnetBools = ((Bnet*)moduleManager->Get("bnet"))->GetBools();
 	GamefilterBools = ((Gamefilter*)moduleManager->Get("gamefilter"))->GetBools();
 
 	moduleManager->LoadModules();
+
+	ItemMover* itemMover = (ItemMover*)moduleManager->Get("item-mover");
+	if (itemMover)
+		itemMover->BuildShiftClickSettingsSection();
 
 	statsDisplay = new Drawing::StatsDisplay("Stats");
 	breakpointsDisplay = new Drawing::BreakpointsDisplay("Stats-TBD");

@@ -1,7 +1,9 @@
-#include "D2Ptrs.h"
+﻿#include "D2Ptrs.h"
 #include "BH.h"
 #include "D2Stubs.h"
 #include "Drawing/Advanced/Colorhook/Colorhook.h"
+#include "Modules/StatsPoints/StatsPoints.h"
+#include "Modules/SkillsPoints/SkillsPoints.h"
 
 #include <iterator>
 
@@ -36,6 +38,8 @@ DWORD WINAPI GameThread(VOID* lpvoid) {
 		if ((*p_D2WIN_FirstControl) && inGame) {
 			inGame = false;
 			__raise BH::moduleManager->OnGameExit();
+			StatsPoints_FlushSettingsInput();
+			SkillsPoints_FlushSettingsInput();
 			BH::config->Write();
 			BH::oogDraw->Install();
 		} else if (D2CLIENT_GetPlayerUnit() && !inGame) {

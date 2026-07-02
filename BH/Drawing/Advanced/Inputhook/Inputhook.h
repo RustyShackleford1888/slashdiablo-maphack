@@ -14,6 +14,7 @@ namespace Drawing {
 			unsigned int textPos;//Used to determine which part of the current text I should show
 			unsigned int selectPos, selectLength; // Selection position and length
 			unsigned int font; //What type of font to use in the input hook.
+			DWORD lastClickTick; // For double-click select-all
 		public:
 			Inputhook(HookVisibility visibility, unsigned int x, unsigned int y, unsigned int xSize, std::string formatString, ...);
 			Inputhook(HookGroup* group, unsigned int x, unsigned int y, unsigned int xSize, std::string formatString, ...);
@@ -73,6 +74,7 @@ namespace Drawing {
 
 			void OnDraw();
 
+			void SelectAll();
 			void InputText(std::string newText);
 			void Backspace();
 			void Replace(unsigned int pos, unsigned int len, std::string str);

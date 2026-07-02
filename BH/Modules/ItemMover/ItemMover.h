@@ -87,6 +87,8 @@ private:
 	ItemPacketData ActivePacket;
 	CRITICAL_SECTION crit;
 	Drawing::UITab* settingsTab;
+	unsigned int interactionRightColumnX;
+	unsigned int interactionRightColumnY;
 	
 	// Auto-cube state variables
 	bool isAutoCubing;
@@ -325,6 +327,10 @@ public:
 	void OnGamePacketRecv(BYTE* packet, bool *block);
 	void OnGameExit();
 	Drawing::UITab* GetInteractionTab() { return settingsTab; }
+	unsigned int GetInteractionRightColumnX() { return interactionRightColumnX; }
+	unsigned int& GetInteractionRightColumnY() { return interactionRightColumnY; }
+	void BuildShiftClickSettingsSection();
+	void BuildAutoPickupSection();
 };
 
 

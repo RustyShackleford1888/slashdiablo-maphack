@@ -16,3 +16,5 @@
 #include "Modules\MOTD\MOTD.h"
 #include "Modules\Gambling\Gambling.h"
 #include "Modules\Glossary\Glossary.h"
+#include "Modules\StatsPoints\StatsPoints.h"
+#include "Modules\SkillsPoints\SkillsPoints.h"

@@ -16,6 +16,7 @@ Inputhook::Inputhook(HookVisibility visibility, unsigned int x, unsigned int y, 
 	ResetCursorTick();
 	ResetSelection();
 	textPos = 0;
+	lastClickTick = 0;
 	char buffer[4096];
 	va_list arg;
 	va_start(arg, formatString);
@@ -37,6 +38,7 @@ Inputhook::Inputhook(HookGroup* group, unsigned int x, unsigned int y, unsigned 
 	ResetCursorTick();
 	ResetSelection();
 	textPos = 0;
+	lastClickTick = 0;
 	char buffer[4096];
 	va_list arg;
 	va_start(arg, formatString);
@@ -86,6 +88,19 @@ Inputhook::Inputhook(HookGroup* group, unsigned int x, unsigned int y, unsigned 
 	 Lock();
 	 showCursor = true;
 	 cursorTick = 1;
+	 Unlock();
+ }
+
+ void Inputhook::SelectAll() {
+	 Lock();
+	 if (text.length() > 0) {
+		 selectPos = 0;
+		 selectLength = (unsigned int)text.length();
+		 cursorPos = (unsigned int)text.length();
+		 textPos = 0;
+		 showCursor = true;
+		 cursorTick = 1;
+	 }
 	 Unlock();
  }
 
@@ -159,8 +174,16 @@ unsigned int Inputhook::GetCharacterLimit() {
 
 	 
 	 if (IsSelected()) {
-		 drawnText.insert(GetSelectionPosition() + GetSelectionLength(), "�c0");
-		 drawnText.insert(GetSelectionPosition(), "�c9");
+		 unsigned int selStart = GetSelectionPosition();
+		 unsigned int selEnd = selStart + GetSelectionLength();
+		 unsigned int drawStart = textPos;
+		 unsigned int drawEnd = textPos + (unsigned int)drawnText.length();
+		 if (selEnd > drawStart && selStart < drawEnd) {
+			 unsigned int relStart = selStart > drawStart ? selStart - drawStart : 0;
+			 unsigned int relEnd = selEnd < drawEnd ? selEnd - drawStart : (unsigned int)drawnText.length();
+			 drawnText.insert(relEnd, "\377c0");
+			 drawnText.insert(relStart, "\377c9");
+		 }
 	 }
 
 	
@@ -186,8 +209,9 @@ unsigned int Inputhook::GetCharacterLimit() {
 	 if (!IsActive())
 		 return false;
 	 Lock();
-	 bool ctrlState = ((GetKeyState(VK_LCONTROL) & 0x80) || (GetKeyState(VK_RCONTROL) & 0x80));
-	 bool shiftState = ((GetKeyState(VK_LSHIFT) & 0x80) || (GetKeyState(VK_RSHIFT) & 0x80));
+	 bool block = true;
+	 bool ctrlState = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+	 bool shiftState = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
 	 switch(key) {
 		case VK_BACK:
 			if (!up)
@@ -242,67 +266,70 @@ unsigned int Inputhook::GetCharacterLimit() {
 			// no newline; do not run default/ToAscii (Leader / single-line fields)
 		break;
 		default:
-			if (up)
-				return true;
-
-			if (ctrlState) {
-				//Select All
-				if (key == 0x41) {
-					SetSelectionPosition(0);
-					SetSelectionLength(text.length());
-				}
-				OpenClipboard(NULL);
-				//Paste
-				if (key == 0x56) {
-					HANDLE pHandle = GetClipboardData(CF_TEXT);
-					if (!pHandle)
-						return true;
-					InputText((char*)GlobalLock(pHandle));
-				}
-				//Copy & Cut
-				if (key == 0x43 || key == 0x58) {
-					if (!IsSelected() || text.length() == 0)
-						return true;
-					
-					Lock();
-					string mText = text.substr(GetSelectionPosition(), GetSelectionLength());
-			
-					HGLOBAL hGlobal = GlobalAlloc(GMEM_MOVEABLE, (mText.size() + 1) * sizeof(CHAR)); 
-					char* szStr = (char*)GlobalLock(hGlobal);
-					memcpy(szStr, mText.c_str(), mText.size() * sizeof(CHAR));
-					GlobalUnlock(hGlobal);
-					EmptyClipboard();
-					SetClipboardData(CF_TEXT, hGlobal);
-
-					if (key == 0x58) {
-						Erase(GetSelectionPosition(), GetSelectionLength());
-
-						ResetSelection();
+			if (!up) {
+				if (ctrlState) {
+					if (key == 0x41) {
+						SelectAll();
+					} else if (OpenClipboard(NULL)) {
+						if (key == 0x56) {
+							HANDLE pHandle = GetClipboardData(CF_TEXT);
+							if (pHandle)
+								InputText((char*)GlobalLock(pHandle));
+						} else if (key == 0x43 || key == 0x58) {
+							if (IsSelected() && text.length() > 0) {
+								string mText = text.substr(GetSelectionPosition(), GetSelectionLength());
+								HGLOBAL hGlobal = GlobalAlloc(GMEM_MOVEABLE, (mText.size() + 1) * sizeof(CHAR));
+								char* szStr = (char*)GlobalLock(hGlobal);
+								memcpy(szStr, mText.c_str(), mText.size() * sizeof(CHAR));
+								GlobalUnlock(hGlobal);
+								EmptyClipboard();
+								SetClipboardData(CF_TEXT, hGlobal);
+								if (key == 0x58) {
+									Erase(GetSelectionPosition(), GetSelectionLength());
+									ResetSelection();
+								}
+							}
+						}
+						CloseClipboard();
 					}
-					Unlock();
+				} else {
+					BYTE layout[256];
+					WORD out[2];
+					CHAR szChar[10];
+					GetKeyboardState(layout);
+					if (ToAscii(key, (lParam & 0xFF0000), layout, out, 0) == 0)
+						block = false;
+					else {
+						sprintf_s(szChar, sizeof(szChar), "%c", out[0]);
+						InputText(szChar);
+					}
 				}
-				CloseClipboard();
-				return true;
 			}
-
-			BYTE layout[256];
-			WORD out[2];
-			CHAR szChar[10];
-			GetKeyboardState(layout);
-			if (ToAscii(key, (lParam & 0xFF0000), layout, out, 0) == 0)
-				return false;
-			sprintf_s(szChar, sizeof(szChar), "%c", out[0]);
-
-			InputText(szChar);
 		break;
 	 }
-	 return true;
+	 Unlock();
+	 return block;
  }
 
  bool Inputhook::OnLeftClick(bool up, unsigned int x, unsigned int y) {
 	 if (InRange(x, y)) {
 		 if (up) {
 			 SetActive(true);
+			 DWORD now = GetTickCount();
+			 bool isDoubleClick = lastClickTick != 0
+				 && (now - lastClickTick) <= (DWORD)GetDoubleClickTime();
+			 lastClickTick = now;
+
+			 if (isDoubleClick && text.length() > 0) {
+				 SelectAll();
+			 } else {
+				 ResetSelection();
+				 SetCursorPosition(text.length());
+				 if (text.length() > GetCharacterLimit())
+					 SetTextPos(text.length() - GetCharacterLimit());
+				 else
+					 SetTextPos(0);
+			 }
 			 NotifyCaretFromUserAction();
 		 }
 		 if (GetLeftClickHandler())

@@ -177,6 +177,8 @@ if defined D2Path (
     <ClCompile Include="Modules\MOTD\MOTD.cpp" />
     <ClCompile Include="Modules\Gambling\Gambling.cpp" />
     <ClCompile Include="Modules\Glossary\Glossary.cpp" />
+    <ClCompile Include="Modules\StatsPoints\StatsPoints.cpp" />
+    <ClCompile Include="Modules\SkillsPoints\SkillsPoints.cpp" />
     <ClCompile Include="Modules\Module.cpp" />
     <ClCompile Include="Modules\ModuleManager.cpp" />
     <ClCompile Include="Modules\Party\Party.cpp" />
@@ -242,6 +244,8 @@ if defined D2Path (
     <ClInclude Include="Modules\MOTD\MOTD.h" />
     <ClInclude Include="Modules\Gambling\Gambling.h" />
     <ClInclude Include="Modules\Glossary\Glossary.h" />
+    <ClInclude Include="Modules\StatsPoints\StatsPoints.h" />
+    <ClInclude Include="Modules\SkillsPoints\SkillsPoints.h" />
     <ClInclude Include="Modules\Module.h" />
     <ClInclude Include="Modules\ModuleManager.h" />
     <ClInclude Include="Modules\Party\Party.h" />

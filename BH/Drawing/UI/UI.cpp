@@ -3,6 +3,8 @@
 #include "UITab.h"
 #include "../../BH.h"
 #include "../../Modules/AutoTele/AutoTele.h"
+#include "../../Modules/StatsPoints/StatsPoints.h"
+#include "../../Modules/SkillsPoints/SkillsPoints.h"
 #include "../Basic/Texthook/Texthook.h"
 #include "../Basic/Framehook/Framehook.h"
 #include "../Advanced/Colorhook/Colorhook.h"
@@ -252,6 +254,8 @@ void UI::SetActive(bool newState) {
 			if (at)
 				at->FlushSettingsInputsToBnet();
 		}
+		StatsPoints_FlushSettingsInput();
+		SkillsPoints_FlushSettingsInput();
 		BH::config->Write();
 	}
 	Unlock();
@@ -272,6 +276,8 @@ void UI::SetMinimized(bool newState) {
 			if (at)
 				at->FlushSettingsInputsToBnet();
 		}
+		StatsPoints_FlushSettingsInput();
+		SkillsPoints_FlushSettingsInput();
 		BH::config->Write();
 	} else {
 		Minimized.remove(this);

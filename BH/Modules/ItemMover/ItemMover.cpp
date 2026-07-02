@@ -2,6 +2,8 @@
 #include "../Item/Item.h"
 #include "../Gambling/Gambling.h"
 #include "../Glossary/Glossary.h"
+#include "../StatsPoints/StatsPoints.h"
+#include "../SkillsPoints/SkillsPoints.h"
 #include "../../BH.h"
 #include "../../D2Ptrs.h"
 #include "../../D2Stubs.h"
@@ -511,12 +513,37 @@ void ItemMover::OnLoad() {
 	colored_text = new Drawing::Texthook(settingsTab, rightX, (bottomY2 += 15),
 			"closed cube");
 	colored_text->SetColor(Gold);
+	colored_text = new Drawing::Texthook(settingsTab, rightX, (bottomY2 += 15),
+			"Ctrl+shift+click stats assigns all");
+	colored_text->SetColor(Gold);
 
 	bottomY2 += 7;
+	interactionRightColumnX = rightX;
+	interactionRightColumnY = bottomY2;
+}
 
-	new Drawing::Texthook(settingsTab, rightX, (bottomY2 += 15), "Auto Pickup");
-	new Drawing::Checkhook(settingsTab, rightX, (bottomY2 += 15), &autoPickupGold.state, "Auto Pickup Gold");
+void ItemMover::BuildShiftClickSettingsSection() {
+	StatsPoints* statsPoints = (StatsPoints*)BH::moduleManager->Get("statspoints");
+	SkillsPoints* skillsPoints = (SkillsPoints*)BH::moduleManager->Get("skillspoints");
 
+	if (statsPoints)
+		statsPoints->BuildSettingsUI();
+	if (skillsPoints)
+		skillsPoints->BuildSettingsUI();
+
+	BuildAutoPickupSection();
+}
+
+void ItemMover::BuildAutoPickupSection() {
+	if (!settingsTab)
+		return;
+
+	unsigned int x = interactionRightColumnX;
+	unsigned int& y = interactionRightColumnY;
+
+	y += 7;
+	new Drawing::Texthook(settingsTab, x, (y += 15), "Auto Pickup");
+	new Drawing::Checkhook(settingsTab, x, (y += 15), &autoPickupGold.state, "Auto Pickup Gold");
 }
 
 void ItemMover::OnLoop() {
