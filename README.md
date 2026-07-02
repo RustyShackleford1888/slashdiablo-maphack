@@ -86,7 +86,7 @@ Mustache[stash]: {{#this}}* {{>item}}\n\n{{/this}}
 **How to use:**
 
 * Hover an item (inventory, ground, or vendor) or select it
-* Press **`** (backtick) — default key `Announce Item Stats`
+* Press the backtick key (`` ` ``) — default config key `Announce Item Stats`
 * Prints messages like "Empower: +5 all skills", aura descriptions, etc. from the built-in `g_announcements[]` table
 
 **Config key:** `Announce Item Stats` (default `VK_BACKTICK`)
