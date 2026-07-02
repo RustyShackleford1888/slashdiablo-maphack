@@ -191,6 +191,7 @@ KeyCode pCodes[] = {
 	{"VK_LMENU", 0xA4, "Left Menu"}, {"VK_RMENU", 0xA5, "Right Menu"}, 
 	{"VK_SEMICOLON", 0xBA, ";"}, {"VK_PLUS", 0xBB, "+"}, {"VK_COMMA", 0xBC, ","}, {"VK_MINUS", 0xBD, "-"},
 	{"VK_PERIOD", 0xBE, "."}, {"VK_FORWARDSLASH", 0xBD, "/"}, {"VK_TILDE", 0xBF, "~"},
+	{"VK_BACKTICK", 0xC0, "`"},
 	{"VK_LEFTBRACKET", 0xDB, "["}, {"VK_BACKSLASH", 0xDC, "\\"}, {"VK_RIGHTBRACKET", 0xDD, "]"},
 	{"VK_QUOTE", 0xDE, "'"}};
 
