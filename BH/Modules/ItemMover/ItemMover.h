@@ -84,6 +84,7 @@ private:
 	unsigned int JuvKey;
 	unsigned int TransmuteKey;
 	unsigned int AutoCubeKey;
+	unsigned int ListStashKey;
 	ItemPacketData ActivePacket;
 	CRITICAL_SECTION crit;
 	Drawing::UITab* settingsTab;
@@ -168,6 +169,10 @@ private:
 	DWORD savedStashUnitId;              // Unit ID of stash object to reopen
 	bool processingStashBatch;           // True during autocube phase for stash items (limits recipes)
 	std::set<std::string> stashMovedItemCodes;  // Item codes moved from stash for filtering recipes
+
+	// Chat stash-list withdraw (List Stash hotkey + type number in chat)
+	bool stashListActive;
+	std::vector<StashItemRecord> listedStashItems;
 public:
 	ItemMover() : Module("Item Mover"),
 		ActivePacket(),
@@ -239,7 +244,8 @@ public:
 		restoringItemsToStash(false),
 		stashRestoreIndex(0),
 		savedStashUnitId(0),
-		processingStashBatch(false) {
+		processingStashBatch(false),
+		stashListActive(false) {
 
 		InitializeCriticalSection(&crit);
 		// Initialize toggles to safe defaults
@@ -316,6 +322,11 @@ public:
 	void ProcessStashInteraction();             // Main state machine for stash interaction
 	void ResetStashInteractionState();          // Reset all stash interaction state
 	void StopAutoCubeFromUserClick();           // While auto-cubing, any left/right click down stops the process
+
+	// List stash items in chat, then withdraw by typing the number
+	void ListStashItems();
+	bool TryHandleStashListSelection(const wchar_t* wMsg);
+	void WithdrawListedStashItem(int oneBasedIndex);
 
 	void LoadConfig();
 

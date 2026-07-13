@@ -4,6 +4,7 @@
 #include "Drawing/Advanced/Colorhook/Colorhook.h"
 #include "Modules/StatsPoints/StatsPoints.h"
 #include "Modules/SkillsPoints/SkillsPoints.h"
+#include "Modules/ItemMover/ItemMover.h"
 
 #include <iterator>
 
@@ -160,6 +161,11 @@ DWORD __fastcall GamePacketRecv(BYTE* pPacket, DWORD dwSize) {
 
 DWORD __fastcall GameInput(wchar_t* wMsg)
 {
+	ItemMover* itemMover = (ItemMover*)BH::moduleManager->Get("item-mover");
+	if (itemMover && itemMover->TryHandleStashListSelection(wMsg)) {
+		return -1;
+	}
+
 	bool hasCmd = wcslen(wMsg) > 1 && wMsg[0] == '.';
 	if(hasCmd)
 	{

@@ -399,6 +399,7 @@ void ItemMover::LoadConfig() {
 	BH::config->ReadKey("Use Rejuv Potion", "VK_NUMPADDIVIDE", JuvKey);
 	BH::config->ReadKey("Cube Transmute", "None", TransmuteKey);
 	BH::config->ReadKey("Auto Cube", "None", AutoCubeKey);
+	BH::config->ReadKey("List Stash", "VK_BACKSLASH", ListStashKey);
 
 	BH::config->ReadInt("Low TP Warning", tp_warn_quantity);
 	
@@ -437,6 +438,7 @@ void ItemMover::OnLoad() {
 	
 	// Second column
 	new Drawing::Keyhook(settingsTab, x2, (y2 += 15), &TransmuteKey,"Cube Transmute:        ");
+	new Drawing::Keyhook(settingsTab, x2, (y2 += 15), &ListStashKey, "List Stash:            ");
 	
 	// Add Gambling Refresh keyhook if Gambling module is loaded (second column)
 	Gambling* gambling = (Gambling*)BH::moduleManager->Get("gambling");
@@ -822,6 +824,10 @@ void ItemMover::OnKey(bool up, BYTE key, LPARAM lParam, bool* block)  {
 			}
 		}
 	}
+	if (!up && ListStashKey && key == ListStashKey) {
+		ListStashItems();
+		*block = true;
+	}
 	if (!up && (key == AutoCubeKey)) {
 		// Start auto-cubing process (non-blocking)
 		if (!isAutoCubing) {
@@ -1123,6 +1129,168 @@ bool ItemMover::MoveItemToInventory(UnitAny* unit, UnitAny* item) {
 		return true;
 	}
 	return false;
+}
+
+static std::string SanitizeStashListName(UnitAny* item) {
+	std::string itemName = GetItemName(item);
+	size_t start_pos = 0;
+	while ((start_pos = itemName.find('\n', start_pos)) != std::string::npos) {
+		itemName.replace(start_pos, 1, " - ");
+		start_pos += 3;
+	}
+	// PrintText limit is 151 chars; leave room for "NN. "
+	if (itemName.size() > 140) {
+		itemName.resize(137);
+		itemName += "...";
+	}
+	return itemName;
+}
+
+void ItemMover::ListStashItems() {
+	UnitAny* unit = D2CLIENT_GetPlayerUnit();
+	if (!unit || !unit->pInventory) {
+		return;
+	}
+
+	listedStashItems.clear();
+	stashListActive = false;
+
+	struct ListedItem {
+		StashItemRecord record;
+		std::string name;
+	};
+	std::vector<ListedItem> items;
+
+	for (UnitAny* pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
+		if (!pItem->pItemData || pItem->pItemData->ItemLocation != STORAGE_STASH) {
+			continue;
+		}
+		ListedItem entry;
+		entry.record.itemId = pItem->dwUnitId;
+		char* code = D2COMMON_GetItemText(pItem->dwTxtFileNo)->szCode;
+		entry.record.itemCode[0] = code[0];
+		entry.record.itemCode[1] = code[1];
+		entry.record.itemCode[2] = code[2];
+		entry.record.itemCode[3] = 0;
+		entry.record.x = pItem->pObjectPath->dwPosX;
+		entry.record.y = pItem->pObjectPath->dwPosY;
+		entry.name = SanitizeStashListName(pItem);
+		items.push_back(entry);
+	}
+
+	std::sort(items.begin(), items.end(), [](const ListedItem& a, const ListedItem& b) {
+		if (a.record.y != b.record.y) {
+			return a.record.y < b.record.y;
+		}
+		return a.record.x < b.record.x;
+	});
+
+	if (items.empty()) {
+		PrintText(Gold, "Stash is empty.");
+		return;
+	}
+
+	PrintText(Gold, "Stash items (type number in chat to withdraw):");
+	for (size_t i = 0; i < items.size(); i++) {
+		listedStashItems.push_back(items[i].record);
+		PrintText(White, "%d. %s", static_cast<int>(i + 1), items[i].name.c_str());
+	}
+	stashListActive = true;
+}
+
+bool ItemMover::TryHandleStashListSelection(const wchar_t* wMsg) {
+	if (!stashListActive || !wMsg) {
+		return false;
+	}
+
+	// Trim whitespace
+	const wchar_t* start = wMsg;
+	while (*start == L' ' || *start == L'\t') {
+		start++;
+	}
+	if (*start == L'\0') {
+		return false;
+	}
+	const wchar_t* end = start + wcslen(start);
+	while (end > start && (end[-1] == L' ' || end[-1] == L'\t')) {
+		end--;
+	}
+
+	if (start == end) {
+		return false;
+	}
+
+	// Only intercept messages that are entirely digits
+	for (const wchar_t* p = start; p < end; p++) {
+		if (*p < L'0' || *p > L'9') {
+			return false;
+		}
+	}
+
+	int index = _wtoi(start);
+	WithdrawListedStashItem(index);
+	return true;
+}
+
+void ItemMover::WithdrawListedStashItem(int oneBasedIndex) {
+	if (oneBasedIndex < 1 || oneBasedIndex > static_cast<int>(listedStashItems.size())) {
+		PrintText(Red, "Invalid stash item number (1-%d).", static_cast<int>(listedStashItems.size()));
+		return;
+	}
+
+	UnitAny* unit = D2CLIENT_GetPlayerUnit();
+	if (!unit || !unit->pInventory) {
+		PrintText(Red, "Cannot withdraw: player not ready.");
+		return;
+	}
+
+	if (!D2CLIENT_GetUIState(UI_STASH)) {
+		PrintText(Red, "Open your stash before withdrawing.");
+		return;
+	}
+
+	if (D2CLIENT_GetCursorItem() != NULL) {
+		PrintText(Red, "Cannot withdraw while holding an item.");
+		return;
+	}
+
+	if (ActivePacket.startTicks != 0) {
+		PrintText(Red, "Wait for the current item move to finish.");
+		return;
+	}
+
+	const StashItemRecord& record = listedStashItems[oneBasedIndex - 1];
+	UnitAny* item = NULL;
+	for (UnitAny* pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
+		if (pItem->dwUnitId == record.itemId &&
+			pItem->pItemData &&
+			pItem->pItemData->ItemLocation == STORAGE_STASH) {
+			item = pItem;
+			break;
+		}
+	}
+
+	if (!item) {
+		PrintText(Red, "Item #%d is no longer in your stash.", oneBasedIndex);
+		stashListActive = false;
+		listedStashItems.clear();
+		return;
+	}
+
+	std::string itemName = SanitizeStashListName(item);
+
+	// Prefer placing into inventory; if full, pick onto cursor instead
+	if (MoveItemToInventory(unit, item)) {
+		PrintText(Gold, "Withdrew #%d: %s", oneBasedIndex, itemName.c_str());
+	} else {
+		BYTE PacketData[5] = { 0x19, 0, 0, 0, 0 };
+		*reinterpret_cast<int*>(PacketData + 1) = item->dwUnitId;
+		D2NET_SendPacket(5, 1, PacketData);
+		PrintText(Gold, "Inventory full - #%d on cursor: %s", oneBasedIndex, itemName.c_str());
+	}
+
+	stashListActive = false;
+	listedStashItems.clear();
 }
 
 int ItemMover::ClearCube(UnitAny* unit) {
@@ -5756,6 +5924,8 @@ void ItemMover::OnGameExit() {
 	goldPickupQueue.clear();
 	previousHP = 0;
 	damageTakenTick = 0;
+	stashListActive = false;
+	listedStashItems.clear();
 }
 
 // Code for reading the 0x9c bitstream (borrowed from heroin_glands)
