@@ -2,6 +2,7 @@
 #include "../../../D2Ptrs.h"
 #include "../../Basic/Framehook/Framehook.h"
 #include "../../../Common.h"
+#include "../../../Constants.h"
 
 using namespace std;
 using namespace Drawing;
@@ -15,6 +16,7 @@ Inputhook::Inputhook(HookVisibility visibility, unsigned int x, unsigned int y, 
 	ResetCursorTick();
 	ResetSelection();
 	textPos = 0;
+	lastClickTick = 0;
 	char buffer[4096];
 	va_list arg;
 	va_start(arg, formatString);
@@ -22,6 +24,9 @@ Inputhook::Inputhook(HookVisibility visibility, unsigned int x, unsigned int y, 
 	va_end(arg);
 	text = buffer;
 	SetCursorPosition(text.length());
+	Lock();
+	cursorTick = 1;
+	Unlock();
 }
 
 Inputhook::Inputhook(HookGroup* group, unsigned int x, unsigned int y, unsigned int xSize, std::string formatString, ...) :
@@ -33,6 +38,7 @@ Inputhook::Inputhook(HookGroup* group, unsigned int x, unsigned int y, unsigned 
 	ResetCursorTick();
 	ResetSelection();
 	textPos = 0;
+	lastClickTick = 0;
 	char buffer[4096];
 	va_list arg;
 	va_start(arg, formatString);
@@ -40,7 +46,10 @@ Inputhook::Inputhook(HookGroup* group, unsigned int x, unsigned int y, unsigned 
 	va_end(arg);
 	text = buffer;
 	SetCursorPosition(text.length());
- }
+	Lock();
+	cursorTick = 1;
+	Unlock();
+}
 
  void Inputhook::SetText(string newText, ...) {
 	char buffer[4096];
@@ -75,6 +84,26 @@ Inputhook::Inputhook(HookGroup* group, unsigned int x, unsigned int y, unsigned 
 	  cursorTick++;
  }
 
+ void Inputhook::NotifyCaretFromUserAction() {
+	 Lock();
+	 showCursor = true;
+	 cursorTick = 1;
+	 Unlock();
+ }
+
+ void Inputhook::SelectAll() {
+	 Lock();
+	 if (text.length() > 0) {
+		 selectPos = 0;
+		 selectLength = (unsigned int)text.length();
+		 cursorPos = (unsigned int)text.length();
+		 textPos = 0;
+		 showCursor = true;
+		 cursorTick = 1;
+	 }
+	 Unlock();
+ }
+
  void Inputhook::SetCursorPosition(unsigned int newPosition) {
 	 if (newPosition >= 0 && newPosition <= text.length()) {
 		Lock();
@@ -104,6 +133,8 @@ void Inputhook::IncreaseCursorPosition(unsigned int len) {
 	 SetCursorPosition(cursorPos + len); 
 	 if ((textPos + GetCharacterLimit()) < cursorPos)
 		 textPos = cursorPos - GetCharacterLimit();
+	 showCursor = true;
+	 cursorTick = 1;
 	 Unlock();
 };
 
@@ -112,6 +143,8 @@ void Inputhook::DecreaseCursorPosition(unsigned int len) {
 	SetCursorPosition(cursorPos - len); 
 	 if ((cursorPos - textPos) == -1 && textPos > 0)
 		 textPos -= len;
+	showCursor = true;
+	cursorTick = 1;
 	Unlock();
 }; 
 
@@ -128,7 +161,7 @@ unsigned int Inputhook::GetCharacterLimit() {
 	 POINT textSize = Texthook::GetTextSize(GetText().substr(textPos, GetCursorPosition() - textPos), GetFont());
 
 	 //Draw the outline box!
-	 RECT pRect  = {GetX(), GetY(), GetX() + GetXSize(), GetY() + height[GetFont()] + 4};
+	 RECT pRect  = {(LONG)GetX(), (LONG)GetY(), (LONG)(GetX() + GetXSize()), (LONG)(GetY() + height[GetFont()] + 4)};
 	 D2GFX_DrawRectangle(GetX(), GetY(), GetX() + GetXSize(), GetY() + height[GetFont()] + 4, 0, BTFull);
 	 Framehook::DrawRectStub(&pRect);
 	 string drawnText = text;
@@ -141,22 +174,33 @@ unsigned int Inputhook::GetCharacterLimit() {
 
 	 
 	 if (IsSelected()) {
-		 drawnText.insert(GetSelectionPosition() + GetSelectionLength(), "ÿc0");
-		 drawnText.insert(GetSelectionPosition(), "ÿc9");
+		 unsigned int selStart = GetSelectionPosition();
+		 unsigned int selEnd = selStart + GetSelectionLength();
+		 unsigned int drawStart = textPos;
+		 unsigned int drawEnd = textPos + (unsigned int)drawnText.length();
+		 if (selEnd > drawStart && selStart < drawEnd) {
+			 unsigned int relStart = selStart > drawStart ? selStart - drawStart : 0;
+			 unsigned int relEnd = selEnd < drawEnd ? selEnd - drawStart : (unsigned int)drawnText.length();
+			 drawnText.insert(relEnd, "\377c0");
+			 drawnText.insert(relStart, "\377c9");
+		 }
 	 }
 
 	
 	 DWORD oldFont = D2WIN_SetTextSize(GetFont());
 	 wchar_t* wText = AnsiToUnicode(drawnText.c_str());
-	 D2WIN_DrawText(wText, GetX() + 3, GetY() + 3 + height[GetFont()], 0, 0);
+	 D2WIN_DrawText(wText, GetX() + 3, GetY() + 3 + height[GetFont()], (DWORD)Gold, 0);
 	 delete[] wText;
-	 D2WIN_SetTextSize(oldFont);
 
-	 //Draw the cursor!
+	 //Draw the cursor! â€” blinking underscore (D2-style), same y as main line
 	 CursorTick();
-	 if (ShowCursor() && IsActive())
-		 D2GFX_DrawLine(GetX() + textSize.x + 2, GetY() + 3, GetX() + textSize.x + 2, GetY() + textSize.y, 255, 0);
+	 if (ShowCursor() && IsActive()) {
+		 const int caretX = (int)(GetX() + 3 + (unsigned int)textSize.x);
+		 const int yText = (int)(GetY() + 3 + height[GetFont()]);
+		 D2WIN_DrawText(L"_", caretX, yText, (DWORD)White, 0);
+	 }
 
+	 D2WIN_SetTextSize(oldFont);
 	 Unlock();
  }
 
@@ -165,8 +209,9 @@ unsigned int Inputhook::GetCharacterLimit() {
 	 if (!IsActive())
 		 return false;
 	 Lock();
-	 bool ctrlState = ((GetKeyState(VK_LCONTROL) & 0x80) || (GetKeyState(VK_RCONTROL) & 0x80));
-	 bool shiftState = ((GetKeyState(VK_LSHIFT) & 0x80) || (GetKeyState(VK_RSHIFT) & 0x80));
+	 bool block = true;
+	 bool ctrlState = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+	 bool shiftState = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
 	 switch(key) {
 		case VK_BACK:
 			if (!up)
@@ -217,68 +262,76 @@ unsigned int Inputhook::GetCharacterLimit() {
 				IncreaseCursorPosition(1);
 			}
 		break;
+		case VK_RETURN:
+			// no newline; do not run default/ToAscii (Leader / single-line fields)
+		break;
 		default:
-			if (up)
-				return true;
-
-			if (ctrlState) {
-				//Select All
-				if (key == 0x41) {
-					SetSelectionPosition(0);
-					SetSelectionLength(text.length());
-				}
-				OpenClipboard(NULL);
-				//Paste
-				if (key == 0x56) {
-					HANDLE pHandle = GetClipboardData(CF_TEXT);
-					if (!pHandle)
-						return true;
-					InputText((char*)GlobalLock(pHandle));
-				}
-				//Copy & Cut
-				if (key == 0x43 || key == 0x58) {
-					if (!IsSelected() || text.length() == 0)
-						return true;
-					
-					Lock();
-					string mText = text.substr(GetSelectionPosition(), GetSelectionLength());
-			
-					HGLOBAL hGlobal = GlobalAlloc(GMEM_MOVEABLE, (mText.size() + 1) * sizeof(CHAR)); 
-					char* szStr = (char*)GlobalLock(hGlobal);
-					memcpy(szStr, mText.c_str(), mText.size() * sizeof(CHAR));
-					GlobalUnlock(hGlobal);
-					EmptyClipboard();
-					SetClipboardData(CF_TEXT, hGlobal);
-
-					if (key == 0x58) {
-						Erase(GetSelectionPosition(), GetSelectionLength());
-
-						ResetSelection();
+			if (!up) {
+				if (ctrlState) {
+					if (key == 0x41) {
+						SelectAll();
+					} else if (OpenClipboard(NULL)) {
+						if (key == 0x56) {
+							HANDLE pHandle = GetClipboardData(CF_TEXT);
+							if (pHandle)
+								InputText((char*)GlobalLock(pHandle));
+						} else if (key == 0x43 || key == 0x58) {
+							if (IsSelected() && text.length() > 0) {
+								string mText = text.substr(GetSelectionPosition(), GetSelectionLength());
+								HGLOBAL hGlobal = GlobalAlloc(GMEM_MOVEABLE, (mText.size() + 1) * sizeof(CHAR));
+								char* szStr = (char*)GlobalLock(hGlobal);
+								memcpy(szStr, mText.c_str(), mText.size() * sizeof(CHAR));
+								GlobalUnlock(hGlobal);
+								EmptyClipboard();
+								SetClipboardData(CF_TEXT, hGlobal);
+								if (key == 0x58) {
+									Erase(GetSelectionPosition(), GetSelectionLength());
+									ResetSelection();
+								}
+							}
+						}
+						CloseClipboard();
 					}
-					Unlock();
+				} else {
+					BYTE layout[256];
+					WORD out[2];
+					CHAR szChar[10];
+					GetKeyboardState(layout);
+					if (ToAscii(key, (lParam & 0xFF0000), layout, out, 0) == 0)
+						block = false;
+					else {
+						sprintf_s(szChar, sizeof(szChar), "%c", out[0]);
+						InputText(szChar);
+					}
 				}
-				CloseClipboard();
-				return true;
 			}
-
-			BYTE layout[256];
-			WORD out[2];
-			CHAR szChar[10];
-			GetKeyboardState(layout);
-			if (ToAscii(key, (lParam & 0xFF0000), layout, out, 0) == 0)
-				return false;
-			sprintf_s(szChar, sizeof(szChar), "%c", out[0]);
-
-			InputText(szChar);
 		break;
 	 }
-	 return true;
+	 Unlock();
+	 return block;
  }
 
  bool Inputhook::OnLeftClick(bool up, unsigned int x, unsigned int y) {
 	 if (InRange(x, y)) {
-		 if (up)
+		 if (up) {
 			 SetActive(true);
+			 DWORD now = GetTickCount();
+			 bool isDoubleClick = lastClickTick != 0
+				 && (now - lastClickTick) <= (DWORD)GetDoubleClickTime();
+			 lastClickTick = now;
+
+			 if (isDoubleClick && text.length() > 0) {
+				 SelectAll();
+			 } else {
+				 ResetSelection();
+				 SetCursorPosition(text.length());
+				 if (text.length() > GetCharacterLimit())
+					 SetTextPos(text.length() - GetCharacterLimit());
+				 else
+					 SetTextPos(0);
+			 }
+			 NotifyCaretFromUserAction();
+		 }
 		 if (GetLeftClickHandler())
 			 GetLeftClickHandler()(up, this, GetLeftClickVoid());
 		 return true;
@@ -333,6 +386,8 @@ void Inputhook::Replace(unsigned int pos, unsigned int len, std::string str) {
 	Lock();
 	text.replace(pos, len, str);
 	SetCursorPosition(pos + str.length());
+	showCursor = true;
+	cursorTick = 1;
 	Unlock();
 }
 
@@ -342,5 +397,7 @@ void Inputhook::Erase(unsigned int pos, unsigned int len) {
 	Lock();
 	text.erase(pos,len);
 	SetCursorPosition(pos);
+	showCursor = true;
+	cursorTick = 1;
 	Unlock();
 }

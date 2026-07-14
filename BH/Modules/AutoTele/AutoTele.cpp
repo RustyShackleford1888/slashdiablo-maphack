@@ -1,5 +1,6 @@
 #include "AutoTele.h"
 #include "../../BH.h"
+#include "../Bnet/Bnet.h"
 #include "ATIncludes\CMapIncludes.h"
 #include "ATIncludes\Vectors.h"
 
@@ -16,6 +17,7 @@ void AutoTele::OnLoad() {
 	LoadConfig();
 
 	std::map<string, bool>* bnetBools (BH::BnetBools);
+	std::map<string, unsigned int>* bnetInts(BH::BnetInts);
 	std::map<string, bool>* gamefilterBools(BH::GamefilterBools);
 
 	settingsTab = new UITab("Misc", BH::settingsUI);
@@ -43,6 +45,14 @@ void AutoTele::OnLoad() {
 			&(*gamefilterBools)["Show Difficulty"], "Show Difficulty");
 	new Checkhook(settingsTab, col, (Y += 15),
 			&(*gamefilterBools)["Show Gameserver"], "Show Gameserver");
+	new Checkhook(settingsTab, col, (Y += 15),
+			&(*bnetBools)["Follow Leader"], "Follow Leader");
+	new Texthook(settingsTab, col + 5, (Y += 14), "Leader (B.net account):");
+	followLeaderAccInput = new Inputhook(settingsTab, col + 5, (Y += 12), 200, "%s", "");
+	followLeaderAccInput->SetFont(0);
+	new Texthook(settingsTab, col + 5, (Y += 16), "Leader Character Name:");
+	followLeaderCharInput = new Inputhook(settingsTab, col + 5, (Y += 12), 200, "%s", "");
+	followLeaderCharInput->SetFont(0);
 
 	//this doesn't change the path.  I can't figure out how to make it work either.
 	//new Checkhook(settingsTab, 40, 42, &Toggles["CP to cave"].state, "CP to cave");
@@ -60,9 +70,38 @@ void AutoTele::OnLoad() {
 	new Colorhook(settingsTab, 250, 87, &Colors[4], "Prev");
 
 	new Colorhook(settingsTab, 250, 102, &Colors[5], "Other Extra");
+
+	new Texthook(settingsTab, col + 20, (Y += 28), "Default Game Settings");
+	new Texthook(settingsTab, col + 5, Y + 26, "Default Gs:");
+	vector<string> gs_options;
+	gs_options.push_back("1 - New York");
+	gs_options.push_back("2 - Los Angeles");
+	gs_options.push_back("3 - Amsterdam");
+	gs_options.push_back("4 - Singapore");
+	new Combohook(settingsTab, col + 80, Y + 26, 130, &(*bnetInts)["Default Gs"], gs_options);
+	Y += 30;
+	new Texthook(settingsTab, col + 5, (Y += 16), "Default Game Name:");
+	defaultGameNameInput = new Inputhook(settingsTab, col + 5, (Y += 12), 200, "%s", "");
+	defaultGameNameInput->SetFont(0);
+	new Texthook(settingsTab, col + 5, (Y += 16), "Default Password:");
+	defaultPasswordInput = new Inputhook(settingsTab, col + 5, (Y += 12), 200, "%s", "");
+	defaultPasswordInput->SetFont(0);
+
+}
+
+void AutoTele::FlushSettingsInputsToBnet() {
+	if (!followLeaderAccInput || !followLeaderCharInput
+			|| !defaultGameNameInput || !defaultPasswordInput || !BH::moduleManager)
+		return;
+	Bnet* bnet = (Bnet*)BH::moduleManager->Get("bnet");
+	if (bnet) {
+		bnet->ApplyFollowLeaderFromUI(followLeaderAccInput->GetText(), followLeaderCharInput->GetText());
+		Bnet::ApplyDefaultGameSettingsFromUI(defaultGameNameInput->GetText(), defaultPasswordInput->GetText());
+	}
 }
 
 void AutoTele::LoadConfig() {
+	settingsInputsInited = false;
 	BH::config->ReadToggle("CP to cave", "None", false, Toggles["CP to cave"]);
 	BH::config->ReadToggle("Display Messages", "None", true, Toggles["Display Messages"]);
 	BH::config->ReadToggle("Draw Path", "None", true, Toggles["Draw Path"]);
@@ -119,6 +158,20 @@ void AutoTele::OnLoop() {
 	//	return;
 	//}
 
+	if (followLeaderAccInput && followLeaderCharInput && defaultGameNameInput && defaultPasswordInput
+			&& BH::moduleManager) {
+		Bnet* bnet = (Bnet*)BH::moduleManager->Get("bnet");
+		if (bnet) {
+			if (!settingsInputsInited) {
+				followLeaderAccInput->SetText("%s", bnet->leaderAccount.c_str());
+				followLeaderCharInput->SetText("%s", bnet->leaderCharacter.c_str());
+				defaultGameNameInput->SetText("%s", Bnet::GetDefaultGamename().c_str());
+				defaultPasswordInput->SetText("%s", Bnet::GetDefaultPassword().c_str());
+				settingsInputsInited = true;
+			}
+		}
+	}
+
 	DWORD playerArea = GetPlayerArea();
 	if(playerArea && LastArea != playerArea && D2CLIENT_GetPlayerUnit()) {
 		LastArea = playerArea;
@@ -141,7 +194,7 @@ void AutoTele::OnLoop() {
 		if(SetTele) {
 			if(!SetSkill(0x36, 0)) {	//0x36 is teleport
 				TPath.RemoveAll();
-				PrintText(1, "ÿc4AutoTele:ÿc1 Failed to set teleport!");
+				PrintText(1, "ï¿½c4AutoTele:ï¿½c1 Failed to set teleport!");
 			}
 			_timer = GetTickCount();
 			SetTele = 0;
@@ -153,12 +206,12 @@ void AutoTele::OnLoop() {
 			if(TeleActive) {
 				TeleActive = 0;
 				TPath.RemoveAll();
-				PrintText(1, "ÿc4AutoTele:ÿc1 Aborting teleport, deselected teleport");
+				PrintText(1, "ï¿½c4AutoTele:ï¿½c1 Aborting teleport, deselected teleport");
 				return;
 			}
 			if((GetTickCount() - _timer) > 1000) {
 				TPath.RemoveAll();
-				PrintText(1, "ÿc4AutoTele:ÿc1 Failed to set teleport skill. Ping: %d", *p_D2CLIENT_Ping);
+				PrintText(1, "ï¿½c4AutoTele:ï¿½c1 Failed to set teleport skill. Ping: %d", *p_D2CLIENT_Ping);
 				return;
 			}
 			return;
@@ -175,7 +228,7 @@ void AutoTele::OnLoop() {
 
 		if((GetTickCount() - _timer2) > 500) {
 			if(Try >= 5) {
-				PrintText(1, "ÿc4AutoTele:ÿc1 Failed to teleport after 5 tries");
+				PrintText(1, "ï¿½c4AutoTele:ï¿½c1 Failed to teleport after 5 tries");
 				TPath.RemoveAll();
 				Try = 0;
 				DoInteract = 0;
@@ -379,7 +432,7 @@ void AutoTele::ManageTele(Vector T) {
 	}
 
 	if(!T.Id) {
-		PrintText(1, "ÿc4AutoTele:ÿc1 Invalid destination");
+		PrintText(1, "ï¿½c4AutoTele:ï¿½c1 Invalid destination");
 		return;
 	}
 
@@ -415,7 +468,7 @@ void AutoTele::ManageTele(Vector T) {
 				} else DoInteract = 0;
 
 				int nodes = MakePath(ExitArray[i]->ptPos.x, ExitArray[i]->ptPos.y, Areas, AreaCount, ExitArray[i]->dwType == EXIT_LEVEL ? 1: 0);
-				PrintText(1, "ÿc4AutoTele:ÿc1 Going to %s, %d nodes.", lvltext->szName, nodes);
+				PrintText(1, "ï¿½c4AutoTele:ï¿½c1 Going to %s, %d nodes.", lvltext->szName, nodes);
 				break;
 			}
 		}
@@ -425,11 +478,11 @@ void AutoTele::ManageTele(Vector T) {
 	if(T.dwType == XY) {
 		DoInteract = 0;
 		if(!T.Id || !T.Id2) {
-			PrintText(1, "ÿc4AutoTele:ÿc1 No X/Y value found");
+			PrintText(1, "ï¿½c4AutoTele:ï¿½c1 No X/Y value found");
 			return;
 		}
 		int nodes = MakePath(T.Id, T.Id2, Areas, AreaCount, 0);
-		PrintText(1, "ÿc4AutoTele:ÿc1 Going to X: %d, Y: %d, %d nodes", T.Id, T.Id2, nodes);
+		PrintText(1, "ï¿½c4AutoTele:ï¿½c1 Going to X: %d, Y: %d, %d nodes", T.Id, T.Id2, nodes);
 		return;
 	}
 
@@ -451,13 +504,13 @@ void AutoTele::ManageTele(Vector T) {
 		if(nodes = MakePath(PresetUnit.x,PresetUnit.y, Areas, AreaCount, 0)) {
 			if(T.dwType == UNIT_OBJECT) {
 				ObjectTxt * ObjTxt = D2COMMON_GetObjectTxt(T.Id);
-				PrintText(1, "ÿc4AutoTele:ÿc1 Going to %s, %d nodes", ObjTxt->szName, nodes);
+				PrintText(1, "ï¿½c4AutoTele:ï¿½c1 Going to %s, %d nodes", ObjTxt->szName, nodes);
 			}
 			InteractType = T.dwType;
 		}
 		else return;
 	} else {
-		PrintText(1, "ÿc4AutoTele:ÿc1 Can't find object");
+		PrintText(1, "ï¿½c4AutoTele:ï¿½c1 Can't find object");
 		return;
 	}
 }

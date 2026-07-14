@@ -34,6 +34,8 @@
     <ClCompile Include="Modules\Item\Item.cpp" />
     <ClCompile Include="Modules\Item\ItemDisplay.cpp" />
     <ClCompile Include="Modules\ItemMover\ItemMover.cpp" />
+    <ClCompile Include="Modules\StatsPoints\StatsPoints.cpp" />
+    <ClCompile Include="Modules\SkillsPoints\SkillsPoints.cpp" />
     <ClCompile Include="Modules\Maphack\Maphack.cpp" />
     <ClCompile Include="Modules\Module.cpp" />
     <ClCompile Include="Modules\ModuleManager.cpp" />
@@ -46,6 +48,7 @@
     <ClCompile Include="Modules\StashExport\StashExport.cpp" />
     <ClCompile Include="TableReader.cpp" />
     <ClCompile Include="Task.cpp" />
+    <ClCompile Include="Drawing\Stats\BreakpointsDisplay.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="AsyncDrawBuffer.h" />
@@ -95,6 +98,8 @@
     <ClInclude Include="Modules\Item\Item.h" />
     <ClInclude Include="Modules\Item\ItemDisplay.h" />
     <ClInclude Include="Modules\ItemMover\ItemMover.h" />
+    <ClInclude Include="Modules\StatsPoints\StatsPoints.h" />
+    <ClInclude Include="Modules\SkillsPoints\SkillsPoints.h" />
     <ClInclude Include="Modules\Maphack\Maphack.h" />
     <ClInclude Include="Modules\Module.h" />
     <ClInclude Include="Modules\ModuleManager.h" />
@@ -107,5 +112,6 @@
     <ClInclude Include="Modules\StashExport\StashExport.h" />
     <ClInclude Include="TableReader.h" />
     <ClInclude Include="Task.h" />
+    <ClInclude Include="Drawing\Stats\BreakpointsDisplay.h" />
   </ItemGroup>
 </Project>

@@ -25,7 +25,7 @@ namespace Drawing {
 			//Draw the text.
 			void OnDraw();
 
-			//Static Cross Draw
-			static bool Draw(unsigned int x, unsigned int y, unsigned int color);
+			//Static Cross Draw. scale=1 is default size, scale=2 is 2x larger.
+			static bool Draw(unsigned int x, unsigned int y, unsigned int color, int scale = 1);
 	};
 };

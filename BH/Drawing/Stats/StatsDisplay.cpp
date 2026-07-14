@@ -4,10 +4,11 @@
 #include "../Basic/Boxhook/Boxhook.h"
 #include "../../D2Ptrs.h"
 #include "../../BH.h"
+#include "BreakpointsDisplay.h" 
 
 using namespace Drawing;
 
-StatsDisplay *StatsDisplay::display;
+StatsDisplay* StatsDisplay::display;
 
 StatsDisplay::StatsDisplay(std::string name) {
 	int yPos = 10;
@@ -37,7 +38,7 @@ StatsDisplay::~StatsDisplay() {
 	DeleteCriticalSection(&crit);
 }
 
-void StatsDisplay::LoadConfig(){
+void StatsDisplay::LoadConfig() {
 	int height = 342 + 8 * 3 + 16 * 6;
 	customStats.clear();
 
@@ -48,8 +49,8 @@ void StatsDisplay::LoadConfig(){
 	for (unsigned int i = 0; i < stats.size(); i++) {
 		std::transform(stats[i].first.begin(), stats[i].first.end(), stats[i].first.begin(), ::tolower);
 		if (StatMap.count(stats[i].first) > 0) {
-			StatProperties *sp = StatMap[stats[i].first];
-			DisplayedStat *customStat = new DisplayedStat();
+			StatProperties* sp = StatMap[stats[i].first];
+			DisplayedStat* customStat = new DisplayedStat();
 			customStat->name = stats[i].first;
 			customStat->useValue = false;
 			std::transform(customStat->name.begin(), customStat->name.end(), customStat->name.begin(), ::tolower);
@@ -119,7 +120,7 @@ void StatsDisplay::Draw() {
 }
 
 void StatsDisplay::OnDraw() {
-	UnitAny *unit = D2CLIENT_GetPlayerUnit();
+	UnitAny* unit = D2CLIENT_GetPlayerUnit();
 	bool isMerc = false;
 	if (!unit)
 		return;
@@ -131,7 +132,12 @@ void StatsDisplay::OnDraw() {
 			unit = D2CLIENT_GetMercUnit();
 			isMerc = true;
 		}
-		for(std::list<Hook*>::iterator it = Hooks.begin(); it != Hooks.end(); it++)
+		if (D2CLIENT_GetUIState(0x02)) {
+			int xPos = *p_D2CLIENT_ScreenSizeX - 10 - GetXSize();  // Position on the right
+			SetX(xPos);
+		}
+
+		for (std::list<Hook*>::iterator it = Hooks.begin(); it != Hooks.end(); it++)
 			(*it)->OnDraw();
 
 		int y = GetY();
@@ -141,18 +147,18 @@ void StatsDisplay::OnDraw() {
 		pRect.right = x + GetXSize();
 		pRect.bottom = y + GetYSize();
 
-		Drawing::Boxhook::Draw(GetX(),GetY(), GetXSize(), GetYSize(), White, Drawing::BTBlack);
+		Drawing::Boxhook::Draw(GetX(), GetY(), GetXSize(), GetYSize(), White, Drawing::BTBlack);
 		Drawing::Framehook::DrawRectStub(&pRect);
 
 		Texthook::Draw(column1, (y += 8), None, 6, Gold,
-				"Name:\377c0 %s",
-				isMerc ? "\377c;Mercenary" : unit->pPlayerData->szName);
+			"Name:\377c0 %s",
+			isMerc ? "\377c;Mercenary" : unit->pPlayerData->szName);
 		Texthook::Draw(pRect.right - 5, y, Right, 6, Gold,
-				L"Level:\377c0 %d",
-				(int)D2COMMON_GetUnitStat(unit, STAT_LEVEL, 0));
+			L"Level:\377c0 %d",
+			(int)D2COMMON_GetUnitStat(unit, STAT_LEVEL, 0));
 		Texthook::Draw(pRect.right - 5, y + 12, Right, 6, Gold,
-				L"Additional XP:\377c: %d%%",
-				(int)D2COMMON_GetUnitStat(unit, STAT_ADDEXPERIENCE, 0));
+			L"Additional XP:\377c: %d%%",
+			(int)D2COMMON_GetUnitStat(unit, STAT_ADDEXPERIENCE, 0));
 
 		y += 8;
 
@@ -170,11 +176,11 @@ void StatsDisplay::OnDraw() {
 		Texthook::Draw(column1, (y += 16), None, 6, Blue, L"\377c4Cold Resist:\377c3 %d \377c0/ %d", (int)D2COMMON_GetUnitStat(unit, STAT_COLDRESIST, 0) + penalty, cMax);
 		Texthook::Draw(column1, (y += 16), None, 6, Yellow, L"\377c4Lightning Resist:\377c9 %d \377c0/ %d", (int)D2COMMON_GetUnitStat(unit, STAT_LIGHTNINGRESIST, 0) + penalty, lMax);
 		Texthook::Draw(column1, (y += 16), None, 6, Gold,
-				L"Poison Resist:\377c2 %d \377c0/ %d  \377c4Length:\377c: %d%%",
-				(int)D2COMMON_GetUnitStat(unit, STAT_POISONRESIST, 0) + penalty,
-				pMax,
-				(100 - penalty - pLengthReduce)
-				);
+			L"Poison Resist:\377c2 %d \377c0/ %d  \377c4Length:\377c: %d%%",
+			(int)D2COMMON_GetUnitStat(unit, STAT_POISONRESIST, 0) + penalty,
+			pMax,
+			(100 - penalty - pLengthReduce)
+		);
 		y += 8;
 
 		int fAbsorb = (int)D2COMMON_GetUnitStat(unit, STAT_FIREABSORB, 0);
@@ -192,6 +198,7 @@ void StatsDisplay::OnDraw() {
 		int magReduction = (int)D2COMMON_GetUnitStat(unit, STAT_MAGICDMGREDUCTION, 0);
 		int magReductionPct = (int)D2COMMON_GetUnitStat(unit, STAT_MAGICDMGREDUCTIONPCT, 0);
 		Texthook::Draw(column1, (y += 16), None, 6, Tan, L"\377c4Damage Reduction: \377c7%d\377c0/\377c7%d%c \377c8%d\377c0/\377c8%d%c", dmgReduction, dmgReductionPct, '%', magReduction, magReductionPct, '%');
+		Texthook::Draw(column1, (y += 16), None, 6, Gold, L"Curse Reduction:\377c0 %d%%", (int)D2COMMON_GetUnitStat(unit, STAT_CURSERESISTANCE, 0));
 		y += 8;
 
 		int fMastery = (int)D2COMMON_GetUnitStat(unit, STAT_FIREMASTERY, 0);
@@ -205,85 +212,87 @@ void StatsDisplay::OnDraw() {
 		int lPierce = (int)D2COMMON_GetUnitStat(unit, STAT_PSENEMYLIGHTNRESREDUC, 0);
 		int pPierce = (int)D2COMMON_GetUnitStat(unit, STAT_PSENEMYPSNRESREDUC, 0);
 		int mPierce = (int)D2COMMON_GetUnitStat(unit, STAT_PASSIVEMAGICRESREDUC, 0);
+		int physpierce = (int)D2COMMON_GetUnitStat(unit, STAT_PASSIVEDMGPIERCE, 0);
+
 		Texthook::Draw(column1, (y += 16), None, 6, Gold,
-				L"Elemental Mastery:\377c1 %d%%\377c3 %d%%\377c9 %d%%\377c2 %d%%\377c8 %d%%",
-				fMastery, cMastery, lMastery, pMastery, mMastery);
+			L"Elemental Mastery:\377c1 %d%%\377c3 %d%%\377c9 %d%%\377c2 %d%%\377c8 %d%%",
+			fMastery, cMastery, lMastery, pMastery, mMastery);
 		Texthook::Draw(column1, (y += 16), None, 6, Gold,
-				L"Elemental Pierce:\377c1 %d%%\377c3 %d%%\377c9 %d%%\377c2 %d%%\377c8 %d%%",
-				fPierce, cPierce, lPierce, pPierce, mPierce);
+			L"Pierce:\377c1 %d%%\377c3 %d%%\377c9 %d%%\377c2 %d%%\377c8 %d%%\377c0 %d%%",
+			fPierce, cPierce, lPierce, pPierce, mPierce, physpierce);
 		int classNum = pData->nCharClass;
 		auto classArMod = CharList[classNum]->toHitFactor - 35;
 		int dexAR = (int)D2COMMON_GetUnitStat(unit, STAT_DEXTERITY, 0) * 5 + classArMod;
 		int gearAR = (int)D2COMMON_GetUnitStat(unit, STAT_ATTACKRATING, 0);
 
 		Texthook::Draw(column1, (y += 16), None, 6, Gold,
-				L"Base AR:\377c5 dex:\377c0 %d\377c5 equip:\377c0% d\377c5 total:\377c0 %d",
-				dexAR, gearAR, dexAR + gearAR);
+			L"Base AR:\377c5 dex:\377c0 %d\377c5 equip:\377c0% d\377c5 total:\377c0 %d",
+			dexAR, gearAR, dexAR + gearAR);
 
 		int gearDef = (int)D2COMMON_GetUnitStat(unit, STAT_DEFENSE, 0);
 		int dexDef = (int)D2COMMON_GetUnitStat(unit, STAT_DEXTERITY, 0) / 4;
-		
-		Texthook::Draw(column1, (y += 16), None, 6, Gold,
-				L"Base Def:\377c5 dex:\377c0 %d\377c5 equip:\377c0 %d\377c5 total:\377c0 %d",
-				dexDef, gearDef, dexDef + gearDef);
 
 		Texthook::Draw(column1, (y += 16), None, 6, Gold,
-				L"Base Damage:\377c5 1h:\377c0 %d-%d\377c5 2h:\377c0 %d-%d",
-				(int)D2COMMON_GetUnitStat(unit, STAT_MINIMUMDAMAGE, 0),
-				(int)D2COMMON_GetUnitStat(unit, STAT_MAXIMUMDAMAGE, 0),
-				(int)D2COMMON_GetUnitStat(unit, STAT_SECONDARYMINIMUMDAMAGE, 0),
-				(int)D2COMMON_GetUnitStat(unit, STAT_SECONDARYMAXIMUMDAMAGE, 0));
-
-		y += 8;
+			L"Base Def:\377c5 dex:\377c0 %d\377c5 equip:\377c0 %d\377c5 total:\377c0 %d",
+			dexDef, gearDef, dexDef + gearDef);
 
 		Texthook::Draw(column1, (y += 16), None, 6, Gold,
-				L"Cast Rate:\377c0 %d",
-				(int)D2COMMON_GetUnitStat(unit, STAT_FASTERCAST, 0)
-				);
-		Texthook::Draw(column2, y, None, 6, Gold,
-				L"Block Rate:\377c0 %d",
-				(int)D2COMMON_GetUnitStat(unit, STAT_FASTERBLOCK, 0)
-				);
-		Texthook::Draw(column1, (y += 16), None, 6, Gold,
-				L"Hit Recovery:\377c0 %d",
-				(int)D2COMMON_GetUnitStat(unit, STAT_FASTERHITRECOVERY, 0)
-				);
-		Texthook::Draw(column2, y, None, 6, Gold,
-				L"Run/Walk:\377c0 %d",
-				(int)D2COMMON_GetUnitStat(unit, STAT_FASTERRUNWALK, 0)
-				);
-		Texthook::Draw(column1, (y += 16), None, 6, Gold,
-				L"Attack Rate:\377c0 %d",
-				(int)D2COMMON_GetUnitStat(unit, STAT_ATTACKRATE, 0));
-		Texthook::Draw(column2, y, None, 6, Gold,
-				L"IAS:\377c0 %d",
-				(int)D2COMMON_GetUnitStat(unit, STAT_IAS, 0));
+			L"Base Damage:\377c5 1h:\377c0 %d-%d\377c5 2h:\377c0 %d-%d",
+			(int)D2COMMON_GetUnitStat(unit, STAT_MINIMUMDAMAGE, 0),
+			(int)D2COMMON_GetUnitStat(unit, STAT_MAXIMUMDAMAGE, 0),
+			(int)D2COMMON_GetUnitStat(unit, STAT_SECONDARYMINIMUMDAMAGE, 0),
+			(int)D2COMMON_GetUnitStat(unit, STAT_SECONDARYMAXIMUMDAMAGE, 0));
 
 		y += 8;
 
 		Texthook::Draw(column1, (y += 16), None, 6, Gold,
-				L"Crushing Blow:\377c0 %d",
-				(int)D2COMMON_GetUnitStat(unit, STAT_CRUSHINGBLOW, 0));
+			L"Cast Rate:\377c0 %d",
+			(int)D2COMMON_GetUnitStat(unit, STAT_FASTERCAST, 0)
+		);
 		Texthook::Draw(column2, y, None, 6, Gold,
-				L"Open Wounds: \377c0%d",
-				(int)D2COMMON_GetUnitStat(unit, STAT_OPENWOUNDS, 0));
+			L"Block Rate:\377c0 %d",
+			(int)D2COMMON_GetUnitStat(unit, STAT_FASTERBLOCK, 0)
+		);
 		Texthook::Draw(column1, (y += 16), None, 6, Gold,
-				L"Deadly Strike:\377c0 %d",
-				(int)D2COMMON_GetUnitStat(unit, STAT_DEADLYSTRIKE, 0));
+			L"Hit Recovery:\377c0 %d",
+			(int)D2COMMON_GetUnitStat(unit, STAT_FASTERHITRECOVERY, 0)
+		);
 		Texthook::Draw(column2, y, None, 6, Gold,
-				L"Critical Strike: \377c0%d",
-				(int)D2COMMON_GetUnitStat(unit, STAT_CRITICALSTRIKE, 0));
+			L"Run/Walk:\377c0 %d",
+			(int)D2COMMON_GetUnitStat(unit, STAT_FASTERRUNWALK, 0)
+		);
 		Texthook::Draw(column1, (y += 16), None, 6, Gold,
-				L"Life Leech:\377c1 %d",
-				(int)D2COMMON_GetUnitStat(unit, STAT_LIFELEECH, 0));
+			L"Attack Rate:\377c0 %d",
+			(int)D2COMMON_GetUnitStat(unit, STAT_ATTACKRATE, 0));
 		Texthook::Draw(column2, y, None, 6, Gold,
-				L"Mana Leech:\377c3 %d",
-				(int)D2COMMON_GetUnitStat(unit, STAT_MANALEECH, 0));
+			L"IAS:\377c0 %d",
+			(int)D2COMMON_GetUnitStat(unit, STAT_IAS, 0));
+
+		y += 8;
+
 		Texthook::Draw(column1, (y += 16), None, 6, Gold,
-				L"Projectile Pierce:\377c0 %d",
-				(int)D2COMMON_GetUnitStat(unit, STAT_PIERCINGATTACK, 0) +
-				(int)D2COMMON_GetUnitStat(unit, STAT_PIERCE, 0)
-				);
+			L"Crushing Blow:\377c0 %d",
+			(int)D2COMMON_GetUnitStat(unit, STAT_CRUSHINGBLOW, 0));
+		Texthook::Draw(column2, y, None, 6, Gold,
+			L"Open Wounds: \377c0%d",
+			(int)D2COMMON_GetUnitStat(unit, STAT_OPENWOUNDS, 0));
+		Texthook::Draw(column1, (y += 16), None, 6, Gold,
+			L"Deadly Strike:\377c0 %d",
+			(int)D2COMMON_GetUnitStat(unit, STAT_DEADLYSTRIKE, 0));
+		Texthook::Draw(column2, y, None, 6, Gold,
+			L"Critical Strike: \377c0%d",
+			(int)D2COMMON_GetUnitStat(unit, STAT_CRITICALSTRIKE, 0));
+		Texthook::Draw(column1, (y += 16), None, 6, Gold,
+			L"Life Leech:\377c1 %d",
+			(int)D2COMMON_GetUnitStat(unit, STAT_LIFELEECH, 0));
+		Texthook::Draw(column2, y, None, 6, Gold,
+			L"Mana Leech:\377c3 %d",
+			(int)D2COMMON_GetUnitStat(unit, STAT_MANALEECH, 0));
+		Texthook::Draw(column1, (y += 16), None, 6, Gold,
+			L"Projectile Pierce:\377c0 %d",
+			(int)D2COMMON_GetUnitStat(unit, STAT_PIERCINGATTACK, 0) +
+			(int)D2COMMON_GetUnitStat(unit, STAT_PIERCE, 0)
+		);
 
 		y += 8;
 
@@ -303,56 +312,42 @@ void StatsDisplay::OnDraw() {
 		int minMagic = (int)D2COMMON_GetUnitStat(unit, STAT_MINIMUMMAGICALDAMAGE, 0);
 		int maxMagic = (int)D2COMMON_GetUnitStat(unit, STAT_MAXIMUMMAGICALDAMAGE, 0);
 		int addedPhys = (int)D2COMMON_GetUnitStat(unit, STAT_ADDSDAMAGE, 0);
+
+
 		Texthook::Draw(column1, (y += 16), None, 6, Gold,
-				L"Added Damage:\377c0 %d",
-				addedPhys);
+			L"Added Damage:\377c0 %d",
+			addedPhys);
 		Texthook::Draw(column2, y, None, 6, Orange,
-				"%d-%d",
-				minMagic, maxMagic);
+			"%d-%d",
+			minMagic, maxMagic);
 		Texthook::Draw(column1, (y += 16), None, 6, Red,
-				"%d-%d",
-				minFire, maxFire);
+			"%d-%d",
+			minFire, maxFire);
 		Texthook::Draw(column2, y, None, 6, Blue,
-				"%d-%d",
-				minCold, maxCold);
+			"%d-%d",
+			minCold, maxCold);
 		Texthook::Draw(column1, (y += 16), None, 6, Yellow,
-				"%d-%d",
-				minLight, maxLight);
+			"%d-%d",
+			minLight, maxLight);
 		Texthook::Draw(column2, y, None, 6, Green,
-				"%d-%d over %.1fs",
-				(int)(minPoison / 256.0 * poisonLength),
-				(int)(maxPoison / 256.0 * poisonLength),
-				poisonLength / 25.0);
+			"%d-%d over %.1fs",
+			(int)(minPoison / 256.0 * poisonLength),
+			(int)(maxPoison / 256.0 * poisonLength),
+			poisonLength / 25.0);
 
 		y += 8;
 
 		Texthook::Draw(column1, (y += 16), None, 6, Gold,
-				L"Magic Find:\377c3 %d",
-				(int)D2COMMON_GetUnitStat(unit, STAT_MAGICFIND, 0)
-				);
+			L"Magic Find:\377c3 %d",
+			(int)D2COMMON_GetUnitStat(unit, STAT_MAGICFIND, 0)
+		);
 		Texthook::Draw(column2, y, None, 6, Gold,
-				L"Gold Find:\377c9 %d",
-				(int)D2COMMON_GetUnitStat(unit, STAT_GOLDFIND, 0));
+			L"Gold Find:\377c9 %d",
+			(int)D2COMMON_GetUnitStat(unit, STAT_GOLDFIND, 0));
 
 		Texthook::Draw(column1, (y += 16), None, 6, Gold,
-				L"Stash Gold:\377c9 %d",
-				(int)D2COMMON_GetUnitStat(unit, STAT_GOLDBANK, 0));
-
-		void* quests = D2CLIENT_GetQuestInfo();
-		
-		Texthook::Draw(column2, y, None, 6, Gold,
-				L"Cow King:\377c0 %s", D2COMMON_GetQuestFlag(quests, THE_SEARCH_FOR_CAIN, QFLAG_CUSTOM_6) ? L"killed" : L"alive");
-
-		bool hasAndyQuest = D2COMMON_GetQuestFlag(quests, SISTERS_TO_THE_SLAUGHTER, QFLAG_UPDATE_QUEST_LOG)
-			| D2COMMON_GetQuestFlag(quests, SISTERS_TO_THE_SLAUGHTER, QFLAG_QUEST_COMPLETED_BEFORE);
-		bool hasDuryQuest = D2COMMON_GetQuestFlag(quests, THE_SEVEN_TOMBS, QFLAG_UPDATE_QUEST_LOG)
-			| D2COMMON_GetQuestFlag(quests, THE_SEVEN_TOMBS, QFLAG_QUEST_COMPLETED_BEFORE);
-
-		Texthook::Draw(column1, (y += 16), None, 6, Gold,
-			L"Andy Bugged:\377c0 %s", !hasAndyQuest ? L"n/a" : (D2COMMON_GetQuestFlag(quests, SISTERS_TO_THE_SLAUGHTER, QFLAG_QUEST_COMPLETED_BEFORE) ? L"no" : L"yes"));
-
-		Texthook::Draw(column2, y, None, 6, Gold,
-			L"Dury Bugged:\377c0 %s", !hasDuryQuest ? L"n/a" : (D2COMMON_GetQuestFlag(quests, THE_SEVEN_TOMBS, QFLAG_CUSTOM_1) ? L"no" : L"yes"));
+			L"Stash Gold:\377c9 %d",
+			(int)D2COMMON_GetUnitStat(unit, STAT_GOLDBANK, 0));
 
 		if (customStats.size() > 0) {
 			y += 8;
@@ -361,10 +356,11 @@ void StatsDisplay::OnDraw() {
 				int stat = (int)D2COMMON_GetUnitStat(unit, STAT_NUMBER(customStats[i]->name), secondary);
 				if (secondary > 0) {
 					Texthook::Draw(column1, (y += 16), None, 6, Gold, "%s[%d]:\377c0 %d",
-							customStats[i]->name.c_str(), secondary, stat);
-				} else {
+						customStats[i]->name.c_str(), secondary, stat);
+				}
+				else {
 					Texthook::Draw(column1, (y += 16), None, 6, Gold, "%s:\377c0 %d",
-							customStats[i]->name.c_str(), stat);
+						customStats[i]->name.c_str(), stat);
 				}
 			}
 		}
@@ -379,7 +375,7 @@ bool StatsDisplay::KeyClick(bool bUp, BYTE bKey, LPARAM lParam) {
 }
 
 bool StatsDisplay::OnKey(bool up, BYTE kkey, LPARAM lParam) {
-	UnitAny *unit = D2CLIENT_GetPlayerUnit();
+	UnitAny* unit = D2CLIENT_GetPlayerUnit();
 	if (!unit)
 		return false;
 
@@ -389,7 +385,8 @@ bool StatsDisplay::OnKey(bool up, BYTE kkey, LPARAM lParam) {
 			SetMinimized(false);
 			return true;
 		}
-	} else {
+	}
+	else {
 		if (!up && (kkey == statsKey || kkey == VK_ESCAPE)) {
 			SetMinimized(true);
 			return true;
@@ -406,7 +403,7 @@ bool StatsDisplay::Click(bool up, unsigned int mouseX, unsigned int mouseY) {
 }
 
 bool StatsDisplay::OnClick(bool up, unsigned int x, unsigned int y) {
-	UnitAny *unit = D2CLIENT_GetPlayerUnit();
+	UnitAny* unit = D2CLIENT_GetPlayerUnit();
 	if (!unit)
 		return false;
 

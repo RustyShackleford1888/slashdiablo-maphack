@@ -32,11 +32,14 @@ class Maphack : public Module {
 		std::map<string, string> SuperUniqueColors;
 		std::map<string, string> MonsterLines;
 		std::map<string, string> MonsterHides;
+		std::map<string, string> ImpactMissileColor;
+		std::map<string, string> ImpactSkillColor;
 		std::map<string, unsigned int> TextColorMap; 
 		std::map<string, unsigned int> monsterColors;
 		std::vector<std::pair<unsigned int, unsigned int>> enhancementColors;
 		std::vector<std::pair<unsigned int, unsigned int>> auraColors;
 		std::map<string, unsigned int> missileColors;
+		std::map<int, unsigned int> impactMissileColors;
 		std::map<int, unsigned int> automapMonsterColors;
 		std::map<int, unsigned int> automapSuperUniqueColors;
 		std::map<int, unsigned int> automapMonsterLines;
@@ -44,7 +47,13 @@ class Maphack : public Module {
 		std::list<LevelList*> automapLevels;
 		map<std::string, Toggle> Toggles;
 		Drawing::UITab* settingsTab;
+		Drawing::UITab* cheaterTab;
 		std::map<DWORD, std::vector<BaseSkill>> Skills;
+		bool cheaterActiveLast;
+		bool cheaterAutoLast;
+		bool cheaterMonstersLast;
+		bool cheaterLightLast;
+		bool justJoinedGame;
 
 	public:
 	Maphack();
@@ -71,6 +80,7 @@ class Maphack : public Module {
 	void RevealAct(int act);
 	void RevealLevel(Level* level);
 	void RevealRoom(Room2* room);
+	bool IsKaaTomb(Level* level);
 
 	static Level* GetLevel(Act* pAct, int level);
 	static AutomapLayer* InitLayer(int level);

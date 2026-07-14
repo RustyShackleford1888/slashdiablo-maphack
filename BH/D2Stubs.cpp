@@ -104,3 +104,16 @@ __declspec(naked) void* __stdcall D2WIN_LoadMpq(DWORD OrderFlag, const char* szD
 		ret 0x18
 	}
 }
+
+void __declspec(naked) __fastcall D2CLIENT_StartGamble(void)
+{
+	__asm
+	{
+		push ecx
+		push edx
+		call D2CLIENT_StartGamble_I
+		pop edx
+		pop ecx
+		ret
+	}
+}

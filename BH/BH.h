@@ -37,10 +37,12 @@ namespace BH {
 	extern Config* itemConfig;
 	extern Drawing::UI* settingsUI;
 	extern Drawing::StatsDisplay* statsDisplay;
+	extern Drawing::BreakpointsDisplay* breakpointsDisplay;
 	extern WNDPROC OldWNDPROC;
 	extern map<string, Toggle>* MiscToggles;
 	extern map<string, Toggle>* MiscToggles2;
 	extern map<string, bool>* BnetBools;
+	extern map<string, unsigned int>* BnetInts;
 	extern map<string, bool>* GamefilterBools;
 	extern map<size_t, string> drops;
 	extern bool cGuardLoaded;

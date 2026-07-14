@@ -13,3 +13,8 @@
 #include "Modules\Party\Party.h"
 #include "Modules\StashExport\StashExport.h"
 #include "Modules\ChatColor\ChatColor.h"
+#include "Modules\MOTD\MOTD.h"
+#include "Modules\Gambling\Gambling.h"
+#include "Modules\Glossary\Glossary.h"
+#include "Modules\StatsPoints\StatsPoints.h"
+#include "Modules\SkillsPoints\SkillsPoints.h"

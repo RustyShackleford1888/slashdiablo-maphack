@@ -18,12 +18,14 @@ Config* BH::config;
 Config* BH::itemConfig;
 Drawing::UI* BH::settingsUI;
 Drawing::StatsDisplay* BH::statsDisplay;
+Drawing::BreakpointsDisplay* BH::breakpointsDisplay;
 bool BH::initialized;
 bool BH::cGuardLoaded;
 WNDPROC BH::OldWNDPROC;
 map<string, Toggle>* BH::MiscToggles;
 map<string, Toggle>* BH::MiscToggles2;
 map<string, bool>* BH::BnetBools;
+map<string, unsigned int>* BH::BnetInts;
 map<string, bool>* BH::GamefilterBools;
 map<size_t, string> BH::drops;
 
@@ -41,6 +43,9 @@ Patch* patches[] = {
 	new Patch(Call, D2MULTI, { 0x10781, 0x14A9A }, (int)ChannelWhisper_Interception, 5),
 	new Patch(Jump, D2MULTI, { 0x108A0, 0x14BE0 }, (int)ChannelChat_Interception, 6),
 	new Patch(Jump, D2MULTI, { 0x107A0, 0x14850 }, (int)ChannelEmote_Interception, 6),
+
+	// D2Client+0xBDEF5: shift-click stat assignment GetKeyState call (clamps EDI).
+	new Patch(Call, D2CLIENT, { 0xBDEF5, 0xC0695 }, (int)StatsPoints_LimitShiftClickInterception, 6),
 };
 
 Patch* BH::oogDraw = new Patch(Call, D2WIN, { 0x18911, 0xEC61 }, (int)OOGDraw_Interception, 5);
@@ -118,7 +123,7 @@ void BH::Initialize()
 		SetWindowLong(D2GFX_GetHwnd(), GWL_WNDPROC, (LONG)GameWindowEvent);
 	});
 
-	settingsUI = new Drawing::UI(BH_VERSION, 400, 277);
+	settingsUI = new Drawing::UI(BH_VERSION, 550, 450);  // Increased size for more content
 
 	Task::InitializeThreadPool(2);
 
@@ -140,13 +145,24 @@ void BH::Initialize()
 	new StashExport();
 	new Maphack();
 	new ChatColor();
+	new MOTD();
+	new Gambling();
+	new Glossary();
+	new StatsPoints();
+	new SkillsPoints();
 
+	BnetInts = ((Bnet*)moduleManager->Get("bnet"))->GetInts();
 	BnetBools = ((Bnet*)moduleManager->Get("bnet"))->GetBools();
 	GamefilterBools = ((Gamefilter*)moduleManager->Get("gamefilter"))->GetBools();
 
 	moduleManager->LoadModules();
 
+	ItemMover* itemMover = (ItemMover*)moduleManager->Get("item-mover");
+	if (itemMover)
+		itemMover->BuildShiftClickSettingsSection();
+
 	statsDisplay = new Drawing::StatsDisplay("Stats");
+	breakpointsDisplay = new Drawing::BreakpointsDisplay("Stats-TBD");
 
 	MiscToggles = ((AutoTele*)moduleManager->Get("autotele"))->GetToggles();
 	MiscToggles2 = ((Item*)moduleManager->Get("item"))->GetToggles();
@@ -178,13 +194,21 @@ bool BH::Shutdown() {
 		delete moduleManager;
 		delete settingsUI;
 		delete statsDisplay;
+		delete breakpointsDisplay;
 
 		SetWindowLong(D2GFX_GetHwnd(), GWL_WNDPROC, (LONG)BH::OldWNDPROC);
+		
+		// Remove all patches before deleting them
+		for (int n = 0; n < (sizeof(patches) / sizeof(Patch*)); n++) {
+			patches[n]->Remove();
+		}
+		
+		oogDraw->Remove();
+		
+		// Delete patches after removing them
 		for (int n = 0; n < (sizeof(patches) / sizeof(Patch*)); n++) {
 			delete patches[n];
 		}
-
-		oogDraw->Remove();
 		delete config;
 		delete itemConfig;
 	}
@@ -202,6 +226,7 @@ bool BH::ReloadConfig() {
 		itemConfig->Parse();
 		moduleManager->ReloadConfig();
 		statsDisplay->LoadConfig();
+		breakpointsDisplay->LoadConfig();
 	}
 	return true;
 }

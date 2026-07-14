@@ -191,6 +191,7 @@ KeyCode pCodes[] = {
 	{"VK_LMENU", 0xA4, "Left Menu"}, {"VK_RMENU", 0xA5, "Right Menu"}, 
 	{"VK_SEMICOLON", 0xBA, ";"}, {"VK_PLUS", 0xBB, "+"}, {"VK_COMMA", 0xBC, ","}, {"VK_MINUS", 0xBD, "-"},
 	{"VK_PERIOD", 0xBE, "."}, {"VK_FORWARDSLASH", 0xBD, "/"}, {"VK_TILDE", 0xBF, "~"},
+	{"VK_BACKTICK", 0xC0, "`"},
 	{"VK_LEFTBRACKET", 0xDB, "["}, {"VK_BACKSLASH", 0xDC, "\\"}, {"VK_RIGHTBRACKET", 0xDD, "]"},
 	{"VK_QUOTE", 0xDE, "'"}};
 
@@ -230,7 +231,7 @@ std::string string_format(const std::string fmt_str, ...) {
 	va_list ap;
 	while (1) {
 		formatted.reset(new char[n]); /* Wrap the plain char array into the unique_ptr */
-		strcpy(&formatted[0], fmt_str.c_str());
+		strcpy_s(&formatted[0], n, fmt_str.c_str());
 		va_start(ap, fmt_str);
 		final_n = vsnprintf(&formatted[0], n, fmt_str.c_str(), ap);
 		va_end(ap);

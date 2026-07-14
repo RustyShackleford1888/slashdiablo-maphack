@@ -19,7 +19,7 @@ namespace Drawing {
 			unsigned int GetYSize() { return ui->GetYSize() - TITLE_BAR_HEIGHT - TAB_HEIGHT; };
 
 			unsigned int GetTabPos();
-			unsigned int GetTabSize() { return (ui->GetXSize() / ui->Tabs.size()); };
+			unsigned int GetTabSize() { return (ui->Tabs.size() > 0) ? (ui->GetXSize() / ui->Tabs.size()) : 0; };
 			unsigned int GetTabX() { return ui->GetX() + GetTabPos() * GetTabSize(); };
 			unsigned int GetTabY() { return ui->GetY() + TITLE_BAR_HEIGHT; };
 

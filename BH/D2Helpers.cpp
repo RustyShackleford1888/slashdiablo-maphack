@@ -189,7 +189,7 @@ CellFile *LoadBmpCellFile(BYTE *buf1, int width, int height)
 		*dest++ = 0x80;
 	}
 
-	static DWORD dc6head[] = { 6, 1, 0, 0xeeeeeeee, 1, 1, 0x1c, 0, -1, -1, 0, 0, 0, -1, -1 };
+	static DWORD dc6head[] = { 6, 1, 0, 0xeeeeeeee, 1, 1, 0x1c, 0, (DWORD)-1, (DWORD)-1, 0, 0, 0, (DWORD)-1, (DWORD)-1 };
 	dc6head[8] = width;
 	dc6head[9] = height;
 	BYTE *ret = new BYTE[dc6head[13] = sizeof(dc6head) + (dc6head[14] = dest - buf2) + 3];

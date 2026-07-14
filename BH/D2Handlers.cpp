@@ -1,6 +1,9 @@
-#include "D2Ptrs.h"
+﻿#include "D2Ptrs.h"
 #include "BH.h"
 #include "D2Stubs.h"
+#include "Drawing/Advanced/Colorhook/Colorhook.h"
+#include "Modules/StatsPoints/StatsPoints.h"
+#include "Modules/SkillsPoints/SkillsPoints.h"
 
 #include <iterator>
 
@@ -8,7 +11,12 @@ void GameDraw() {
 	__raise BH::moduleManager->OnDraw();
 	Drawing::UI::Draw();
 	Drawing::StatsDisplay::Draw();
+	Drawing::BreakpointsDisplay::Draw();
 	Drawing::Hook::Draw(Drawing::InGame);
+	// Draw Colorhook LAST, after everything else, to ensure it appears on top of UI
+	if (Drawing::Colorhook::current) {
+		Drawing::Colorhook::current->OnDraw();
+	}
 }
 
 void GameAutomapDraw() {
@@ -30,6 +38,8 @@ DWORD WINAPI GameThread(VOID* lpvoid) {
 		if ((*p_D2WIN_FirstControl) && inGame) {
 			inGame = false;
 			__raise BH::moduleManager->OnGameExit();
+			StatsPoints_FlushSettingsInput();
+			SkillsPoints_FlushSettingsInput();
 			BH::config->Write();
 			BH::oogDraw->Install();
 		} else if (D2CLIENT_GetPlayerUnit() && !inGame) {
@@ -54,6 +64,8 @@ LONG WINAPI GameWindowEvent(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 			blockEvent = true;
 		if (Drawing::StatsDisplay::Click(false, mouseX, mouseY))
 			blockEvent = true;
+		if (Drawing::BreakpointsDisplay::Click(false, mouseX, mouseY))
+			blockEvent = true;
 		__raise BH::moduleManager->OnLeftClick(false, mouseX, mouseY, &blockEvent);
 	}
 
@@ -63,6 +75,8 @@ LONG WINAPI GameWindowEvent(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 		if (Drawing::UI::LeftClick(true, mouseX, mouseY))
 			blockEvent = true;
 		if (Drawing::StatsDisplay::Click(true, mouseX, mouseY))
+			blockEvent = true;
+		if (Drawing::BreakpointsDisplay::Click(true, mouseX, mouseY))
 			blockEvent = true;
 		__raise BH::moduleManager->OnLeftClick(true, mouseX, mouseY, &blockEvent);
 	}
@@ -74,6 +88,8 @@ LONG WINAPI GameWindowEvent(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 			blockEvent = true;
 		if (Drawing::StatsDisplay::Click(false, mouseX, mouseY))
 			blockEvent = true;
+		if (Drawing::BreakpointsDisplay::Click(false, mouseX, mouseY))
+			blockEvent = true;
 		__raise BH::moduleManager->OnRightClick(false, mouseX, mouseY, &blockEvent);
 	}
 
@@ -84,6 +100,8 @@ LONG WINAPI GameWindowEvent(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 			blockEvent = true;
 		if (Drawing::StatsDisplay::Click(true, mouseX, mouseY))
 			blockEvent = true;
+		if (Drawing::BreakpointsDisplay::Click(true, mouseX, mouseY))
+			blockEvent = true;
 		__raise BH::moduleManager->OnRightClick(true, mouseX, mouseY, &blockEvent);
 	}
 
@@ -93,6 +111,8 @@ LONG WINAPI GameWindowEvent(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 				return NULL;
 			if (Drawing::StatsDisplay::KeyClick(false, wParam, lParam))
 				return NULL;
+			if (Drawing::BreakpointsDisplay::KeyClick(false, wParam, lParam))
+				return NULL;
 			__raise BH::moduleManager->OnKey(false, wParam, lParam, &blockEvent);
 		}
 
@@ -100,6 +120,8 @@ LONG WINAPI GameWindowEvent(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 			if (Drawing::Hook::KeyClick(true, wParam, lParam))
 				return NULL;
 			if (Drawing::StatsDisplay::KeyClick(true, wParam, lParam))
+				return NULL;
+			if (Drawing::BreakpointsDisplay::KeyClick(true, wParam, lParam))
 				return NULL;
 			__raise BH::moduleManager->OnKey(true, wParam, lParam, &blockEvent);
 		}

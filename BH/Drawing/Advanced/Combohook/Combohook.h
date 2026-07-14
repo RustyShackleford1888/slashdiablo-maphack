@@ -10,9 +10,12 @@ namespace Drawing {
 			unsigned int font;
 			unsigned int* currentIndex;
 			bool active;
+			unsigned int columns;  // Number of columns (1 = single column, 2 = two columns, etc.)
+			int originalZOrder;  // Store original z-order to restore when inactive
 		public:
-			Combohook(HookVisibility visibility, unsigned int x, unsigned int y, unsigned int xSize, unsigned int* currentIndex, std::vector<std::string> options);
-			Combohook(HookGroup* group, unsigned int x, unsigned int y, unsigned int xSize, unsigned int* currentIndex, std::vector<std::string> options);
+			static Combohook* currentActive;  // Track currently active dropdown to draw last
+			Combohook(HookVisibility visibility, unsigned int x, unsigned int y, unsigned int xSize, unsigned int* currentIndex, std::vector<std::string> options, unsigned int cols = 1);
+			Combohook(HookGroup* group, unsigned int x, unsigned int y, unsigned int xSize, unsigned int* currentIndex, std::vector<std::string> options, unsigned int cols = 1);
 
 			std::vector<std::string> GetOptions() { return options; };
 			unsigned int NewOption(std::string opt) { Lock(); options.push_back(opt); Unlock(); return options.size() - 1; };
@@ -24,6 +27,8 @@ namespace Drawing {
 
 			unsigned int GetXSize() { return xSize; };
 			void SetXSize(unsigned int size) { Lock(); xSize = size; Unlock(); };
+			
+			unsigned int GetColumns() { return columns; };
 
 			unsigned int GetYSize() { unsigned int height[] = {10,11,18,24,10,13,7,13,10,12,8,8,7,12}; return height[GetFont()]; };
 

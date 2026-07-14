@@ -2,8 +2,12 @@
 #include "../../D2Ptrs.h"
 #include "UITab.h"
 #include "../../BH.h"
+#include "../../Modules/AutoTele/AutoTele.h"
+#include "../../Modules/StatsPoints/StatsPoints.h"
+#include "../../Modules/SkillsPoints/SkillsPoints.h"
 #include "../Basic/Texthook/Texthook.h"
 #include "../Basic/Framehook/Framehook.h"
+#include "../Advanced/Colorhook/Colorhook.h"
 
 using namespace Drawing;
 
@@ -33,6 +37,7 @@ UI::UI(std::string name, unsigned int xSize, unsigned int ySize) {
 		SetMinimized(false);
 	}
 	SetActive(false);
+	SetVisible(true); // UI is visible by default
 	zOrder = UIs.size();
 	UIs.push_back(this);
 }
@@ -73,7 +78,7 @@ void UI::SetY(unsigned int newY) {
 }
 
 void UI::SetXSize(unsigned int newXSize) {
-	if (newXSize >= 0 && newXSize <= (Hook::GetScreenHeight() - GetX())) {
+	if (newXSize >= 0 && newXSize <= (Hook::GetScreenWidth() - GetX())) {
 		Lock();
 		xSize = newXSize;
 		Unlock();
@@ -81,9 +86,9 @@ void UI::SetXSize(unsigned int newXSize) {
 }
 
 void UI::SetYSize(unsigned int newYSize) {
-	if (newYSize >= 0 && newYSize <= (Hook::GetScreenHeight() - GetX())) {
+	if (newYSize >= 0 && newYSize <= (Hook::GetScreenHeight() - GetY())) {
 		Lock();
-		ySize = newYSize;
+		ySize = newYSize + 20;
 		Unlock();
 	}
 }
@@ -168,11 +173,27 @@ void UI::OnDraw() {
 			SetX(newX);
 			SetY(newY);
 		}
-		Framehook::Draw(GetX(), GetY(), GetXSize(), GetYSize(), 0, (IsActive()?BTNormal:BTOneHalf));
+		// If Colorhook is active, don't draw UI background over the color picker area
+		// Color picker area: 310-500 x 180-400
+		bool colorPickerActive = (Colorhook::current != nullptr);
+		unsigned int pickerX = 310, pickerY = 180, pickerWidth = 190, pickerHeight = 220;
+		
+		if (!colorPickerActive || 
+		    GetX() + GetXSize() <= pickerX || GetX() >= pickerX + pickerWidth ||
+		    GetY() + GetYSize() <= pickerY || GetY() >= pickerY + pickerHeight) {
+			// UI doesn't overlap color picker, draw normally
+			Framehook::Draw(GetX(), GetY(), GetXSize(), GetYSize(), 0, (IsActive()?BTNormal:BTOneHalf));
+		}
+		// If UI overlaps color picker, skip drawing the background (color picker will cover it)
 		Framehook::Draw(GetX(), GetY(), GetXSize(), TITLE_BAR_HEIGHT, 0, BTNormal);
 		Texthook::Draw(GetX() + 4, GetY () + 3, false, 0, InTitle((*p_D2CLIENT_MouseX), (*p_D2CLIENT_MouseY))?Silver:White, GetName());
-		for (list<UITab*>::iterator it = Tabs.begin(); it != Tabs.end(); it++)
-			(*it)->OnDraw();
+		if (!Tabs.empty()) {
+			for (list<UITab*>::iterator it = Tabs.begin(); it != Tabs.end(); it++) {
+				if (*it != nullptr) {
+					(*it)->OnDraw();
+				}
+			}
+		}
 	}
 }
 
@@ -223,6 +244,23 @@ void UI::SetDragged(bool state) {
     SetDragged(state, false);
 }
 
+void UI::SetActive(bool newState) {
+	Lock();
+	const bool wasActive = active;
+	active = newState;
+	if (wasActive && !newState) {
+		if (BH::moduleManager) {
+			AutoTele* at = (AutoTele*)BH::moduleManager->Get("autotele");
+			if (at)
+				at->FlushSettingsInputsToBnet();
+		}
+		StatsPoints_FlushSettingsInput();
+		SkillsPoints_FlushSettingsInput();
+		BH::config->Write();
+	}
+	Unlock();
+}
+
 void UI::SetVisible(bool newState) {
 	visible = newState;
 }
@@ -233,9 +271,22 @@ void UI::SetMinimized(bool newState) {
 	Lock();  
 	if (newState) {
 		Minimized.push_back(this);
+		if (BH::moduleManager) {
+			AutoTele* at = (AutoTele*)BH::moduleManager->Get("autotele");
+			if (at)
+				at->FlushSettingsInputsToBnet();
+		}
+		StatsPoints_FlushSettingsInput();
+		SkillsPoints_FlushSettingsInput();
 		BH::config->Write();
-	} else
-		Minimized.remove(this); 
+	} else {
+		Minimized.remove(this);
+		SetVisible(true);
+		// Ensure currentTab is set when opening the UI
+		if (!currentTab && !Tabs.empty()) {
+			currentTab = (*Tabs.begin());
+		}
+	}
 	minimized = newState; 
 	WritePrivateProfileString(name.c_str(), "Minimized", to_string<bool>(newState).c_str(), string(BH::path + "UI.ini").c_str());
 	Unlock(); 

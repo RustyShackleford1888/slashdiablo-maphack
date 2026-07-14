@@ -12,8 +12,6 @@
 #include "../Item/Item.h"
 #include "../../AsyncDrawBuffer.h"
 #include "../ScreenInfo/ScreenInfo.h"
-#include <algorithm>
-#include <cctype>
 
 #pragma optimize( "", off)
 
@@ -34,45 +32,6 @@ Patch* skipNpcMessages3 = new Patch(Call, D2CLIENT, { 0x4819F, 0x7A9CF }, (int)N
 Patch* skipNpcMessages4 = new Patch(Call, D2CLIENT, { 0x7E9B7, 0x77737 }, (int)NPCMessageLoopPatch_ASM, 6);
 
 
-static bool torchWarningShown = false;
-
-bool Maphack::HasTorchInInventory() {
-	UnitAny* player = D2CLIENT_GetPlayerUnit();
-	if (!player || !player->pInventory)
-		return false;
-
-	for (UnitAny* item = player->pInventory->pFirstItem; item; item = item->pItemData->pNextInvItem) {
-		if (!item || !item->pItemData || item->dwType != UNIT_ITEM)
-			continue;
-
-		// Only consider items in the inventory (not equipped, stash, etc.)
-		if (item->pItemData->ItemLocation != STORAGE_INVENTORY)
-			continue;
-
-		ItemText* txt = D2COMMON_GetItemText(item->dwTxtFileNo);
-		if (!txt)
-			continue;
-
-		// Check if it's a unique large charm (code "cm2")
-		if (txt->szCode[0] == 'c' && txt->szCode[1] == 'm' && txt->szCode[2] == '2' &&
-			item->pItemData->dwQuality == ITEM_QUALITY_UNIQUE) {
-			
-			// Specifically check if it's the Hellfire Torch by name
-			UniqueItemsTxt* uniqueTxt = &(*p_D2COMMON_sgptDataTable)->pUniqueItemsTxt[item->pItemData->dwFileIndex];
-			if (uniqueTxt && uniqueTxt->szName) {
-				// Check if the name contains "Hellfire" (case-insensitive)
-				std::string itemName(uniqueTxt->szName);
-				std::transform(itemName.begin(), itemName.end(), itemName.begin(), ::tolower);
-				if (itemName.find("hellfire") != std::string::npos) {
-					return true;
-				}
-			}
-		}
-	}
-
-	return false;
-}
-
 static BOOL fSkipMessageReq = 0;
 static DWORD mSkipMessageTimer = 0;
 static DWORD mSkipQuestMessage = 1;
@@ -82,6 +41,11 @@ DrawDirective automapDraw(true, 5);
 Maphack::Maphack() : Module("Maphack") {
 	revealType = MaphackRevealAct;
 	ResetRevealed();
+	cheaterActiveLast = false;
+	cheaterAutoLast = Toggles["Auto Reveal"].state;
+	cheaterMonstersLast = Toggles["Show Monsters"].state;
+	cheaterLightLast = Toggles["Force Light Radius"].state;
+	justJoinedGame = false;
 	missileColors["Player"] = 0x97;
 	missileColors["Neutral"] = 0x0A;
 	missileColors["Party"] = 0x84;
@@ -107,6 +71,9 @@ void Maphack::LoadConfig() {
 	monsterColors.clear();
 	MonsterColors.clear();
 	missileColors.clear();
+	impactMissileColors.clear();
+	ImpactMissileColor.clear();
+	ImpactSkillColor.clear();
 	SuperUniqueColors.clear();
 	MonsterLines.clear();
 	MonsterHides.clear();
@@ -206,6 +173,42 @@ for (const auto& entry : auraColorsString) {
 		}
 	}
 
+	// Impact Missile Color[id]: color (missile ID from Missiles.txt). Impact Skill Color[id]: color (skill ID from Skills.txt, e.g. 480=mon-meteor). Draws where delayed skills will land.
+	BH::config->ReadAssoc("Impact Missile Color", ImpactMissileColor);
+	BH::config->ReadAssoc("Impact Skill Color", ImpactSkillColor);
+	impactMissileColors.clear();
+	for (auto it = ImpactMissileColor.cbegin(); it != ImpactMissileColor.cend(); it++) {
+		int missileId = -1;
+		stringstream ss((*it).first);
+		if ((ss >> missileId).fail())
+			continue;
+		impactMissileColors[missileId] = (unsigned int)StringToNumber((*it).second);
+	}
+	// Resolve skill IDs to missile IDs via Skills.txt
+	if (p_D2COMMON_sgptDataTable) {
+		SkillsTxt* pSkills = (*p_D2COMMON_sgptDataTable)->pSkillsTxt;
+		DWORD nSkills = (*p_D2COMMON_sgptDataTable)->dwSkillsRecs;
+		if (pSkills && nSkills) {
+			for (auto it = ImpactSkillColor.cbegin(); it != ImpactSkillColor.cend(); it++) {
+				int skillId = -1;
+				stringstream ss((*it).first);
+				if ((ss >> skillId).fail())
+					continue;
+				unsigned int color = (unsigned int)StringToNumber((*it).second);
+				for (DWORD i = 0; i < nSkills; i++) {
+					if ((int)pSkills[i].wSkillId != skillId)
+						continue;
+					SkillsTxt& sk = pSkills[i];
+					WORD missiles[] = { sk.wSrvMissile, sk.wSrvMissileA, sk.wSrvMissileB, sk.wSrvMissileC,
+						sk.wCltMissile, sk.wCltMissileA, sk.wCltMissileB, sk.wCltMissileC, sk.wCltMissileD };
+					for (WORD w : missiles)
+						if (w) impactMissileColors[w] = color;
+					break;
+				}
+			}
+		}
+	}
+
 	BH::config->ReadAssoc("Monster Hide", MonsterHides);
 	for (auto it = MonsterHides.cbegin(); it != MonsterHides.cend(); it++) {
 		// If the key is a number, it means do not draw this monster on map
@@ -221,6 +224,7 @@ for (const auto& entry : auraColorsString) {
 	BH::config->ReadToggle("Reveal Map", "None", true, Toggles["Auto Reveal"]);
 	BH::config->ReadToggle("Show Monsters", "None", true, Toggles["Show Monsters"]);
 	BH::config->ReadToggle("Show Missiles", "None", true, Toggles["Show Missiles"]);
+	BH::config->ReadToggle("Show Skill Impact", "None", true, Toggles["Show Skill Impact"]);
 	BH::config->ReadToggle("Show Chests", "None", true, Toggles["Show Chests"]);
 	BH::config->ReadToggle("Force Light Radius", "None", true, Toggles["Force Light Radius"]);
 	BH::config->ReadToggle("Remove Weather", "None", true, Toggles["Remove Weather"]);
@@ -248,18 +252,6 @@ void Maphack::ResetRevealed() {
 void Maphack::ResetPatches() {
 
 	//Lighting Patch
-	if (Toggles["Force Light Radius"].state && !HasTorchInInventory()) {
-		Toggles["Force Light Radius"].state = false;
-		if (!torchWarningShown) {
-			PrintText(1, "\377c1Light Radius requires a Hellfire Torch in your inventory!");
-			torchWarningShown = true;
-		}
-	}
-	else if (!Toggles["Force Light Radius"].state && HasTorchInInventory()) {
-		// Reset warning when requirements are met again
-		torchWarningShown = false;
-	}
-
 	if (Toggles["Force Light Radius"].state)
 		lightingPatch->Install();
 	else
@@ -323,11 +315,6 @@ void Maphack::OnLoad() {
 	unsigned int Y = 0;
 	int keyhook_x = 150;
 	int col2_x = 250;
-	new Checkhook(settingsTab, 4, (Y += 15), &Toggles["Auto Reveal"].state, "Auto Reveal");
-	new Keyhook(settingsTab, keyhook_x, (Y + 2), &Toggles["Auto Reveal"].toggle, "");
-
-	new Checkhook(settingsTab, 4, (Y += 15), &Toggles["Show Monsters"].state, "Show Monsters");
-	new Keyhook(settingsTab, keyhook_x, (Y + 2), &Toggles["Show Monsters"].toggle, "");
 
 	new Checkhook(settingsTab, 4, (Y += 15), &Toggles["Monster Enchantments"].state, "  Enchantments");
 	new Keyhook(settingsTab, keyhook_x, (Y + 2), &Toggles["Monster Enchantments"].toggle, "");
@@ -338,11 +325,11 @@ void Maphack::OnLoad() {
 	new Checkhook(settingsTab, 4, (Y += 15), &Toggles["Show Missiles"].state, "Show Missiles");
 	new Keyhook(settingsTab, keyhook_x, (Y + 2), &Toggles["Show Missiles"].toggle, "");
 
+	new Checkhook(settingsTab, 4, (Y += 15), &Toggles["Show Skill Impact"].state, "Show Skill Impact");
+	new Keyhook(settingsTab, keyhook_x, (Y + 2), &Toggles["Show Skill Impact"].toggle, "");
+
 	new Checkhook(settingsTab, 4, (Y += 15), &Toggles["Show Chests"].state, "Show Chests");
 	new Keyhook(settingsTab, keyhook_x, (Y + 2), &Toggles["Show Chests"].toggle, "");
-
-	new Checkhook(settingsTab, 4, (Y += 15), &Toggles["Force Light Radius"].state, "Light Radius");
-	new Keyhook(settingsTab, keyhook_x, (Y + 2), &Toggles["Force Light Radius"].toggle, "");
 
 
 	new Checkhook(settingsTab, 4, (Y += 15), &Toggles["Remove Weather"].state, "Remove Weather");
@@ -383,14 +370,26 @@ void Maphack::OnLoad() {
 	new Colorhook(settingsTab, col2_x, 122, &monsterColors["Champion"], "Champion");
 	new Colorhook(settingsTab, col2_x, 137, &monsterColors["Boss"], "Boss");
 
-	new Texthook(settingsTab, 6, (Y += 15), "Reveal Type:");
+	cheaterTab = new UITab("Cheater", BH::settingsUI);
+	new Texthook(cheaterTab, 80, 3, "Cheats");
+	unsigned int cheaterY = 0;
+	int cheaterKeyhookX = 150;
 
+	new Checkhook(cheaterTab, 4, (cheaterY += 15), &Toggles["Auto Reveal"].state, "Auto Reveal");
+	new Keyhook(cheaterTab, cheaterKeyhookX, (cheaterY + 2), &Toggles["Auto Reveal"].toggle, "");
+
+	new Checkhook(cheaterTab, 4, (cheaterY += 15), &Toggles["Show Monsters"].state, "Show Monsters");
+	new Keyhook(cheaterTab, cheaterKeyhookX, (cheaterY + 2), &Toggles["Show Monsters"].toggle, "");
+
+	new Checkhook(cheaterTab, 4, (cheaterY += 15), &Toggles["Force Light Radius"].state, "Light Radius");
+	new Keyhook(cheaterTab, cheaterKeyhookX, (cheaterY + 2), &Toggles["Force Light Radius"].toggle, "");
+
+	new Texthook(cheaterTab, 6, (cheaterY += 20), "Reveal Type:");
 	vector<string> options;
 	options.push_back("Game");
 	options.push_back("Act");
 	options.push_back("Level");
-	new Combohook(settingsTab, 100, Y, 70, &revealType, options);
-
+	new Combohook(cheaterTab, 100, cheaterY, 70, &revealType, options);
 }
 
 void Maphack::OnKey(bool up, BYTE key, LPARAM lParam, bool* block) {
@@ -405,13 +404,14 @@ void Maphack::OnKey(bool up, BYTE key, LPARAM lParam, bool* block) {
 		if (key == (*it).second.toggle) {
 			*block = true;
 			if (up) {
-				// Special check for Force Light Radius - require torch
-				if ((*it).first == "Force Light Radius" && !(*it).second.state && !HasTorchInInventory()) {
-					PrintText(1, "\377c1Light Radius requires a Hellfire Torch in your inventory!");
-					return;
-				}
 				(*it).second.state = !(*it).second.state;
 				ResetPatches();
+				if ((*it).second.state &&
+					((*it).first == "Auto Reveal" ||
+					 (*it).first == "Show Monsters" ||
+					 (*it).first == "Force Light Radius")) {
+					PrintText(Red, "Cheats enabled.");
+				}
 			}
 			return;
 		}
@@ -435,6 +435,28 @@ void Maphack::OnLoop() {
 	//// Remove or install patchs based on state.
 	ResetPatches();
 	BH::settingsUI->SetVisible(Toggles["Show Settings"].state);
+
+	bool autoNow = Toggles["Auto Reveal"].state;
+	bool monstersNow = Toggles["Show Monsters"].state;
+	bool lightNow = Toggles["Force Light Radius"].state;
+	bool cheaterActiveNow = autoNow || monstersNow || lightNow;
+
+	// Skip printing if we just joined a game (OnGameJoin already printed)
+	if (!justJoinedGame) {
+		if ((autoNow && !cheaterAutoLast) ||
+			(monstersNow && !cheaterMonstersLast) ||
+			(lightNow && !cheaterLightLast) ||
+			(cheaterActiveNow && !cheaterActiveLast)) {
+			PrintText(Red, "Cheats Enabled");
+		}
+	} else {
+		justJoinedGame = false;
+	}
+
+	cheaterAutoLast = autoNow;
+	cheaterMonstersLast = monstersNow;
+	cheaterLightLast = lightNow;
+	cheaterActiveLast = cheaterActiveNow;
 
 	// Get the player unit for area information.
 	UnitAny* unit = D2CLIENT_GetPlayerUnit();
@@ -673,33 +695,51 @@ void Maphack::OnAutomapDraw() {
 						}
 					});
 				}
-				else if (unit->dwType == UNIT_MISSILE && Toggles["Show Missiles"].state) {
-					int color = 255;
-					switch (GetRelation(unit)) {
-					case 0:
-						continue;
-						break;
-					case 1://Me
-						color = missileColors["Player"];
-						break;
-					case 2://Neutral
-						color = missileColors["Neutral"];
-						break;
-					case 3://Partied
-						color = missileColors["Party"];
-						break;
-					case 4://Hostile
-						color = missileColors["Hostile"];
-						break;
+				else if (unit->dwType == UNIT_MISSILE) {
+					// Draw impact point for delayed skills (Meteor, Blizzard, etc.) – where the skill will land
+					if (Toggles["Show Skill Impact"].state) {
+						auto it = impactMissileColors.find((int)unit->dwTxtFileNo);
+						if (it != impactMissileColors.end()) {
+							DWORD ix = unit->pPath->xTarget, iy = unit->pPath->yTarget;
+							if (ix == 0 && iy == 0) { ix = unit->pPath->xPos; iy = unit->pPath->yPos; }
+							unsigned int icolor = it->second;
+							automapBuffer.push([ix, iy, icolor]()->void{
+								if ((GetTickCount() / 300) % 2 == 0) {
+									POINT p;
+									Drawing::Hook::ScreenToAutomap(&p, ix, iy);
+									Drawing::Crosshook::Draw(p.x, p.y, icolor, 2);
+								}
+							});
+						}
 					}
+					if (Toggles["Show Missiles"].state) {
+						int color = 255;
+						switch (GetRelation(unit)) {
+						case 0:
+							continue;
+							break;
+						case 1://Me
+							color = missileColors["Player"];
+							break;
+						case 2://Neutral
+							color = missileColors["Neutral"];
+							break;
+						case 3://Partied
+							color = missileColors["Party"];
+							break;
+						case 4://Hostile
+							color = missileColors["Hostile"];
+							break;
+						}
 
-					xPos = unit->pPath->xPos;
-					yPos = unit->pPath->yPos;					
-					automapBuffer.push([color, unit, xPos, yPos]()->void{
-						POINT automapLoc;
-						Drawing::Hook::ScreenToAutomap(&automapLoc, xPos, yPos);
-						Drawing::Boxhook::Draw(automapLoc.x - 1, automapLoc.y - 1, 2, 2, color, Drawing::BTHighlight);
-					});
+						xPos = unit->pPath->xPos;
+						yPos = unit->pPath->yPos;					
+						automapBuffer.push([color, unit, xPos, yPos]()->void{
+							POINT automapLoc;
+							Drawing::Hook::ScreenToAutomap(&automapLoc, xPos, yPos);
+							Drawing::Boxhook::Draw(automapLoc.x - 1, automapLoc.y - 1, 2, 2, color, Drawing::BTHighlight);
+						});
+					}
 				}
 				else if (unit->dwType == UNIT_ITEM && (unit->dwFlags & UNITFLAG_REVEALED) == UNITFLAG_REVEALED) {
 					UnitItemInfo uInfo;
@@ -772,19 +812,47 @@ void Maphack::OnAutomapDraw() {
 				}
 			}
 		}
+		// Draw line to Kaa room when inside a Kaa tomb
+		if (lkLinesColor > 0 && IsKaaTomb(player->pPath->pRoom1->pRoom2->pLevel)) {
+			for(Room2 *pRoom = player->pPath->pRoom1->pRoom2->pLevel->pRoom2First; pRoom; pRoom = pRoom->pRoom2Next) {
+				if (pRoom->pType2Info && pRoom->pType2Info->pdwSubNumber) {
+					DWORD subNumber = *(pRoom->pType2Info->pdwSubNumber);
+					if (subNumber >= 468 && subNumber <= 471) {
+						// Found the Kaa room, draw line to center of it
+						DWORD xPos = (pRoom->dwPosX * 5) + (pRoom->dwSizeX * 5 / 2);
+						DWORD yPos = (pRoom->dwPosY * 5) + (pRoom->dwSizeY * 5 / 2);
+						int kaaLineColor = lkLinesColor;
+						automapBuffer.push([xPos, yPos, MyPos, kaaLineColor]()->void{
+							POINT automapLoc;
+							Drawing::Hook::ScreenToAutomap(&automapLoc, xPos, yPos);
+							Drawing::Linehook::Draw(MyPos.x, MyPos.y, automapLoc.x, automapLoc.y, kaaLineColor);
+						});
+						break; // Only one Kaa room per tomb
+					}
+				}
+			}
+		}
 		if (!Toggles["Display Level Names"].state)
 			return;
 		for (list<LevelList*>::iterator it = automapLevels.begin(); it != automapLevels.end(); it++) {
 			if (player->pAct->dwAct == (*it)->act) {
 				string tombStar = ((*it)->levelId == player->pAct->pMisc->dwStaffTombLevel) ? "\377c2*" : "\377c4";
+				
+				// Check if this is a Kaa tomb
+				string kaaSuffix = "";
+				Level* pLevel = GetLevel(player->pAct, (*it)->levelId);
+				if (pLevel && IsKaaTomb(pLevel)) {
+					kaaSuffix = " \377c2*KAA TOMB*";
+				}
+				
 				POINT unitLoc;
 				Hook::ScreenToAutomap(&unitLoc, (*it)->x, (*it)->y);
 				char* name = UnicodeToAnsi(D2CLIENT_GetLevelName((*it)->levelId));
 				std::string nameStr = name;
 				delete[] name;
 
-				automapBuffer.push([nameStr, tombStar, unitLoc]()->void{
-					Texthook::Draw(unitLoc.x, unitLoc.y - 15, Center, 6, Gold, "%s%s", nameStr.c_str(), tombStar.c_str());
+				automapBuffer.push([nameStr, tombStar, kaaSuffix, unitLoc]()->void{
+					Texthook::Draw(unitLoc.x, unitLoc.y - 15, Center, 6, Gold, "%s%s%s", nameStr.c_str(), tombStar.c_str(), kaaSuffix.c_str());
 				});
 			}
 		}
@@ -795,6 +863,14 @@ void Maphack::OnGameJoin() {
 	ResetRevealed();
 	automapLevels.clear();
 	*p_D2CLIENT_AutomapOn = Toggles["Show Automap On Join"].state;
+	if (Toggles["Auto Reveal"].state || Toggles["Show Monsters"].state || Toggles["Force Light Radius"].state)
+		PrintText(Red, "Cheats Enabled");
+	// Update state tracking to prevent OnLoop from printing again
+	cheaterAutoLast = Toggles["Auto Reveal"].state;
+	cheaterMonstersLast = Toggles["Show Monsters"].state;
+	cheaterLightLast = Toggles["Force Light Radius"].state;
+	cheaterActiveLast = cheaterAutoLast || cheaterMonstersLast || cheaterLightLast;
+	justJoinedGame = true;
 }
 
 void Squelch(DWORD Id, BYTE button) {
@@ -947,6 +1023,34 @@ void Maphack::RevealAct(int act) {
 	InitLayer(player->pPath->pRoom1->pRoom2->pLevel->dwLevelNo);
 	D2COMMON_UnloadAct(pAct);
 	revealedAct[act] = true;
+}
+
+bool Maphack::IsKaaTomb(Level* level) {
+	// Check if this is one of the tomb levels in Act 2
+	if (!level || level->dwLevelNo < MAP_A2_TAL_RASHAS_TOMB_1 || level->dwLevelNo > MAP_A2_TAL_RASHAS_TOMB_7)
+		return false;
+
+	// Make sure level is initialized
+	if (!level->pRoom2First) {
+		D2COMMON_InitLevel(level);
+	}
+
+	// Iterate through rooms and check for Kaa tomb indicators
+	// Kaa tomb ds1 files have IDs: 468, 469, 470, 471
+	for (Room2* room = level->pRoom2First; room; room = room->pRoom2Next) {
+		if (!room->pType2Info)
+			continue;
+		
+		// Check if SubNumber points to Kaa tomb ds1 IDs (468-471)
+		if (room->pType2Info->pdwSubNumber) {
+			DWORD subNumber = *(room->pType2Info->pdwSubNumber);
+			if (subNumber >= 468 && subNumber <= 471) {
+				return true;
+			}
+		}
+	}
+	
+	return false;
 }
 
 void Maphack::RevealLevel(Level* level) {

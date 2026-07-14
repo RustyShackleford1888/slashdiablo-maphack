@@ -2,6 +2,7 @@
 #include "Module.h"
 #include "../D2Helpers.h"
 #include "../BH.h"
+#include "../Common.h"
 #include <algorithm>
 #include <iterator>
 
@@ -74,20 +75,21 @@ void ModuleManager::MpqLoaded() {
 bool ModuleManager::UserInput(wchar_t* module, wchar_t* msg, bool fromGame) {
 	bool block = false;
 	std::string name;
-	std::wstring modname(module);
-	name.assign(modname.begin(), modname.end());
+	char* moduleAnsi = UnicodeToAnsi(module);
+	name = moduleAnsi;
+	delete[] moduleAnsi;
 	transform(name.begin(), name.end(), name.begin(), ::tolower);
 
 	if (name.compare("reload") == 0)
 	{
 		ReloadConfig();
-		Print("ÿc4BH:ÿc0 Successfully reloaded configuration.");
+		Print("ï¿½c4BH:ï¿½c0 Successfully reloaded configuration.");
 		return true;
 	}
 
 	if (name.compare("save") == 0) {
 		BH::config->Write();
-		Print("ÿc4BH:ÿc0 Successfully saved configuration.");
+		Print("ï¿½c4BH:ï¿½c0 Successfully saved configuration.");
 	}
 
 	for (map<string, Module*>::iterator it = moduleList.begin(); it != moduleList.end(); ++it) {

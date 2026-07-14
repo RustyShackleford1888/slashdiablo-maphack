@@ -16,3 +16,4 @@
 #include "Drawing\UI\UITab.h"
 
 #include "Drawing\Stats\StatsDisplay.h"
+#include "Drawing\Stats\BreakpointsDisplay.h"

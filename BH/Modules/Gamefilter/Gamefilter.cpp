@@ -4,6 +4,7 @@
 #include "../../D2Stubs.h"
 #include <sstream>
 #include "../../BH.h"
+#include "../../Common.h"
 
 using namespace std;
 
@@ -76,8 +77,9 @@ void Gamefilter::OnRealmPacketRecv(BYTE* pPacket, bool* blockPacket) {
 	}
 	if(pPacket[0] == 0x05 && filterBox)
 	{		
-		wstring wFilter(filterBox->wText);
-		string sFilter(wFilter.begin(), wFilter.end());
+		char* filterAnsi = UnicodeToAnsi(filterBox->wText);
+		string sFilter(filterAnsi);
+		delete[] filterAnsi;
 
 		GameListEntry* pEntry = new GameListEntry;
 
@@ -114,7 +116,7 @@ void Gamefilter::OnRealmPacketRecv(BYTE* pPacket, bool* blockPacket) {
 		for(unsigned int i = 0; i < pEntry->sGameName.length(); i++)
 			sGameName += ::toupper(pEntry->sGameName[i]);
 
-		if(wFilter.empty() || strstr(sGameName.c_str(), sFilter.c_str()))
+		if(sFilter.empty() || strstr(sGameName.c_str(), sFilter.c_str()))
 		{
 			ControlText* pText = new ControlText;
 			memset(pText, NULL, sizeof(ControlText));
@@ -197,9 +199,9 @@ void Gamefilter::OnRealmPacketRecv(BYTE* pPacket, bool* blockPacket) {
 
 BOOL __stdcall Gamefilter::Filterbox_InputHandler(Control* pControl, DWORD dwLength, CHAR* pChar)
 {
-	wstring wInput(pControl->wText);
-
-	string sFilter(wInput.begin(), wInput.end());
+	char* filterAnsi = UnicodeToAnsi(pControl->wText);
+	string sFilter(filterAnsi);
+	delete[] filterAnsi;
 
 	if(dwLength > 0)
 		sFilter+=*pChar;

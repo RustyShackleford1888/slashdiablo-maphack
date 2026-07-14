@@ -1,5 +1,6 @@
 #include "Hook.h"
 #include "Advanced/Colorhook/Colorhook.h"
+#include "Advanced/Combohook/Combohook.h"
 #include "../D2Ptrs.h"
 
 using namespace Drawing;
@@ -317,12 +318,18 @@ void Hook::Draw(HookVisibility type) {
 		Hooks.sort(ZSort);
 	}
 	for (HookIterator it = Hooks.begin(); it!=Hooks.end(); ++it)
-		if ((*it)->GetVisibility() == type || (*it)->GetVisibility() == Perm)
+		if ((*it)->GetVisibility() == type || (*it)->GetVisibility() == Perm) {
+			// Skip active Combohook - it will be drawn last
+			Combohook* combo = dynamic_cast<Combohook*>(*it);
+			if (combo && Combohook::currentActive == combo)
+				continue;
 			(*it)->OnDraw();
-	if (Colorhook::current) {
-		Colorhook::current->OnDraw();
-		return;
+		}
+	// Draw active Combohook last to ensure it's on top of everything
+	if (Combohook::currentActive) {
+		Combohook::currentActive->OnDraw();
 	}
+	// Note: Colorhook is now drawn in D2Handlers.cpp after UI::Draw() to ensure it's on top
 }
 
 /* Hook::LeftClick(bool up, unsigned int x, unsigned int y)
@@ -335,6 +342,31 @@ bool Hook::LeftClick(bool up, unsigned int x, unsigned int y) {
 		Colorhook::current->OnLeftClick(up, x, y);
 		return true;
 	}
+	
+	// If a dropdown is active, ONLY process the dropdown and block all other hooks
+	// This prevents clicks on other UI elements (like checkboxes) behind the dropdown menu
+	if (Combohook::currentActive) {
+		Combohook* activeCombo = Combohook::currentActive;
+		std::vector<std::string> activeOptions = activeCombo->GetOptions();
+		unsigned int activeColumns = activeCombo->GetColumns();
+		unsigned int itemsPerColumn = (activeOptions.size() + activeColumns - 1) / activeColumns;
+		unsigned int maxHeight = itemsPerColumn * (activeCombo->GetYSize() + 4);
+		unsigned int activeX = activeCombo->GetX();
+		unsigned int activeY = activeCombo->GetY();
+		unsigned int activeXSize = activeCombo->GetXSize();
+		unsigned int activeYSize = activeCombo->GetYSize();
+		
+		// Check if click is within the active dropdown's expanded area (button + menu)
+		bool withinActiveDropdown = (x >= activeX && y >= activeY && 
+		                            x <= activeX + activeXSize && 
+		                            y <= activeY + activeYSize + 4 + maxHeight);
+		
+		// Only process the active dropdown - block all other hooks
+		// The dropdown will handle closing itself if click is outside
+		activeCombo->OnLeftClick(up, x, y);
+		return true; // Always block clicks when dropdown is active
+	}
+	
 	for (list<Hook*>::iterator it = Hooks.begin(); it!=Hooks.end(); ++it)
 		if ((*it)->IsActive())
 			if ((*it)->OnLeftClick(up, x, y))

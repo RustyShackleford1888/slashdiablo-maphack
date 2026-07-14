@@ -48,8 +48,9 @@ bool Config::Parse() {
 		entry.comment = line.substr(line.find_first_of(":") + 1, line.find(entry.value) - line.find_first_of(":") - 1);
 		entry.pointer = NULL;
 
-		//Store them!
-		contents.insert(pair<string, ConfigEntry>(entry.key, entry));
+		// Store; last occurrence wins so duplicate keys in cfg (e.g. two "Follow Leader:" lines)
+		// are not silently ignored (map::insert keeps the first only).
+		contents[entry.key] = entry;
 		orderedKeyVals.push_back(pair<string, string>(entry.key, entry.value));
 	}
 	file.close();
@@ -174,8 +175,9 @@ bool Config::ReadBoolean(std::string key, bool& value) {
 	contents[key].type = CTBoolean;
 	contents[key].pointer = (void*)&value;
 
-	//Convert string to boolean
-	const char* szValue = contents[key].value.c_str();
+	//Convert string to boolean (trim so "True " from cfg still parses)
+	std::string valStr = Trim(contents[key].value);
+	const char* szValue = valStr.c_str();
 	if ((_stricmp(szValue, "1") == 0) || (_stricmp(szValue, "y") == 0) || (_stricmp(szValue, "yes") == 0) || (_stricmp(szValue, "true") == 0))
 		value = true;
 	else
@@ -472,7 +474,7 @@ bool Config::HasChanged(ConfigEntry entry, string& value) {
 		string ind = entry.key.substr(entry.key.find("[") + 1, entry.key.length() - entry.key.find("[") - 2);
 		int index = atoi(ind.c_str());
 
-		if (index >= valTest.size()) {
+		if (index >= 0 && (size_t)index >= valTest.size()) {
 			value = "";
 			return true;
 		}

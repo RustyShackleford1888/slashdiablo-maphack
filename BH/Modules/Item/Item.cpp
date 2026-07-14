@@ -48,6 +48,7 @@
 #include "../../D2Strings.h"
 #include "../../BH.h"
 #include "../../D2Stubs.h"
+#include "../../D2Helpers.h"
 #include "ItemDisplay.h"
 #include "../../MPQInit.h"
 #include "lrucache.hpp"
@@ -113,14 +114,90 @@ void ResetCaches() {
 	ignore_cache.ResetCache();
 }
 
+struct ItemStatAnnouncement {
+	int statIds[4];
+	int numStats;
+	int layer;
+	const char* message;
+};
+
+static const ItemStatAnnouncement g_announcements[] = {
+	// CTC Procs: 376=on melee attack, 407=on kill, 375=when struck, 406=on striking
+	{{376, 407, 375, 406}, 4, 23364, "Empower: +5 all skills"},
+	{{376, 407, 375, 406}, 4, 23236, "Diamond Skin: +35% magic resistance, +6000 defense"},
+	{{376, 407, 375, 406}, 4, 23300, "Clarity: 300% increased mana recovery, 20% faster cast rate"},
+	{{376, 407, 375, 406}, 4, 23428, "Conduction: +20% lightning damage, 20% lightning pierce, 20% faster cast rate"},
+	{{376, 407, 375, 406}, 4, 23492, "Avalanche: 20% increased attack speed, 30% cold damage"},
+	{{376, 407, 375, 406}, 4, 23556, "Hellfire: 40% fire damage, 15% fire absorb"},
+	{{376, 407, 375, 406}, 4, 23620, "Brutality: 40% crushing blow, 100% Enhanced Damage, +40 stun duration"},
+	{{376, 407, 375, 406}, 4, 23684, "Purity: 50% fire/cold/lit res, 10% fire/cold/lit max res"},
+	{{376, 407, 375, 406}, 4, 23748, "Corruption: 40% poison damage, 20% magic pierce"},
+	{{376, 407, 375, 406}, 4, 23812, "Carnage: 400% enhanced damage"},
+	{{376, 407, 375, 406}, 4, 23876, "Resurgence: +3 all skills, 15% IAS, 100% enhanced damage"},
+	{{376, 407, 375, 406}, 4, 23940, "Grace: 80% FHR, +1000 AR, 33% deadly strike, 80% FBR"},
+	{{376, 407, 375, 406}, 4, 24004, "Aegis: 60% FBR, 30% block, 50% edef, 25% phys res"},
+	{{376, 407, 375, 406}, 4, 24068, "Blood Rage: 200% AR, 15% life leech, PMH, 30% IAS"},
+	{{376, 407, 375, 406}, 4, 24196, "Good Fortune: 200% MF, 500% GF"},
+	{{376, 407, 375, 406}, 4, 24260, "Haste: 40% movement velocity, +10 weapon speed"},
+	{{376, 407, 375, 406}, 4, 37380, "Elemental Adaption: 1% ele res per 1% ele mastery"},
+	{{376, 407, 375, 406}, 4, 37444, "Elemental Volatility: 1% ele pierce per 4% ele mastery"},
+	{{376, 407, 375, 406}, 4, 38020, "Elemental Destruction: 1% ele mastery per 4% ele res"},
+	{{376, 407, 375, 406}, 4, 24322, "Fire Immunity (2 seconds)"},
+	{{376, 407, 375, 406}, 4, 24386, "Cold Immunity (2 seconds)"},
+	{{376, 407, 375, 406}, 4, 24450, "Lightning Immunity (2 seconds)"},
+
+	// CTC Skills: 195=on melee attack, 196=on kill, 201=when struck, 198=on striking
+	//{{195, 196, 201, 198}, 4, 25310, "CTC Chain Lightning"},
+	//{{195, 196, 201, 198}, 4, 25950, "CTC Poison Nova"},
+	//{{195, 196, 201, 198}, 4, 25758, "CTC Frozen Orb"},
+	//{{195, 196, 201, 198}, 4, 25438, "CTC Meteor"},
+
+	// Auras (stat 151)
+	{{151, 0, 0, 0}, 1, 530, "Enchant Fire: 100-200 fire dmg/lvl. Aura mastery. 24 radius"},
+	{{151, 0, 0, 0}, 1, 531, "Enchant Cold: 100-200 cold dmg/lvl. Aura mastery. 24 radius"},
+	{{151, 0, 0, 0}, 1, 532, "Enchant Lightning: 100-200 lit dmg/lvl. Aura mastery. 24 radius"},
+	{{151, 0, 0, 0}, 1, 537, "Enchant Bones: 1% CB/lvl, 20% ED/lvl, 4 PDR/lvl. 24 radius"},
+	{{151, 0, 0, 0}, 1, 539, "Enchant Vigor: 1 wep speed/lvl, 2 velocity/lvl. 24 radius"},
+	{{151, 0, 0, 0}, 1, 419, "Pestilence: -8% enemy psn res, -1%/lvl; 150/lvl psn dmg/s. 18 radius"},
+
+	// Mercenary-only (stat 470, layer 0)
+	{{470, 0, 0, 0}, 1, 0, "Mercenary Only: Lowers Life, Mana, Stamina on non-mercs"},
+};
+
+static const int g_numAnnouncements = sizeof(g_announcements) / sizeof(g_announcements[0]);
+
+void Item::AnnounceHoveredItemStats() {
+	if (!IsGameReady()) return;
+
+	UnitAny* item = *p_D2CLIENT_SelectedInvItem;
+
+	if (!item || item->dwType != UNIT_ITEM) {
+		UnitAny* selected = D2CLIENT_GetSelectedUnit();
+		if (selected && selected->dwType == UNIT_ITEM)
+			item = selected;
+	}
+
+	if (!item || item->dwType != UNIT_ITEM) return;
+
+	for (int a = 0; a < g_numAnnouncements; a++) {
+		const ItemStatAnnouncement& ann = g_announcements[a];
+		for (int s = 0; s < ann.numStats; s++) {
+			if (D2COMMON_GetUnitStat(item, ann.statIds[s], ann.layer) > 0) {
+				PrintText(Gold, "%s", ann.message);
+				break;
+			}
+		}
+	}
+}
+
 void Item::OnGameJoin() {
 	// reset the item name cache upon joining games
 	// (GUIDs not unique across games)
 	ResetCaches();
 	OnLoop();
-	if (ItemDisplay::UntestedSettingsUsed()) {
-		PrintText(10, "Warning - using experimental config settings");
-	}
+	//if (ItemDisplay::UntestedSettingsUsed()) {
+	//	PrintText(10, "Warning - using experimental config settings");
+	//}
 }
 
 void Item::LoadConfig() {
@@ -152,6 +229,7 @@ void Item::LoadConfig() {
 	//InitializeMPQData();
 
 	BH::config->ReadKey("Show Players Gear", "VK_0", showPlayer);
+	BH::config->ReadKey("Announce Item Stats", "VK_BACKTICK", announceStatKey);
 }
 
 void Item::LoadNoIlvlCodes() {
@@ -258,25 +336,28 @@ void Item::DrawSettings() {
 	new Keyhook(settingsTab, 4, y+2, &showPlayer, "Show Player's Gear:   ");
 	y += 15;
 
-	new Texthook(settingsTab, 4, y, "Filter Level:");
+	new Keyhook(settingsTab, 4, y+2, &announceStatKey, "Announce Item Stats:  ");
+	y += 15;
+
+	new Texthook(settingsTab, 4, y, "\377c4Filter Level:");
 
 	vector<string> options;
-	options.push_back("0 - None");
-	options.push_back("1 - Minimal");
-	options.push_back("2 - Moderate");
-	options.push_back("3 - Aggressive");
+	options.push_back("\377c00 - None");
+	options.push_back("\377c01 - Minimal");
+	options.push_back("\377c02 - Moderate");
+	options.push_back("\377c03 - Aggressive");
 	new Combohook(settingsTab, 85, y, 120, &filterLevelSetting, options);
 
-	new Texthook(settingsTab, 234, y, "Ping Tiers <=:");
+	new Texthook(settingsTab, 234, y, "\377c4Ping Tiers <=:");
 
 	vector<string> ping_options;
-	ping_options.push_back("0");
-	ping_options.push_back("1");
-	ping_options.push_back("2");
-	ping_options.push_back("3");
-	ping_options.push_back("4");
-	ping_options.push_back("5");
-	ping_options.push_back("6");
+	ping_options.push_back("\377c00");
+	ping_options.push_back("\377c01");
+	ping_options.push_back("\377c02");
+	ping_options.push_back("\377c03");
+	ping_options.push_back("\377c04");
+	ping_options.push_back("\377c05");
+	ping_options.push_back("\377c06");
 	new Combohook(settingsTab, 330, y, 40, &pingLevelSetting, ping_options);
 }
 
@@ -328,6 +409,12 @@ void Item::OnLoop() {
 }
 
 void Item::OnKey(bool up, BYTE key, LPARAM lParam, bool* block) {
+	if (key == announceStatKey) {
+		*block = true;
+		if (up) return;
+		AnnounceHoveredItemStats();
+		return;
+	}
 	if (key == showPlayer) {
 		*block = true;
 		if (up)
@@ -724,6 +811,7 @@ void __stdcall Item::OnProperties(wchar_t * wTxt)
 				GetColorCode(TextColor::White).c_str());
 		}
 	}
+
 
 	if (!(Toggles["Always Show Item Stat Ranges"].state ||
 				GetKeyState(VK_CONTROL) & 0x8000) ||

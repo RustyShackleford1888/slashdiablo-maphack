@@ -63,8 +63,10 @@ class Item : public Module {
 		static unsigned int pingLevelSetting;
 		static unsigned int trackerPingLevelSetting;
 		static int statRangeColor;
+		unsigned int announceStatKey;
 
 		void ResetPatches();
+		void AnnounceHoveredItemStats();
 	public:
 
 		Item() : Module("Item") {};
