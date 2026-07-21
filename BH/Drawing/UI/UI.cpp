@@ -382,3 +382,4 @@ bool UI::RightClick(bool up, unsigned int mouseX, unsigned int mouseY) {
 	}
 	return false;
 }
+

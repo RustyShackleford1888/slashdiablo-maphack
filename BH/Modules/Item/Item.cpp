@@ -61,6 +61,7 @@ unordered_set<string> Item::no_ilvl_codes;
 unsigned int Item::filterLevelSetting = 0;
 unsigned int Item::pingLevelSetting = 0;
 unsigned int Item::trackerPingLevelSetting = -1;
+int Item::statRangeColor = TextColor::DarkGreen;
 UnitAny* Item::viewingUnit;
 
 Patch* itemNamePatch = new Patch(Call, D2CLIENT, { 0x92366, 0x96736 }, (int)ItemName_Interception, 6);
@@ -142,6 +143,7 @@ void Item::LoadConfig() {
 	BH::config->ReadInt("Filter Level", filterLevelSetting);
 	BH::config->ReadInt("Ping Level", pingLevelSetting);
 	BH::config->ReadInt("Run Details Ping Level", trackerPingLevelSetting);
+	BH::config->ReadInt("Stat Range Color", statRangeColor);
 
 	LoadNoIlvlCodes();
 
@@ -258,25 +260,25 @@ void Item::DrawSettings() {
 	new Keyhook(settingsTab, 4, y+2, &showPlayer, "Show Player's Gear:   ");
 	y += 15;
 
-	new Texthook(settingsTab, 4, y, "Filter Level:");
+	new Texthook(settingsTab, 4, y, "\377c4Filter Level:");
 
 	vector<string> options;
-	options.push_back("0 - None");
-	options.push_back("1 - Minimal");
-	options.push_back("2 - Moderate");
-	options.push_back("3 - Aggressive");
+	options.push_back("\377c00 - None");
+	options.push_back("\377c01 - Minimal");
+	options.push_back("\377c02 - Moderate");
+	options.push_back("\377c03 - Aggressive");
 	new Combohook(settingsTab, 85, y, 120, &filterLevelSetting, options);
 
-	new Texthook(settingsTab, 234, y, "Ping Tiers <=:");
+	new Texthook(settingsTab, 234, y, "\377c4Ping Tiers <=:");
 
 	vector<string> ping_options;
-	ping_options.push_back("0");
-	ping_options.push_back("1");
-	ping_options.push_back("2");
-	ping_options.push_back("3");
-	ping_options.push_back("4");
-	ping_options.push_back("5");
-	ping_options.push_back("6");
+	ping_options.push_back("\377c00");
+	ping_options.push_back("\377c01");
+	ping_options.push_back("\377c02");
+	ping_options.push_back("\377c03");
+	ping_options.push_back("\377c04");
+	ping_options.push_back("\377c05");
+	ping_options.push_back("\377c06");
 	new Combohook(settingsTab, 330, y, 40, &pingLevelSetting, ping_options);
 }
 
@@ -760,7 +762,7 @@ void __stdcall Item::OnProperties(wchar_t * wTxt)
 					L"%sBase Defense: %d %s[%d - %d]%s%s\n",
 					GetColorCode(TextColor::White).c_str(),
 					base,
-					GetColorCode(TextColor::DarkGreen).c_str(),
+					GetColorCode(statRangeColor).c_str(),
 					min, max_no_ed,
 					ebugged ? L"\377c5 Ebug" : L"",
 					GetColorCode(TextColor::White).c_str()
@@ -991,7 +993,7 @@ void __stdcall Item::OnPropertyBuild(wchar_t* wOut, int nStat, UnitAny* pItem, i
 				if (leftSpace) {
 					swprintf_s(wOut + aLen, leftSpace,
 							L" %s[%d - %d]%s",
-							GetColorCode(TextColor::DarkGreen).c_str(),
+							GetColorCode(statRangeColor).c_str(),
 							statMin,
 							statMax,
 							GetColorCode(TextColor::Blue).c_str());
@@ -1029,7 +1031,7 @@ void __stdcall Item::OnPropertyBuild(wchar_t* wOut, int nStat, UnitAny* pItem, i
 					if (leftSpace)
 						swprintf_s(wOut + aLen, leftSpace,
 								L" %s[%d - %d]%s",
-								GetColorCode(TextColor::DarkGreen).c_str(),
+								GetColorCode(statRangeColor).c_str(),
 								statMin,
 								statMax,
 								GetColorCode(TextColor::Blue).c_str());
@@ -1110,7 +1112,7 @@ void __stdcall Item::OnPropertyBuild(wchar_t* wOut, int nStat, UnitAny* pItem, i
 				if (leftSpace)
 					swprintf_s(wOut + aLen, leftSpace,
 							L" %s[%d - %d]%s",
-							GetColorCode(TextColor::DarkGreen).c_str(),
+							GetColorCode(statRangeColor).c_str(),
 							min,
 							max,
 							GetColorCode(TextColor::Blue).c_str());
