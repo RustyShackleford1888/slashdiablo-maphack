@@ -4,6 +4,8 @@
 #include "../../Config.h"
 #include "../../Drawing.h"
 #include <deque>
+#include <mutex>
+#include <shared_mutex>
 
 struct StateCode {
     std::string name;
@@ -34,6 +36,11 @@ private:
     Drawing::Texthook* d2VersionText;
     DWORD gameTimer;
     DWORD endTimer;
+
+	// Added mutexes for thread safety
+	std::shared_mutex automapMutex;      // Protects automap access
+	std::shared_mutex killsPerMinuteMutex; // Protects killsPerMinute access
+	std::shared_mutex killscounterMutex;   // Protects killscounter access
 
     int packetRequests;
     ULONGLONG warningTicks;

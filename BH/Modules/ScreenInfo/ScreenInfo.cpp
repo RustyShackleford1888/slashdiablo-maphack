@@ -53,6 +53,8 @@ void ScreenInfo::OnLoad() {
 	szLastXpGainPer = "N/A";
 	szLastGameTime = "N/A";
 
+	std::unique_lock lock(automapMutex);
+
 	automap["GAMESTOLVL"] = szGamesToLevel;
 	automap["TIMETOLVL"] = szTimeToLevel;
 	automap["LASTXPPERCENT"] = szLastXpGainPer;
@@ -105,10 +107,19 @@ void ScreenInfo::MpqLoaded() {
 void ScreenInfo::OnGameJoin() {
 	UnitsOverall.clear();
 	UnitsDead.clear();
-	killscounter["total"] = 0;
-	killscounter["unique"] = 0;
-	killscounter["champ"] = 0;
-	killsPerMinute = 0;
+
+	{
+		std::unique_lock lock(killscounterMutex);
+		killscounter["total"] = 0;
+		killscounter["unique"] = 0;
+		killscounter["champ"] = 0;
+	}
+
+	{
+		std::unique_lock lock(killsPerMinuteMutex);
+		killsPerMinute = 0;
+	}
+
 	BnetData* pInfo = (*p_D2LAUNCH_BnData);
 	UnitAny* unit = D2CLIENT_GetPlayerUnit();
 	if (unit && unit->pPlayerData && pInfo) {
@@ -170,6 +181,8 @@ void ScreenInfo::OnGameJoin() {
 
 	string path = ReplaceAutomapTokens(szSavePath);
 
+	// Protect automap access
+	std::unique_lock lock(automapMutex);
 	automap["JOINDATE"] = FormatTime(t, "%F");
 	automap["JOINTIME"] = FormatTime(t, "%T%z");
 	automap["CHARLEVEL"] = to_string(startLevel);
@@ -201,9 +214,12 @@ void ScreenInfo::OnGameJoin() {
 	automap["ACCOUNTNAME"] = pData->szAccountName ? pData->szAccountName : "";
 	automap["CHARNAME"] = pUnit->pPlayerData->szName;
 	automap["SESSIONGAMECOUNT"] = to_string(++nTotalGames);
-	automap["TOTALKILLED"] = to_string(killscounter["total"]);
-	automap["UNIQUEKILLED"] = to_string(killscounter["unique"]);
-	automap["CHAMPKILLED"] = to_string(killscounter["champ"]);
+	{
+		std::shared_lock lock(killscounterMutex);
+		automap["TOTALKILLED"] = to_string(killscounter["total"]);
+		automap["UNIQUEKILLED"] = to_string(killscounter["unique"]);
+		automap["CHAMPKILLED"] = to_string(killscounter["champ"]);
+	}
 
 	/*
 	string p = ReplaceAutomapTokens(szSavePath);
@@ -580,6 +596,8 @@ void ScreenInfo::OnDraw() {
 						continue;
 					}
 					if (UnitsDead.find(unit->dwUnitId) == UnitsDead.end() && UnitsOverall.find(unit->dwUnitId) != UnitsOverall.end()) {
+						std::unique_lock lock(killscounterMutex);
+
 						UnitsDead[unit->dwUnitId] = 1;
 						killscounter["total"]++;
 						if (unit->pMonsterData->fChamp)
@@ -595,6 +613,8 @@ void ScreenInfo::OnDraw() {
 		}
 	}
 
+	std::unique_lock lock(automapMutex);
+
 	automap["CURRENTCHARLEVEL"] = to_string(currentLevel);
 	automap["CURRENTCHARLEVELPERCENT"] = to_string(static_cast<double>(currentLevel) + (pExp / 100.0));
 	automap["CURRENTCHARXPPERCENT"] = to_string(pExp);
@@ -605,21 +625,24 @@ void ScreenInfo::OnDraw() {
 	automap["REALTIME"] = szTime;
 	automap["AREALEVEL"] = to_string(areaLevel);
 	aPlayerCountAverage[GetPlayerCount() - 1]++;
-	automap["TOTALKILLED"] = to_string(killscounter["total"]);
-	automap["UNIQUEKILLED"] = to_string(killscounter["unique"]);
-	automap["CHAMPKILLED"] = to_string(killscounter["champ"]);
+	{
+		std::shared_lock lock(killscounterMutex);
+		automap["TOTALKILLED"] = to_string(killscounter["total"]);
+		automap["UNIQUEKILLED"] = to_string(killscounter["unique"]);
+		automap["CHAMPKILLED"] = to_string(killscounter["champ"]);
+	}
 	// Calculate elapsed time in seconds since the game started
 	DWORD currentTime = GetTickCount();
 	double elapsedTime = (currentTime - gameTimer) / 1000.0; // Convert to seconds
 
 	// Calculate kills per minute
 	if (elapsedTime > 0) {
+		std::scoped_lock<std::shared_mutex, std::shared_mutex> lock(killsPerMinuteMutex, killscounterMutex);
 		killsPerMinute = (double)killscounter["total"] / (elapsedTime / 60.0); // Calculate kills per minute
 		automap["KILLSPERMINUTE"] = to_string((int)killsPerMinute); // Store in automap
 	}
 
 	delete[] level;
-
 }
 
 void ScreenInfo::OnOOGDraw() {
@@ -647,6 +670,8 @@ void ScreenInfo::FormattedXPPerSec(char* buffer, double xpPerSec) {
 }
 
 std::string ScreenInfo::ReplaceAutomapTokens(std::string& v) {
+	std::shared_lock lock(automapMutex);
+
 	std::string result;
 	result.assign(v.c_str());
 
@@ -778,7 +803,10 @@ void ScreenInfo::OnGameExit() {
 	double lastExpPerSecond = currentExpPerSecond;
 	int lastGameLength = endTimer;
 	int timeToLevel = (int)(gamesToLevel * lastGameLength);
-	killsPerMinute = (double)killscounter["total"];
+	{
+		std::scoped_lock<std::shared_mutex, std::shared_mutex> lock(killsPerMinuteMutex, killscounterMutex);
+		killsPerMinute = (double)killscounter["total"];
+	}
 
 	char buffer[128];
 	sprintf_s(buffer, sizeof(buffer), "%.2f", gamesToLevel);
@@ -805,6 +833,8 @@ void ScreenInfo::OnGameExit() {
 
 	drops = regex_replace(drops, regex("\xFF" "c."), "");
 	drops = regex_replace(drops, regex("\n"), " ");
+
+	std::unique_lock lock(automapMutex);
 
 	automap["GAMESTOLVL"] = szGamesToLevel;
 	automap["TIMETOLVL"] = szTimeToLevel;
