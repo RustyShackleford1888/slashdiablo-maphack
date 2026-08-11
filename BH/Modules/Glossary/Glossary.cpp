@@ -304,6 +304,8 @@ void Glossary::OnDraw() {
         if (!glossaryUI->IsActive()) {
             glossaryUI->SetActive(true);
         }
+
+        BH::settingsUI->SetMinimized(true);
         
         glossaryUI->Lock();
         
