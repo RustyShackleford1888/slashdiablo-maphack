@@ -109,16 +109,15 @@ unsigned int Colorhook::GetYSize() {
 void Colorhook::OnDraw() {
 	Lock();
 	if (Colorhook::current == this) {
-		//Draw the shaded background
 		Boxhook::Draw(0, 0, Hook::GetScreenWidth(), Hook::GetScreenHeight(), 0xf, BTOneHalf);
 		//Draw the actual choose color box
 		Framehook::Draw(310, 180, 180, 220, 0xf, BTNormal);
 		//Draw title
 		Texthook::Draw(360, 186, false, 0, White, "Choose Color");
-
 		int col = 1, boxX1, boxX2, boxY1, boxY2;
 		int mX = (*p_D2CLIENT_MouseX);
 		int mY = (*p_D2CLIENT_MouseY);
+		curColor = GetColor();
 		for (int n = 1, row = 1; n <= 255; n++, row++) {
 			if (row == 16) {
 				col++;
@@ -130,8 +129,9 @@ void Colorhook::OnDraw() {
 			boxY1 = 190 + (col * 10);
 			boxY2 = 200 + (col * 10);
 			//Set current color based on mouse location
-			if (mX >= boxX1 && mY >= boxY1 && mX <= boxX2 && mY <= boxY2)
+			if (mX >= boxX1 && mY >= boxY1 && mX <= boxX2 && mY <= boxY2) {
 				curColor = n;
+			}
 			//Draw each color box - use D2GFX_DrawRectangle with BTNormal (5)
 			//BTNormal seems to work better for colored rectangles
 			//Color n is the palette index (1-255)
