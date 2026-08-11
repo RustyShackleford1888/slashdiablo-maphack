@@ -142,13 +142,14 @@ void Colorhook::OnDraw() {
 		//Draw instructions
 		Texthook::Draw(320, 384, false, 0, White, "Left Click - Select");
 		Texthook::Draw(320, 368, false, 0, White, "Right Click - Close");
-	} else {
-		DWORD size = D2WIN_SetTextSize(0);
-		wchar_t* wText = AnsiToUnicode(GetText().c_str());
-		D2WIN_DrawText(wText, GetX() + 13, GetY() + 10, InRange(*p_D2CLIENT_MouseX, *p_D2CLIENT_MouseY)?7:4, 0);
-		delete[] wText;
-		D2WIN_SetTextSize(size);
-		Crosshook::Draw(GetX(), GetY() + 4, GetColor());
 	}
+	DWORD size = D2WIN_SetTextSize(0);
+	wchar_t* wText = AnsiToUnicode(GetText().c_str());
+	D2WIN_DrawText(wText, GetX() + 13, GetY() + 10, InRange(*p_D2CLIENT_MouseX, *p_D2CLIENT_MouseY)?7:4, 0);
+	delete[] wText;
+	D2WIN_SetTextSize(size);
+	// Draw the colored X shape - this should be on top due to high z-order (10000)
+	// Draw it after text to ensure it's visible
+	Crosshook::Draw(GetX(), GetY() + 4, GetColor());
 	Unlock();
 }
