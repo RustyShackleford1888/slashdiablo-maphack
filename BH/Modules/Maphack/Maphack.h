@@ -54,6 +54,7 @@ class Maphack : public Module {
 		bool cheaterMonstersLast;
 		bool cheaterLightLast;
 		bool justJoinedGame;
+		std::ofstream drop_stream;
 
 	public:
 	Maphack();

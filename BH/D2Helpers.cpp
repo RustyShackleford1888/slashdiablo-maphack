@@ -16,10 +16,25 @@ int quality_to_color[] = {
 	Orange // craft
 };
 
+const char *quality_to_console_color[] = {
+	CONSOLE_WHITE,  // none
+	CONSOLE_WHITE,  // inferior
+	CONSOLE_WHITE,  // normal
+	CONSOLE_WHITE,  // superior
+	CONSOLE_BLUE,   // magic
+	CONSOLE_GREEN,  // set
+	CONSOLE_YELLOW, // rare
+	CONSOLE_GOLD,   // unique
+	CONSOLE_ORANGE  // craft
+};
+
 int ItemColorFromQuality(unsigned int quality) {
 	return quality_to_color[quality];
 }
 
+const char* ItemConsoleColorFromQuality(unsigned int quality) {
+	return quality_to_console_color[quality];
+}
 
 RosterUnit* FindPlayerRoster(DWORD unitId) {
 	for (RosterUnit* roster = (*p_D2CLIENT_PlayerUnitList); roster; roster = roster->pNext) {

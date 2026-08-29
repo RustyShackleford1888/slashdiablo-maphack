@@ -131,7 +131,6 @@ for (const auto& entry : auraColorsString) {
     auraColors.emplace_back(firstValue, secondValue);
 }
 
-
 	BH::config->ReadAssoc("Monster Color", MonsterColors);
 	for (auto it = MonsterColors.cbegin(); it != MonsterColors.cend(); it++) {
 		// If the key is a number, it means a monster we've assigned a specific color
@@ -390,6 +389,13 @@ void Maphack::OnLoad() {
 	options.push_back("Act");
 	options.push_back("Level");
 	new Combohook(cheaterTab, 100, cheaterY, 70, &revealType, options);
+
+	if (!drop_stream.is_open()) {
+		drop_stream.open("bh_active_drops", std::ios_base::app);
+	}
+	if (drop_stream.fail()) {
+		cout << "Failed to open bh_active_drops" << endl;
+	}
 }
 
 void Maphack::OnKey(bool up, BYTE key, LPARAM lParam, bool* block) {
@@ -429,6 +435,7 @@ void Maphack::OnUnload() {
 	skipNpcMessages3->Remove();
 	skipNpcMessages4->Remove();
 	diabloDeadMessage->Remove();
+	drop_stream.close();
 }
 
 void Maphack::OnLoop() {
@@ -501,6 +508,24 @@ BYTE nChestLockedColour = 0x09;
 
 Act* lastAct = NULL;
 
+#define CONSOLE_COLOR_REPLACEMENTS			\
+	{ "\377c0", CONSOLE_WHITE },			\
+	{ "\377c1", CONSOLE_RED },				\
+	{ "\377c2", CONSOLE_GREEN },			\
+	{ "\377c3", CONSOLE_BLUE },				\
+	{ "\377c4", CONSOLE_GOLD },				\
+	{ "\377c5", CONSOLE_GRAY },				\
+	{ "\377c6", CONSOLE_BLACK },			\
+	{ "\377c7", CONSOLE_TAN },				\
+	{ "\377c8", CONSOLE_ORANGE },			\
+	{ "\377c9", CONSOLE_YELLOW },			\
+	{ "\377c;", CONSOLE_PURPLE },			\
+	{ "\377c:", CONSOLE_DARK_GREEN },		\
+	{ "\377c\x06", CONSOLE_CORAL },			\
+	{ "\377c\x07", CONSOLE_SAGE },			\
+	{ "\377c\x09", CONSOLE_TEAL },			\
+	{ "\xFF" "c\x0C", CONSOLE_LIGHT_GRAY }
+
 void Maphack::OnDraw() {
 	UnitAny* player = D2CLIENT_GetPlayerUnit();
 
@@ -542,10 +567,28 @@ void Maphack::OnDraw() {
 									start_pos += 3;
 								}
 								PrintText(ItemColorFromQuality(unit->pItemData->dwQuality), "%s", itemName.c_str());
+
 								if (!action.noTracking && !IsTown(GetPlayerArea()) && action.pingLevel <= Item::GetTrackerPingLevel()) {
 									ScreenInfo::AddDrop(unit);
 								}
-								//PrintText(ItemColorFromQuality(unit->pItemData->dwQuality), "%s %x", itemName.c_str(), dwFlags);
+
+								if (drop_stream.is_open()) {
+									ActionReplace replacements[] = {
+										CONSOLE_COLOR_REPLACEMENTS
+									};
+
+									// todo fix reversed key/value
+									for (auto replacement : replacements) {
+										while (itemName.find(replacement.key) != string::npos) {
+											itemName.replace(itemName.find(replacement.key),
+													replacement.key.length(),
+													replacement.value);
+										}
+									}
+									// why not just print this? it can add random newlines or wordwraps
+									drop_stream << ItemConsoleColorFromQuality(unit->pItemData->dwQuality) <<
+										itemName << CONSOLE_RESET << endl;
+								}
 								break;
 							}
 
@@ -690,6 +733,7 @@ void Maphack::OnAutomapDraw() {
 						if (enchantText.length() > 0)
 							Drawing::Texthook::Draw(automapLoc.x, automapLoc.y - 14, Drawing::Center, 6, White, enchantText);
 						Drawing::Crosshook::Draw(automapLoc.x, automapLoc.y, color);
+						/* Drawing::Boxhook::Draw(automapLoc.x - 1, automapLoc.y - 1, 2, 2, color, Drawing::BTHighlight); */
 						if (lineColor != -1) {
 							Drawing::Linehook::Draw(MyPos.x, MyPos.y, automapLoc.x, automapLoc.y, lineColor);
 						}

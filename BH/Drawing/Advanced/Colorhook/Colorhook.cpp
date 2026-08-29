@@ -110,32 +110,12 @@ void Colorhook::OnDraw() {
 	Lock();
 	if (Colorhook::current == this) {
 		//Draw the shaded background
-		Boxhook::Draw(0, 0, Hook::GetScreenWidth(), Hook::GetScreenHeight(), 0, BTOneHalf);
-		
-		// Calculate the bounds of the color picker area
-		// Color grid: 16 columns (rows) from 321 to 481, ~17 rows (cols) from 190 to 360
-		// Add padding for title (at 186) and instructions (at 368, 384)
-		unsigned int pickerX = 310;
-		unsigned int pickerY = 180;
-		unsigned int pickerWidth = 190;
-		unsigned int pickerHeight = 220;
-		
-		//Draw black opaque background in sections AROUND the color grid area
-		//This ensures the background covers the UI menu but doesn't cover the color boxes
-		//Top section (above color grid)
-		D2GFX_DrawRectangle(pickerX, pickerY, pickerX + pickerWidth, 190, 0, BTFull);
-		//Left section (left of color grid)
-		D2GFX_DrawRectangle(pickerX, 190, 321, pickerY + pickerHeight, 0, BTFull);
-		//Right section (right of color grid)
-		D2GFX_DrawRectangle(481, 190, pickerX + pickerWidth, pickerY + pickerHeight, 0, BTFull);
-		//Bottom section (below color grid)
-		D2GFX_DrawRectangle(321, 360, 481, pickerY + pickerHeight, 0, BTFull);
-		
-		//Draw title on top of background
+		Boxhook::Draw(0, 0, Hook::GetScreenWidth(), Hook::GetScreenHeight(), 0xf, BTOneHalf);
+		//Draw the actual choose color box
+		Framehook::Draw(310, 180, 180, 220, 0xf, BTNormal);
+		//Draw title
 		Texthook::Draw(360, 186, false, 0, White, "Choose Color");
-		
-		//Draw color boxes in the clear area (321-481 x 190-360)
-		//These should be visible since the background doesn't cover this area
+
 		int col = 1, boxX1, boxX2, boxY1, boxY2;
 		int mX = (*p_D2CLIENT_MouseX);
 		int mY = (*p_D2CLIENT_MouseY);
@@ -158,9 +138,7 @@ void Colorhook::OnDraw() {
 			D2GFX_DrawRectangle(boxX1, boxY1, boxX2, boxY2, n, BTNormal);
 		}
 		//Draw the +ish symbol showing the currently hovered color
-		CHAR szLines[][2] = { 0,-2, 4,-4, 8,-2, 4,0, 8,2, 4,4, 0,2, -4,4, -8,2, -4,0, -8,-2, -4,-4, 0,-2 };
-		for (unsigned int x = 0; x < 12; x++)
-			D2GFX_DrawLine(457 + szLines[x][0], 380 + szLines[x][1], 457 + szLines[x + 1][0], 380 + szLines[x + 1][1], curColor, -1);
+		Crosshook::Draw(457, 380, curColor);
 		//Draw instructions
 		Texthook::Draw(320, 384, false, 0, White, "Left Click - Select");
 		Texthook::Draw(320, 368, false, 0, White, "Right Click - Close");
@@ -170,8 +148,6 @@ void Colorhook::OnDraw() {
 		D2WIN_DrawText(wText, GetX() + 13, GetY() + 10, InRange(*p_D2CLIENT_MouseX, *p_D2CLIENT_MouseY)?7:4, 0);
 		delete[] wText;
 		D2WIN_SetTextSize(size);
-		// Draw the colored X shape - this should be on top due to high z-order (10000)
-		// Draw it after text to ensure it's visible
 		Crosshook::Draw(GetX(), GetY() + 4, GetColor());
 	}
 	Unlock();

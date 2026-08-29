@@ -4,10 +4,22 @@
 
 namespace Drawing {
 	class Crosshook : public Hook {
+
 		private:
 			unsigned int color;//Color of the cross hook 0-255.
 
 		public:
+			static unsigned int* cross_type;
+
+			enum CrossTypes {
+					NormalCrossType = 0,
+					CrossTypeDiamond,
+					CrossTypeDot,
+					CrossTypeRectangle,
+					CrossTypeSmallX,
+					CrossTypeX,
+				};
+
 			//Crosshook Initaliztors, one for basic hooks and one for groups.
 			Crosshook(HookVisibility visiblity, unsigned int x, unsigned int y);
 			Crosshook(HookGroup* group, unsigned int x, unsigned int y);
@@ -26,6 +38,10 @@ namespace Drawing {
 			void OnDraw();
 
 			//Static Cross Draw. scale=1 is default size, scale=2 is 2x larger.
-			static bool Draw(unsigned int x, unsigned int y, unsigned int color, int scale = 1);
+			static bool DrawScaled(unsigned int x, unsigned int y, unsigned int color, int scale = 1);
+
+			//Static Cross Draw
+			static bool Draw(unsigned int x, unsigned int y, unsigned int color);
 	};
 };
+

@@ -8,7 +8,6 @@
 #define BH_VERSION VERSION
 #endif
 
-
 #define CODE_PAGE 1252 // windows-1252	ANSI Latin 1; Western European (Windows)
 
 enum TextColor {
@@ -1580,3 +1579,23 @@ enum D2_DrawMode {
 	DRAW_MODE_ALPHA_25_BRIGHT = 6,
 	DRAW_MODE_BRIGHT = 7
 };
+
+// Console colors - only Linux tested
+#define CONSOLE_RESET       "\x1b[0m"
+#define CONSOLE_PURPLE      "\x1b[38;2;224;0;255m"
+#define CONSOLE_DARK_GREEN  "\x1b[38;2;0;172;0m"
+#define CONSOLE_ORANGE      "\x1b[38;2;255;218;0m"
+#define CONSOLE_GOLD        "\x1b[38;2;235;228;162m"
+#define CONSOLE_TAN         "\x1b[38;2;239;234;169m"
+#define CONSOLE_GREEN       "\x1b[38;2;0;255;0m"
+#define CONSOLE_YELLOW      "\x1b[38;2;255;255;139m"
+#define CONSOLE_CORAL       "\x1b[38;2;242;179;178m"
+#define CONSOLE_SAGE        "\x1b[38;2;219;244;53m"
+#define CONSOLE_TEAL        "\x1b[38;2;109;199;196m"
+#define CONSOLE_LIGHT_GRAY  "\x1b[38;2;202;202;211m"
+#define CONSOLE_GRAY        "\x1b[38;2;145;145;145m"
+#define CONSOLE_BLUE        "\x1b[38;2;145;145;255m"
+#define CONSOLE_RED         "\x1b[38;2;255;112;112m"
+#define CONSOLE_WHITE       "\x1b[38;2;255;255;255m"
+#define CONSOLE_BLACK       "\x1b[38;2;25;25;25m"
+

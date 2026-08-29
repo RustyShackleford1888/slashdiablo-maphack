@@ -209,6 +209,7 @@ bool BH::Shutdown() {
 		for (int n = 0; n < (sizeof(patches) / sizeof(Patch*)); n++) {
 			delete patches[n];
 		}
+
 		delete config;
 		delete itemConfig;
 	}
