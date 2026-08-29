@@ -149,7 +149,7 @@ void UI::OnDraw() {
 		}
 		int yPos = GetMinimizedY() - (n * (TITLE_BAR_HEIGHT + 4));
 		int inPos = InPos((*p_D2CLIENT_MouseX), (*p_D2CLIENT_MouseY), GetMinimizedX(), yPos, xSize, TITLE_BAR_HEIGHT);
-		Framehook::Draw(GetMinimizedX(), yPos, xSize, TITLE_BAR_HEIGHT, 0, BTOneHalf);
+		Framehook::Draw(GetMinimizedX(), yPos, xSize, TITLE_BAR_HEIGHT, 0xf, BTOneHalf);
 		Texthook::Draw(GetMinimizedX() + 4, yPos + 3, false, 0, (inPos?Silver:White), GetName());
 	} else {
 		if (IsDragged()) {
