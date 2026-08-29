@@ -751,7 +751,7 @@ void Maphack::OnAutomapDraw() {
 								if ((GetTickCount() / 300) % 2 == 0) {
 									POINT p;
 									Drawing::Hook::ScreenToAutomap(&p, ix, iy);
-									Drawing::Crosshook::Draw(p.x, p.y, icolor, 2);
+									Drawing::Crosshook::DrawScaled(p.x, p.y, icolor, 2);
 								}
 							});
 						}
