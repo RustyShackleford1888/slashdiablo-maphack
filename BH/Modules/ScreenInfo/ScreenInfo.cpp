@@ -834,25 +834,27 @@ void ScreenInfo::OnGameExit() {
 	drops = regex_replace(drops, regex("\xFF" "c."), "");
 	drops = regex_replace(drops, regex("\n"), " ");
 
-	std::unique_lock lock(automapMutex);
+	{
+		std::unique_lock lock(automapMutex);
 
-	automap["GAMESTOLVL"] = szGamesToLevel;
-	automap["TIMETOLVL"] = szTimeToLevel;
-	automap["LASTXPGAINED"] = to_string(xpGained);
-	automap["LASTXPPERCENTGAINED"] = szLastXpGainPer;
-	automap["LASTXPPERSEC"] = szLastXpPerSec;
-	automap["LASTXPPERSECLONG"] = to_string(lastExpPerSecond);
-	automap["LASTGAMETIME"] = szLastGameTime;
-	automap["LASTGAMETIMESEC"] = to_string(lastGameLength);
-	automap["DROPS"] = regex_replace(drops, regex("\xFF" "c."), "");
+		automap["GAMESTOLVL"] = szGamesToLevel;
+		automap["TIMETOLVL"] = szTimeToLevel;
+		automap["LASTXPGAINED"] = to_string(xpGained);
+		automap["LASTXPPERCENTGAINED"] = szLastXpGainPer;
+		automap["LASTXPPERSEC"] = szLastXpPerSec;
+		automap["LASTXPPERSECLONG"] = to_string(lastExpPerSecond);
+		automap["LASTGAMETIME"] = szLastGameTime;
+		automap["LASTGAMETIMESEC"] = to_string(lastGameLength);
+		automap["DROPS"] = regex_replace(drops, regex("\xFF" "c."), "");
 
-	int idx = 0;
-	for (int i = 0; i < 8; i++) {
-		if (aPlayerCountAverage[i] > aPlayerCountAverage[idx]) {
-			idx = i;
+		int idx = 0;
+		for (int i = 0; i < 8; i++) {
+			if (aPlayerCountAverage[i] > aPlayerCountAverage[idx]) {
+				idx = i;
+			}
 		}
+		automap["AVGPLAYERCOUNT"] = to_string(idx + 1);
 	}
-	automap["AVGPLAYERCOUNT"] = to_string(idx + 1);
 
 	MephistoBlocked = false;
 	DiabloBlocked = false;
