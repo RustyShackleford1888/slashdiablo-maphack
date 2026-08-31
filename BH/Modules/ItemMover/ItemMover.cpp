@@ -11,9 +11,10 @@
 #include "../../TableReader.h"
 #include "../ScreenInfo/ScreenInfo.h"
 #include <set>
+#include <map>
 #include <vector>
+#include <string>
 #include <cstring>
-#include <algorithm>
 
 // This module was inspired by the RedVex plugin "Item Mover", written by kaiks.
 // Thanks to kaiks for sharing his code.
@@ -71,6 +72,8 @@ bool ItemMover::Init() {
 	if (!CubeItemIds) {
 		CubeItemIds = new int[CUBE_WIDTH * CUBE_HEIGHT];
 	}
+
+	FirstInit = true;
 
 	//PrintText(1, "Got positions: %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d",
 	//	INVENTORY_WIDTH,
@@ -279,6 +282,16 @@ void ItemMover::PutItemOnGround() {
 	BYTE PacketData[5] = {0x17,0,0,0,0};
 	*reinterpret_cast<int*>(PacketData + 1) = ActivePacket.itemId;
 	D2NET_SendPacket(5, 1, PacketData);
+}
+
+void ItemMover::StackCursorItemOnTarget(DWORD cursorItemId, DWORD targetItemId) {
+	if (cursorItemId == 0 || targetItemId == 0 || cursorItemId == targetItemId) {
+		return;
+	}
+	BYTE PacketData[9] = {0x21,0,0,0,0,0,0,0,0};
+	*reinterpret_cast<int*>(PacketData + 1) = cursorItemId;
+	*reinterpret_cast<int*>(PacketData + 5) = targetItemId;
+	D2NET_SendPacket(9, 1, PacketData);
 }
 
 void ItemMover::OnLeftClick(bool up, unsigned int x, unsigned int y, bool* block) {
@@ -835,100 +848,17 @@ void ItemMover::OnKey(bool up, BYTE key, LPARAM lParam, bool* block)  {
 				if (!cubeOpen && !stashOpen) {
 					PrintText(Red, "Auto Cube: Cube or Stash must be open");
 				} else if (stashOpen && !cubeOpen) {
-					// Stash mode - scan stash for input items and move them
+					// Stash mode - combine stacks in place, then cube essence recipes if enabled
 					isAutoCubing = true;
 					stashInteractionMode = true;
 					ResetStashInteractionState();
-					
-					// Find and save the stash object unit ID for later reopening
-					// Stash objects are type 267 (bank) or 580/581 (expansion stash)
-					if (unit->pAct && unit->pAct->pRoom1) {
-						DWORD playerX = unit->pPath->xPos;
-						DWORD playerY = unit->pPath->yPos;
-						for (Room1* room = unit->pAct->pRoom1; room; room = room->pRoomNext) {
-							for (UnitAny* obj = room->pUnitFirst; obj; obj = obj->pListNext) {
-								if (obj->dwType == UNIT_OBJECT && obj->pObjectPath) {
-									// Check if it's a stash object (267=bank, 580/581=expansion stash)
-									DWORD objClass = obj->dwTxtFileNo;
-									if (objClass == 267 || objClass == 580 || objClass == 581) {
-										DWORD dx = (obj->pObjectPath->dwPosX > playerX) ? 
-											obj->pObjectPath->dwPosX - playerX : playerX - obj->pObjectPath->dwPosX;
-										DWORD dy = (obj->pObjectPath->dwPosY > playerY) ? 
-											obj->pObjectPath->dwPosY - playerY : playerY - obj->pObjectPath->dwPosY;
-										if (dx <= 10 && dy <= 10) {
-											savedStashUnitId = obj->dwUnitId;
-											break;
-										}
-									}
-								}
-							}
-							if (savedStashUnitId != 0) break;
-						}
-					}
-					
-					ScanStashForInputItems(unit);
-					
-					if (allStashInputItems.empty()) {
-						// No stash items to move - skip stash mode, just open cube and run normal autocube
-						stashInteractionMode = false;
-						ResetStashInteractionState();
-						
-						// Find and open the cube automatically
-						DWORD cubeId = 0;
-						for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
-							if (pItem->pItemData->ItemLocation == STORAGE_INVENTORY) {
-								ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-								if (pItemText && pItemText->szCode) {
-									char* code = pItemText->szCode;
-									if (code[0] == 'b' && code[1] == 'o' && code[2] == 'x') {
-										cubeId = pItem->dwUnitId;
-										break;
-									}
-								}
-							}
-						}
-						
-						if (cubeId > 0) {
-							// Send use item packet (0x20) to open cube
-							BYTE PacketData[13] = { 0x20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-							*reinterpret_cast<int*>(PacketData + 1) = cubeId;
-							*reinterpret_cast<WORD*>(PacketData + 5) = (WORD)unit->pPath->xPos;
-							*reinterpret_cast<WORD*>(PacketData + 9) = (WORD)unit->pPath->yPos;
-							D2NET_SendPacket(13, 0, PacketData);
-							PrintText(White, "Auto Cube: No stash items needed, opening cube...");
-							
-							// Set up for normal cube mode once cube opens
-							// Need to wait for cube to open before processing
-							waitingForCubeToOpen = true;
-							currentRecipeIdx = 0;
-							currentRecipeIteration = 0;
-							lastAutoCubeTick = BHGetTickCount();
-							targetOutputCount = 0;
-							movedOutputCount = 0;
-							validRecipesScanned = false; // Will scan after cube opens
-						} else {
-							PrintText(Red, "Auto Cube: Horadric Cube not found");
-							isAutoCubing = false;
-						}
-					} else {
-						// Prepare first batch - copy all items to start (move logic will stop when full)
-						stashBatchStartIndex = 0;
-						stashItemsToMove.clear();
-						stashMoveIndex = 0;
-						for (size_t i = 0; i < allStashInputItems.size(); i++) {
-							stashItemsToMove.push_back(allStashInputItems[i]);
-						}
-						PrintText(White, "Auto Cube: Started (Stash Mode) - Found %d items", allStashInputItems.size());
-					}
+					lastAutoCubeTick = BHGetTickCount();
+					PrintText(White, "Auto Cube: Started (Stash Mode)");
 				} else {
 					// Normal cube mode (cube already open)
 					isAutoCubing = true;
 					stashInteractionMode = false;
-					currentRecipeIdx = 0;
-					currentRecipeIteration = 0;
 					lastAutoCubeTick = BHGetTickCount();
-					targetOutputCount = 0;
-					movedOutputCount = 0;
 					PrintText(White, "Auto Cube: Started");
 				}
 			}
@@ -1072,7 +1002,7 @@ void ItemMover::OnGamePacketRecv(BYTE* packet, bool* block) {
 					//PrintText(2, "Picked up item id %d", itemId);
 					if (ActivePacket.destination == STORAGE_NULL) {
 						PutItemOnGround();
-					} else {
+					} else if (!stackDropOnItem) {
 						PutItemInContainer();
 					}
 				}
@@ -1176,63 +1106,6 @@ int ItemMover::ClearCube(UnitAny* unit) {
 	return 0; // All items cleared
 }
 
-int ItemMover::ClearNonRecipeItemsFromCube(UnitAny* unit, const char* inputCode, const char* outputCode) {
-	if (!unit || !unit->pInventory || !inputCode || !outputCode) {
-		return 0;
-	}
-	
-	// Don't clear items if there's an item on the cursor - it might be one we're trying to place
-	UnitAny* cursorItem = D2CLIENT_GetCursorItem();
-	if (cursorItem != NULL) {
-		return 0; // Wait for cursor to clear first
-	}
-	
-	// Don't clear items if we're actively moving an item
-	Lock();
-	bool isMovingItem = (ActivePacket.startTicks > 0 && ActivePacket.itemId != 0);
-	Unlock();
-	if (isMovingItem) {
-		return 0; // Wait for movement to complete
-	}
-	
-	// Find first item in cube that doesn't match recipe codes
-	for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
-		if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-			ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-			if (pItemText && pItemText->szCode) {
-				char* itemCode = pItemText->szCode;
-				bool matchesRecipe = false;
-				
-				// Check if item matches input code
-				if (itemCode && strlen(inputCode) >= 3) {
-					if (itemCode[0] == inputCode[0] && itemCode[1] == inputCode[1] && itemCode[2] == inputCode[2]) {
-						matchesRecipe = true;
-					}
-				}
-				
-				// Check if item matches output code
-				if (!matchesRecipe && itemCode && strlen(outputCode) >= 3) {
-					if (itemCode[0] == outputCode[0] && itemCode[1] == outputCode[1] && itemCode[2] == outputCode[2]) {
-						matchesRecipe = true;
-					}
-				}
-				
-				// If item doesn't match recipe, move it to inventory
-				if (!matchesRecipe) {
-					if (MoveItemToInventory(unit, pItem)) {
-						return 1; // Item is being moved
-					} else {
-						// Can't move item (inventory full?), return error
-						return -1;
-					}
-				}
-			}
-		}
-	}
-	
-	return 0; // No non-recipe items found or all cleared
-}
-
 int ItemMover::CountItemsInCube(UnitAny* unit, const char* code) {
 	if (!unit || !unit->pInventory || !code) {
 		return 0;
@@ -1241,30 +1114,6 @@ int ItemMover::CountItemsInCube(UnitAny* unit, const char* code) {
 	int count = 0;
 	for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
 		if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-			ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-			if (pItemText && pItemText->szCode) {
-				char* itemCode = pItemText->szCode;
-				// Exact 3-character code match
-				if (itemCode && code && strlen(code) >= 3) {
-					if (itemCode[0] == code[0] && itemCode[1] == code[1] && itemCode[2] == code[2]) {
-						count++;
-					}
-				}
-			}
-		}
-	}
-	return count;
-}
-
-int ItemMover::CountItemsInInventoryAndCube(UnitAny* unit, const char* code) {
-	if (!unit || !unit->pInventory || !code) {
-		return 0;
-	}
-	
-	int count = 0;
-	for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
-		if (pItem->pItemData->ItemLocation == STORAGE_INVENTORY || 
-		    pItem->pItemData->ItemLocation == STORAGE_CUBE) {
 			ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
 			if (pItemText && pItemText->szCode) {
 				char* itemCode = pItemText->szCode;
@@ -1295,14 +1144,7 @@ bool ItemMover::FindAndMoveItemsToCube(UnitAny* unit, const char* code, int need
 	}
 	
 	int moved = 0;
-	// Check if this is a stat 508 limited recipe - only check stat 508 for INPUT items (codes starting with '@')
-	// Output items don't have stat 508, so we should never check it for them
-	bool isStat508Limited = false;
-	if (code && strlen(code) >= 1 && code[0] == '@') {
-		// This is an input code (starts with '@'), check if it's stat 508 limited
-		isStat508Limited = IsStat508LimitedRecipe(code);
-	}
-	
+
 	// First, build a list of matching items to move
 	std::vector<UnitAny*> itemsToMove;
 	for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
@@ -1310,44 +1152,15 @@ bool ItemMover::FindAndMoveItemsToCube(UnitAny* unit, const char* code, int need
 			ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
 			if (pItemText && pItemText->szCode) {
 				char* itemCode = pItemText->szCode;
-				bool matches = false;
-				
-				// Exact 3-character code match
 				if (itemCode && code && strlen(code) >= 3) {
 					if (itemCode[0] == code[0] && itemCode[1] == code[1] && itemCode[2] == code[2]) {
-						matches = true;
+						itemsToMove.push_back(pItem);
 					}
-				}
-				
-				if (matches) {
-					// For stat 508 limited INPUT items only, skip items with stat 508 = 100
-					// Output items don't have stat 508, so we never check it for them
-					if (isStat508Limited) {
-						int stat508 = GetItemStat508(pItem);
-						if (stat508 >= 100) {
-							// Skip this item - it has stat 508 = 100 and cannot be cubed
-							continue;
-						}
-					}
-					itemsToMove.push_back(pItem);
 				}
 			}
 		}
 	}
-	
-	// For stat 508 limited recipes, sort items by stat 508 (highest first) so we fill them up first
-	if (isStat508Limited && itemsToMove.size() > 1) {
-		std::sort(itemsToMove.begin(), itemsToMove.end(), [this](UnitAny* a, UnitAny* b) {
-			int stat508A = GetItemStat508(a);
-			int stat508B = GetItemStat508(b);
-			// Sort by stat 508 descending (highest first)
-			// If stat 508 is -1 (error), treat as 0
-			if (stat508A < 0) stat508A = 0;
-			if (stat508B < 0) stat508B = 0;
-			return stat508A > stat508B;
-		});
-	}
-	
+
 	// Limit to the number needed
 	if ((int)itemsToMove.size() > needed) {
 		itemsToMove.resize(needed);
@@ -1676,176 +1489,348 @@ bool ItemMover::IsAugrType(UnitAny* item) {
 	return false;
 }
 
-// Get stat 508 value from an item (returns -1 if not found or invalid)
-// Uses the same method as ItemDisplay does for %STAT-508% in config
-int ItemMover::GetItemStat508(UnitAny* item) {
-	if (!item || item->dwType != UNIT_ITEM) {
-		return -1;
-	}
-	
-	// Check if item is identified (stats might not be available if unidentified)
-	if (!(item->pItemData->dwFlags & ITEM_IDENTIFIED)) {
-		return -1;
-	}
-	
-	// Get stat 508 using D2COMMON_GetUnitStat (exactly as ItemDisplay.cpp does for %STAT-508%)
-	// ItemDisplay checks: if (stat <= (int)STAT_MAX) before calling GetUnitStat
-	// STAT_MAX is dynamically set from MPQ data, so 508 should be valid if it's in ItemStatCost.txt
-	if (508 > (int)STAT_MAX) {
-		return -1;
-	}
-	
-	DWORD statValue = D2COMMON_GetUnitStat(item, 508, 0);
-	
-	// Return the stat value (0 is a valid value, -1 indicates error)
-	return (int)statValue;
-}
+static const int AUTO_STACK_MAX = 500;
 
-// Get the recipes array (static function to access the recipes array)
-const CubeRecipe* ItemMover::GetRecipesArray() {
-	static const CubeRecipe recipes[] = {
-		{"@f4", "cf4", 10}, {"@f6", "cf6", 10}, {"@f2", "cf2", 10},
-		{"@f8", "cf8", 10}, {"@c7", "%c7", 10}, {"@c6", "%c6", 10},
-		{"@x2", "cx2", 10}, {"@x5", "cx5", 10}, {"@x6", "cx6", 10},
-		{"@c5", "%c5", 10}, {"@c4", "%c4", 10}, {"@x3", "cx3", 10},
-		{"@zd", "czd", 10}, {"@ze", "cze", 10}, {"@zf", "czf", 10},
-		{"@zg", "czg", 10}, {"@c3", "%c3", 10}, {"@c0", "%c0", 10},
-		{"@c1", "%c1", 10}, {"@c2", "%c2", 10}, {"@f9", "cx1", 10},
-		{"@f0", "cz0", 10}, {"@cd", "cd0", 10}, {"@f1", "cz1", 10},
-		{"@nv", "nvz", 10}
-	};
-	return recipes;
-}
-
-// Get the size of the recipes array
-int ItemMover::GetRecipesArraySize() {
-	// Calculate size using template trick to get array size
-	static const CubeRecipe recipes[] = {
-		{"@f4", "cf4", 10}, {"@f6", "cf6", 10}, {"@f2", "cf2", 10},
-		{"@f8", "cf8", 10}, {"@c7", "%c7", 10}, {"@c6", "%c6", 10},
-		{"@x2", "cx2", 10}, {"@x5", "cx5", 10}, {"@x6", "cx6", 10},
-		{"@c5", "%c5", 10}, {"@c4", "%c4", 10}, {"@x3", "cx3", 10},
-		{"@zd", "czd", 10}, {"@ze", "cze", 10}, {"@zf", "czf", 10},
-		{"@zg", "czg", 10}, {"@c3", "%c3", 10}, {"@c0", "%c0", 10},
-		{"@c1", "%c1", 10}, {"@c2", "%c2", 10}, {"@f9", "cx1", 10},
-		{"@f0", "cz0", 10}, {"@cd", "cd0", 10}, {"@f1", "cz1", 10},
-		{"@nv", "nvz", 10}
-	};
-	return sizeof(recipes) / sizeof(recipes[0]);
-}
-
-// Check if a recipe is stat 508 limited (automatically checks against recipes array)
-// This will automatically include any new recipes added to the recipes array
-bool ItemMover::IsStat508LimitedRecipe(const char* inputCode) {
-	if (!inputCode || strlen(inputCode) < 3) {
+bool ItemMover::IsKnownStackableCode(const char* code) {
+	if (!code || strlen(code) < 3) {
 		return false;
 	}
-	// Check if this input code matches any recipe in the recipes array
-	const CubeRecipe* recipes = GetRecipesArray();
-	int numRecipes = GetRecipesArraySize();
-	
-	for (int i = 0; i < numRecipes; i++) {
-		if (recipes[i].inputCode && strlen(recipes[i].inputCode) >= 3) {
-			// Compare the 3-character codes
-			if (inputCode[0] == recipes[i].inputCode[0] &&
-			    inputCode[1] == recipes[i].inputCode[1] &&
-			    inputCode[2] == recipes[i].inputCode[2]) {
-				return true;
-			}
+	static const char* stackableCodes[] = {
+		"cf4", "cf6", "cf2", "cf8", "%c7", "%c6",
+		"cx2", "cx5", "cx6", "%c5", "%c4", "cx3",
+		"czd", "cze", "czf", "czg", "%c3", "%c0",
+		"%c1", "%c2", "cx1", "cz0", "cd0", "cz1",
+		"nvz"
+	};
+	const int count = sizeof(stackableCodes) / sizeof(stackableCodes[0]);
+	for (int i = 0; i < count; i++) {
+		if (code[0] == stackableCodes[i][0] &&
+		    code[1] == stackableCodes[i][1] &&
+		    code[2] == stackableCodes[i][2]) {
+			return true;
 		}
 	}
 	return false;
 }
 
-// Get the input item from cube for a recipe
-UnitAny* ItemMover::GetInputItemFromCube(UnitAny* unit, const char* inputCode) {
-	if (!unit || !unit->pInventory || !inputCode) {
-		return NULL;
+int ItemMover::GetItemStackAmount(UnitAny* item) {
+	if (!item) {
+		return -1;
 	}
-	
-	for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
-		if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-			ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-			if (pItemText && pItemText->szCode) {
-				char* itemCode = pItemText->szCode;
-				if (itemCode && strlen(inputCode) >= 3) {
-					if (itemCode[0] == inputCode[0] && itemCode[1] == inputCode[1] && itemCode[2] == inputCode[2]) {
-						return pItem;
-					}
-				}
-			}
-		}
+
+	int qty = (int)D2COMMON_GetUnitStat(item, STAT_AMMOQUANTITY, 0);
+	if (qty > 0) {
+		return qty;
 	}
-	return NULL;
+
+	ItemText* txt = D2COMMON_GetItemText(item->dwTxtFileNo);
+	if (txt && txt->szCode && IsKnownStackableCode(txt->szCode)) {
+		return 1;
+	}
+	return -1;
 }
 
-// Get the minimum maxAllowed value from all input items in cube (for stat 508 limited recipes)
-// Returns the lowest remaining capacity (highest stat 508) to ensure we don't exceed any item's limit
-// If any item has stat 508 = 100, returns 0 (cannot cube with any outputs)
-int ItemMover::GetMinMaxAllowedFromCubeInputs(UnitAny* unit, const char* inputCode, int recipeMaxQuantity) {
-	if (!unit || !unit->pInventory || !inputCode) {
-		return recipeMaxQuantity;
+bool ItemMover::IsAutoStackableItem(UnitAny* item) {
+	if (!item || !item->pItemData) {
+		return false;
 	}
-	
-	int minMaxAllowed = recipeMaxQuantity;
-	
-	// Check all input items in cube and find the one with the lowest remaining capacity
+	BYTE loc = item->pItemData->ItemLocation;
+	if (loc != STORAGE_INVENTORY && loc != STORAGE_STASH && loc != STORAGE_CUBE) {
+		return false;
+	}
+	ItemText* txt = D2COMMON_GetItemText(item->dwTxtFileNo);
+	if (!txt || !txt->szCode) {
+		return false;
+	}
+	return IsKnownStackableCode(txt->szCode);
+}
+
+bool ItemMover::MoveItemOntoStack(UnitAny* source, UnitAny* target) {
+	if (!source || !target || !source->pObjectPath || !target->pObjectPath || !target->pItemData) {
+		return false;
+	}
+	if (!Init()) {
+		return false;
+	}
+
+	Lock();
+	if (ActivePacket.startTicks != 0) {
+		Unlock();
+		return false;
+	}
+	ActivePacket.itemId = source->dwUnitId;
+	ActivePacket.x = target->pObjectPath->dwPosX;
+	ActivePacket.y = target->pObjectPath->dwPosY;
+	ActivePacket.startTicks = BHGetTickCount();
+	ActivePacket.destination = target->pItemData->ItemLocation;
+	Unlock();
+
+	stackTargetItemId = target->dwUnitId;
+	stackDropOnItem = true;
+	PickUpItem();
+	return true;
+}
+
+bool ItemMover::ProcessAutoStackStep() {
+	UnitAny* unit = D2CLIENT_GetPlayerUnit();
+	if (!unit || !unit->pInventory) {
+		return false;
+	}
+
+	ULONGLONG currentTick = BHGetTickCount();
+
+	Lock();
+	bool busy = (ActivePacket.startTicks > 0);
+	ULONGLONG packetStart = ActivePacket.startTicks;
+	DWORD packetItemId = ActivePacket.itemId;
+	Unlock();
+
+	if (busy) {
+		UnitAny* cursorItem = D2CLIENT_GetCursorItem();
+		if (cursorItem != NULL && cursorItem->dwUnitId == packetItemId && stackDropOnItem) {
+			if ((currentTick - packetStart) < 50) {
+				return true;
+			}
+			DWORD targetId = stackTargetItemId;
+			stackDropOnItem = false;
+			StackCursorItemOnTarget(cursorItem->dwUnitId, targetId);
+			Lock();
+			ActivePacket.itemId = 0;
+			ActivePacket.x = 0;
+			ActivePacket.y = 0;
+			ActivePacket.startTicks = 0;
+			ActivePacket.destination = 0;
+			Unlock();
+			return true;
+		}
+		bool mergeSettled = (currentTick - packetStart) > 150;
+		if (mergeSettled && cursorItem == NULL) {
+			Lock();
+			ActivePacket.itemId = 0;
+			ActivePacket.x = 0;
+			ActivePacket.y = 0;
+			ActivePacket.startTicks = 0;
+			ActivePacket.destination = 0;
+			Unlock();
+			return true;
+		}
+		if ((currentTick - packetStart) > 3000) {
+			Lock();
+			ActivePacket.itemId = 0;
+			ActivePacket.x = 0;
+			ActivePacket.y = 0;
+			ActivePacket.startTicks = 0;
+			ActivePacket.destination = 0;
+			Unlock();
+		}
+		return true;
+	}
+
+	bool stashOpen = D2CLIENT_GetUIState(UI_STASH) != 0 || stashInteractionMode;
+	bool cubeOpen = D2CLIENT_GetUIState(UI_CUBE) != 0;
+
+	UnitAny* cursorItem = D2CLIENT_GetCursorItem();
+	if (cursorItem != NULL) {
+		if (!Init()) {
+			return true;
+		}
+
+		ItemText* cursorText = D2COMMON_GetItemText(cursorItem->dwTxtFileNo);
+		if (cursorText && cursorText->szCode && IsKnownStackableCode(cursorText->szCode)) {
+			UnitAny* dropTarget = NULL;
+			int dropTargetAmount = -1;
+			for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
+				if (pItem == cursorItem || !pItem->pObjectPath || !pItem->pItemData) {
+					continue;
+				}
+				int loc = pItem->pItemData->ItemLocation;
+				if (stashOpen) {
+					if (loc != STORAGE_STASH) {
+						continue;
+					}
+				} else if (loc != STORAGE_INVENTORY && loc != STORAGE_CUBE) {
+					continue;
+				}
+				ItemText* txt = D2COMMON_GetItemText(pItem->dwTxtFileNo);
+				if (!txt || !txt->szCode ||
+				    txt->szCode[0] != cursorText->szCode[0] ||
+				    txt->szCode[1] != cursorText->szCode[1] ||
+				    txt->szCode[2] != cursorText->szCode[2]) {
+					continue;
+				}
+				int amount = GetItemStackAmount(pItem);
+				if (amount < 1 || amount >= AUTO_STACK_MAX) {
+					continue;
+				}
+				if (amount > dropTargetAmount) {
+					dropTargetAmount = amount;
+					dropTarget = pItem;
+				}
+			}
+			if (dropTarget) {
+				stackDropOnItem = false;
+				StackCursorItemOnTarget(cursorItem->dwUnitId, dropTarget->dwUnitId);
+				return true;
+			}
+		}
+
+		int invUI = D2CLIENT_GetUIState(UI_INVENTORY);
+		int stashUI = D2CLIENT_GetUIState(UI_STASH);
+		if (!cursorText) {
+			return true;
+		}
+		BYTE xSize = cursorText->xSize;
+		BYTE ySize = cursorText->ySize;
+		LoadInventory(unit, STORAGE_INVENTORY, -1, -1, false, false, stashUI, invUI);
+		bool found = false;
+		if (stashOpen) {
+			found = FindDestination(STORAGE_STASH, cursorItem->dwUnitId, xSize, ySize);
+		}
+		if (!found) {
+			found = FindDestination(STORAGE_INVENTORY, cursorItem->dwUnitId, xSize, ySize);
+		}
+		if (found) {
+			PutItemInContainer();
+		}
+		return true;
+	}
+
+	struct StackRef {
+		UnitAny* item;
+		int amount;
+		int location;
+	};
+	std::map<std::string, std::vector<StackRef> > groups;
+	std::map<std::string, bool> codeHasStashStack;
+
 	for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
-		if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-			ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-			if (pItemText && pItemText->szCode) {
-				char* itemCode = pItemText->szCode;
-				if (itemCode && strlen(inputCode) >= 3) {
-					if (itemCode[0] == inputCode[0] && itemCode[1] == inputCode[1] && itemCode[2] == inputCode[2]) {
-						// This is an input item, check its stat 508
-						int stat508 = GetItemStat508(pItem);
-						if (stat508 >= 0) {
-							// If stat 508 is 100, cannot cube with any outputs
-							if (stat508 >= 100) {
-								return 0; // Cannot cube this item with any outputs
-							}
-							// Calculate max allowed for this item: can always go up to recipeMaxQuantity (10)
-							// unless adding that many would exceed stat 508 = 100
-							// So: maxAllowed = min(recipeMaxQuantity, 100 - stat508)
-							int itemMaxAllowed = 100 - stat508;
-							if (itemMaxAllowed < 1) {
-								itemMaxAllowed = 1; // At least 1
-							}
-							// Always try for recipeMaxQuantity (10), but cap at what won't exceed 100
-							if (itemMaxAllowed > recipeMaxQuantity) {
-								itemMaxAllowed = recipeMaxQuantity; // Can take full recipeMaxQuantity
-							}
-							// itemMaxAllowed is now min(recipeMaxQuantity, 100 - stat508)
-							// Use the minimum (most restrictive) value
-							if (itemMaxAllowed < minMaxAllowed) {
-								minMaxAllowed = itemMaxAllowed;
-							}
-						}
+		if (!IsAutoStackableItem(pItem) || !pItem->pObjectPath) {
+			continue;
+		}
+		int loc = pItem->pItemData->ItemLocation;
+		if (loc == STORAGE_STASH && !stashOpen) {
+			continue;
+		}
+		if (loc == STORAGE_CUBE && !cubeOpen) {
+			continue;
+		}
+		ItemText* txt = D2COMMON_GetItemText(pItem->dwTxtFileNo);
+		if (!txt || !txt->szCode) {
+			continue;
+		}
+		std::string code(txt->szCode, 3);
+		if (loc == STORAGE_STASH) {
+			codeHasStashStack[code] = true;
+		}
+		int amount = GetItemStackAmount(pItem);
+		if (amount < 1 || amount >= AUTO_STACK_MAX) {
+			continue;
+		}
+		StackRef ref;
+		ref.item = pItem;
+		ref.amount = amount;
+		ref.location = loc;
+		groups[code].push_back(ref);
+	}
+
+	UnitAny* source = NULL;
+	UnitAny* target = NULL;
+	int bestTargetAmount = -1;
+	int bestSourceAmount = AUTO_STACK_MAX + 1;
+
+	auto considerDirected = [&](const StackRef& src, const StackRef& tgt) {
+		if (src.item == tgt.item) {
+			return;
+		}
+		if (tgt.amount > bestTargetAmount ||
+		    (tgt.amount == bestTargetAmount && src.amount < bestSourceAmount)) {
+			bestTargetAmount = tgt.amount;
+			bestSourceAmount = src.amount;
+			source = src.item;
+			target = tgt.item;
+		}
+	};
+
+	auto considerPair = [&](const StackRef& a, const StackRef& b) {
+		if (a.amount <= b.amount) {
+			considerDirected(a, b);
+		} else {
+			considerDirected(b, a);
+		}
+	};
+
+	// Stash open: every inventory stack goes onto the matching stash stack.
+	if (stashOpen) {
+		for (std::map<std::string, std::vector<StackRef> >::iterator it = groups.begin(); it != groups.end(); ++it) {
+			const std::vector<StackRef>& items = it->second;
+			for (size_t i = 0; i < items.size(); i++) {
+				if (items[i].location != STORAGE_INVENTORY) {
+					continue;
+				}
+				for (size_t j = 0; j < items.size(); j++) {
+					if (items[j].location == STORAGE_STASH) {
+						considerDirected(items[i], items[j]);
 					}
 				}
 			}
 		}
 	}
-	
-	return minMaxAllowed;
+
+	if (!source) {
+		for (std::map<std::string, std::vector<StackRef> >::iterator it = groups.begin(); it != groups.end(); ++it) {
+			const std::vector<StackRef>& items = it->second;
+			if (items.size() < 2) {
+				continue;
+			}
+			bool hasStash = (codeHasStashStack.find(it->first) != codeHasStashStack.end());
+			for (size_t i = 0; i < items.size(); i++) {
+				for (size_t j = i + 1; j < items.size(); j++) {
+					if (items[i].location != items[j].location) {
+						continue;
+					}
+					// With stash open, do not combine inventory stacks of a type that already has a stash stack.
+					if (stashOpen && hasStash && items[i].location == STORAGE_INVENTORY) {
+						continue;
+					}
+					considerPair(items[i], items[j]);
+				}
+			}
+		}
+	}
+
+	if (!source) {
+		for (std::map<std::string, std::vector<StackRef> >::iterator it = groups.begin(); it != groups.end(); ++it) {
+			const std::vector<StackRef>& items = it->second;
+			if (items.size() < 2) {
+				continue;
+			}
+			for (size_t i = 0; i < items.size(); i++) {
+				for (size_t j = i + 1; j < items.size(); j++) {
+					if (items[i].location == items[j].location) {
+						continue;
+					}
+					// Never pull a stash stack back into inventory.
+					if ((items[i].location == STORAGE_STASH && items[j].location == STORAGE_INVENTORY) ||
+					    (items[j].location == STORAGE_STASH && items[i].location == STORAGE_INVENTORY)) {
+						continue;
+					}
+					considerPair(items[i], items[j]);
+				}
+			}
+		}
+	}
+
+	if (!source || !target) {
+		return false;
+	}
+
+	return MoveItemOntoStack(source, target);
 }
+
 
 // Reset all stash interaction state
 void ItemMover::ResetStashInteractionState() {
-	allStashInputItems.clear();
-	stashItemsToMove.clear();
-	stashBatchStartIndex = 0;
-	stashMoveIndex = 0;
-	waitingForStashToInvMove = false;
-	waitingForInvToStashMove = false;
 	waitingForCubeToOpen = false;
-	waitingForCubeToClose = false;
-	waitingForStashToReopen = false;
-	restoringItemsToStash = false;
-	stashRestoreIndex = 0;
-	savedStashUnitId = 0;
-	processingStashBatch = false;
-	stashMovedItemCodes.clear();
 }
 
 void ItemMover::StopAutoCubeFromUserClick() {
@@ -1854,222 +1839,11 @@ void ItemMover::StopAutoCubeFromUserClick() {
 	}
 	isAutoCubing = false;
 	stashInteractionMode = false;
+	stackDropOnItem = false;
 	ResetStashInteractionState();
 	PrintText(White, "Auto Cube: Stopped");
 }
 
-// Scan stash for recipe counterpart items:
-// - if inventory has OUTPUT, pull INPUT from stash
-// - if inventory has INPUT, pull OUTPUT from stash
-void ItemMover::ScanStashForInputItems(UnitAny* unit) {
-	if (!unit || !unit->pInventory) {
-		return;
-	}
-	
-	allStashInputItems.clear();
-	stashItemsToMove.clear();
-	stashBatchStartIndex = 0;
-	
-	// Get the recipes array
-	const CubeRecipe* recipes = GetRecipesArray();
-	int numRecipes = GetRecipesArraySize();
-
-	// Read stack amount from stat 508 only.
-	// Returns -1 when stat 508 is unavailable.
-	auto getStackAmount = [this](UnitAny* item) -> int {
-		if (!item) {
-			return -1;
-		}
-
-		int stat508 = GetItemStat508(item);
-
-		// Auto Cube stack logic uses ONLY stat 508.
-		return stat508;
-	};
-	
-	// Build sets of 3-char item codes present in inventory and stash.
-	// Keep stash code detection broad; stack-cap filtering is applied later per-item.
-	std::set<std::string> inventoryCodes;
-	std::set<std::string> stashCodes;
-	for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
-		if (pItem->pItemData->ItemLocation != STORAGE_INVENTORY &&
-		    pItem->pItemData->ItemLocation != STORAGE_STASH) {
-			continue;
-		}
-		ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-		if (!pItemText || !pItemText->szCode) {
-			continue;
-		}
-		std::string itemCodeStr(pItemText->szCode, 3);
-		if (pItem->pItemData->ItemLocation == STORAGE_INVENTORY) {
-			inventoryCodes.insert(itemCodeStr);
-		} else {
-			stashCodes.insert(itemCodeStr);
-		}
-	}
-
-	// Build the set of stash codes we need to pull for recipe processing
-	std::vector<std::string> neededStashCodes;
-	auto addNeededCode = [&neededStashCodes](const char* code) {
-		if (!code || strlen(code) < 3) {
-			return;
-		}
-		std::string codeStr(code);
-		for (size_t j = 0; j < neededStashCodes.size(); j++) {
-			if (neededStashCodes[j] == codeStr) {
-				return;
-			}
-		}
-		neededStashCodes.push_back(codeStr);
-	};
-	
-	// Determine which stash codes to pull based on recipe code presence:
-	// 1) inventory has OUTPUT and stash has INPUT -> pull INPUT
-	// 2) inventory has INPUT and stash has OUTPUT -> pull OUTPUT
-	// 3) stash has both INPUT and OUTPUT -> pull both (enables stash-only stack combining)
-	for (int i = 0; i < numRecipes; i++) {
-		if (!recipes[i].inputCode || strlen(recipes[i].inputCode) < 3 ||
-		    !recipes[i].outputCode || strlen(recipes[i].outputCode) < 3) {
-			continue;
-		}
-
-		std::string inputCode(recipes[i].inputCode, 3);
-		std::string outputCode(recipes[i].outputCode, 3);
-
-		bool inputInInventory = (inventoryCodes.find(inputCode) != inventoryCodes.end());
-		bool outputInInventory = (inventoryCodes.find(outputCode) != inventoryCodes.end());
-		bool inputInStash = (stashCodes.find(inputCode) != stashCodes.end());
-		bool outputInStash = (stashCodes.find(outputCode) != stashCodes.end());
-
-		// If both sides are in stash, pull both (stash-only pairing)
-		if (inputInStash && outputInStash) {
-			addNeededCode(recipes[i].inputCode);
-			addNeededCode(recipes[i].outputCode);
-			continue;
-		}
-
-		// If inventory has either side and stash has either side, pull whichever side exists in stash.
-		// This handles all inv+stash pairing combinations without assuming which code is input/output.
-		bool anyInInventory = (inputInInventory || outputInInventory);
-		bool anyInStash = (inputInStash || outputInStash);
-		if (anyInInventory && anyInStash) {
-			if (inputInStash) {
-				addNeededCode(recipes[i].inputCode);
-			}
-			if (outputInStash) {
-				addNeededCode(recipes[i].outputCode);
-			}
-		}
-
-		// Stash-only fallback: allow output-only stack processing to bootstrap from stash.
-		// This handles cases like stash stacks 6,100,94,56,100 with nothing in inventory.
-		if (!anyInInventory && outputInStash) {
-			addNeededCode(recipes[i].outputCode);
-		}
-	}
-	
-	// Fallback for stash-only stack combining:
-	// If normal pairing found nothing, directly pull stash output stacks (<100)
-	// so output-only recipes can bootstrap without any inventory seed item.
-	if (neededStashCodes.empty()) {
-		for (int i = 0; i < numRecipes; i++) {
-			if (!recipes[i].outputCode || strlen(recipes[i].outputCode) < 3) {
-				continue;
-			}
-			std::string outputCode(recipes[i].outputCode, 3);
-			if (stashCodes.find(outputCode) != stashCodes.end()) {
-				addNeededCode(recipes[i].outputCode);
-			}
-		}
-	}
-
-	// If still empty, nothing to do
-	if (neededStashCodes.empty()) {
-		return;
-	}
-	
-	// Now scan stash for items matching the needed counterpart codes
-	for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
-		if (pItem->pItemData->ItemLocation == STORAGE_STASH) {
-			ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-			if (pItemText && pItemText->szCode) {
-				char* itemCode = pItemText->szCode;
-				
-					// Check if this item matches any needed counterpart code
-				for (size_t i = 0; i < neededStashCodes.size(); i++) {
-					if (neededStashCodes[i].length() >= 3 &&
-					    itemCode[0] == neededStashCodes[i][0] &&
-					    itemCode[1] == neededStashCodes[i][1] &&
-					    itemCode[2] == neededStashCodes[i][2]) {
-						// Only pull stacks with a valid stat 508 that are not full.
-						int stackAmount = getStackAmount(pItem);
-						if (stackAmount < 0 || stackAmount >= 100) {
-							break;
-						}
-						// Record this item in the master list
-						StashItemRecord record;
-						record.itemId = pItem->dwUnitId;
-						strncpy_s(record.itemCode, itemCode, 3);
-						record.itemCode[3] = '\0';
-						record.x = pItem->pObjectPath->dwPosX;
-						record.y = pItem->pObjectPath->dwPosY;
-						allStashInputItems.push_back(record);
-						break;
-					}
-				}
-			}
-		}
-	}
-
-	// Final fallback: if nothing matched, bootstrap stash-only stack combining by code.
-	// Queue stash stacks with stat508 < 100 when there is another same-code stack in stash.
-	// This intentionally avoids recipe-table dependencies when stash-only pairing is detected.
-	if (allStashInputItems.empty()) {
-		std::map<std::string, int> stashCodeCounts;
-
-		for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
-			if (pItem->pItemData->ItemLocation != STORAGE_STASH) {
-				continue;
-			}
-			ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-			if (!pItemText || !pItemText->szCode) {
-				continue;
-			}
-			std::string code(pItemText->szCode, 3);
-			stashCodeCounts[code]++;
-		}
-
-		for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
-			if (pItem->pItemData->ItemLocation != STORAGE_STASH) {
-				continue;
-			}
-			ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-			if (!pItemText || !pItemText->szCode) {
-				continue;
-			}
-
-			std::string code(pItemText->szCode, 3);
-			if (stashCodeCounts[code] < 2) {
-				continue;  // Not combinable (only one stash stack for this code)
-			}
-
-			int stackAmount = getStackAmount(pItem);
-			if (stackAmount < 0 || stackAmount >= 100) {
-				continue;  // Only move non-full stacks with valid stat508
-			}
-
-			StashItemRecord record;
-			record.itemId = pItem->dwUnitId;
-			strncpy_s(record.itemCode, pItemText->szCode, 3);
-			record.itemCode[3] = '\0';
-			record.x = pItem->pObjectPath->dwPosX;
-			record.y = pItem->pObjectPath->dwPosY;
-			allStashInputItems.push_back(record);
-		}
-	}
-}
-
-// Process stash interaction state machine
 void ItemMover::ProcessStashInteraction() {
 	UnitAny* unit = D2CLIENT_GetPlayerUnit();
 	if (!unit || !unit->pInventory) {
@@ -2077,194 +1851,23 @@ void ItemMover::ProcessStashInteraction() {
 		stashInteractionMode = false;
 		return;
 	}
-	
+
 	ULONGLONG currentTick = BHGetTickCount();
-	
-	// Check if cursor has an item (wait for it to clear)
-	if (D2CLIENT_GetCursorItem() != NULL) {
-		return;
-	}
-	
-	// Check if we're waiting for a move to complete
-	if (waitingForStashToInvMove) {
-		Lock();
-		bool moveComplete = (ActivePacket.startTicks == 0);
-		Unlock();
-		
-		if (moveComplete) {
-			waitingForStashToInvMove = false;
-			// Record the item code that was moved (before incrementing index)
-			if (stashMoveIndex < (int)stashItemsToMove.size()) {
-				std::string movedCode(stashItemsToMove[stashMoveIndex].itemCode, 3);
-				stashMovedItemCodes.insert(movedCode);
-			}
-			stashMoveIndex++;
-			lastAutoCubeTick = currentTick;
-		}
-		return;
-	}
-	
-	// Check if we're waiting for a restore move to complete
-	if (waitingForInvToStashMove) {
-		Lock();
-		bool moveComplete = (ActivePacket.startTicks == 0);
-		Unlock();
-		
-		if (moveComplete) {
-			waitingForInvToStashMove = false;
-			stashRestoreIndex++;
-			lastAutoCubeTick = currentTick;
-		}
-		return;
-	}
-	
-	// Phase 1: Move items from stash to inventory
-	if (!waitingForCubeToOpen && !waitingForCubeToClose && !waitingForStashToReopen && !restoringItemsToStash) {
-		// Check if stash is still open
-		if (!D2CLIENT_GetUIState(UI_STASH)) {
-			isAutoCubing = false;
-			stashInteractionMode = false;
-			PrintText(Red, "Auto Cube: Stash closed unexpectedly");
-			return;
-		}
-		
-		// Move items one by one
-		while (stashMoveIndex < (int)stashItemsToMove.size()) {
-			StashItemRecord& record = stashItemsToMove[stashMoveIndex];
-			
-			// Check if item is already in inventory
-			bool alreadyMoved = false;
-			for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
-				if (pItem->pItemData->ItemLocation == STORAGE_INVENTORY && pItem->dwUnitId == record.itemId) {
-					alreadyMoved = true;
-					break;
-				}
-			}
-			
-			if (alreadyMoved) {
-				stashMoveIndex++;
-				continue;
-			}
-			
-			// Find item in stash
-			UnitAny* item = NULL;
-			for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
-				if (pItem->pItemData->ItemLocation == STORAGE_STASH && pItem->dwUnitId == record.itemId) {
-					item = pItem;
-					break;
-				}
-			}
-			
-			if (!item) {
-				// Item not found, skip
-				stashMoveIndex++;
-				continue;
-			}
-			
-			// Move item from stash to inventory
-			if (!Init()) {
-				isAutoCubing = false;
-				stashInteractionMode = false;
-				return;
-			}
-			
-			int invUI = D2CLIENT_GetUIState(UI_INVENTORY);
-			int stashUI = D2CLIENT_GetUIState(UI_STASH);
-			bool moveItem = LoadInventory(unit, STORAGE_STASH, record.x, record.y, false, false, stashUI, invUI);
-			
-			if (moveItem) {
-				PickUpItem();
-				waitingForStashToInvMove = true;
-				lastAutoCubeTick = currentTick;
-				return;
-			} else {
-				// Can't move this item - inventory full or no valid spot
-				// Check if we've moved ANY items in this batch
-				if (stashMoveIndex > 0) {
-					// We've moved some items, proceed to cube with what we have
-					PrintText(Yellow, "Auto Cube: Moved %d items (inventory full for more)", stashMoveIndex);
-					// Truncate the batch to what we actually moved
-					stashItemsToMove.resize(stashMoveIndex);
-					break;  // Exit the while loop and proceed to open cube
-				} else {
-					// Couldn't move even one item
-					PrintText(Red, "Auto Cube: Inventory full - cannot move any items");
-					isAutoCubing = false;
-					stashInteractionMode = false;
-					return;
-				}
-			}
-		}
-		
-		// Items moved (all or partial batch), try to open cube automatically
-		// Find the Horadric Cube in inventory and use it
-		DWORD cubeId = 0;
-		for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
-			if (pItem->pItemData->ItemLocation == STORAGE_INVENTORY) {
-				ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-				if (pItemText && pItemText->szCode) {
-					char* code = pItemText->szCode;
-					if (code[0] == 'b' && code[1] == 'o' && code[2] == 'x') {
-						cubeId = pItem->dwUnitId;
-						break;
-					}
-				}
-			}
-		}
-		
-		if (cubeId > 0) {
-			// Send use item packet (0x20) to open cube
-			BYTE PacketData[13] = { 0x20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-			*reinterpret_cast<int*>(PacketData + 1) = cubeId;
-			*reinterpret_cast<WORD*>(PacketData + 5) = (WORD)unit->pPath->xPos;
-			*reinterpret_cast<WORD*>(PacketData + 9) = (WORD)unit->pPath->yPos;
-			D2NET_SendPacket(13, 0, PacketData);
-			PrintText(White, "Auto Cube: Opening cube...");
-		} else {
-			PrintText(Red, "Auto Cube: Horadric Cube not found in inventory");
-			isAutoCubing = false;
-			stashInteractionMode = false;
-			return;
-		}
-		
-		waitingForCubeToOpen = true;
-		lastAutoCubeTick = currentTick;
-		return;
-	}
-	
-	// Phase 2: Wait for cube to open
+
 	if (waitingForCubeToOpen) {
 		if (D2CLIENT_GetUIState(UI_CUBE)) {
-			// Cube is now open, switch to normal AutoCube mode
 			waitingForCubeToOpen = false;
-			stashInteractionMode = false;  // Let ProcessAutoCubeStep take over
-			processingStashBatch = true;   // Limit recipes to only those using moved stash items
-			
-			// Initialize normal AutoCube state
-			currentRecipeIdx = 0;
-			currentRecipeIteration = 0;
+			stashInteractionMode = false;
 			lastAutoCubeTick = currentTick;
-			targetOutputCount = 0;
-			movedOutputCount = 0;
-			clearingNonRecipeItems = false;
-			progressMadeThisCycle = false;
-			failedOutputOnlyCount = 0;
-			validRecipeIndices.clear();
-			validRecipesScanned = false;
-			processingLowerStatItem = false;
-			waitingForLowerStatTransmute = false;
-			waitingForLowerStatOutputMove = false;
 			processingEssenceGems = false;
 			processingEssenceRunes = false;
 			processingEssenceUniques = false;
-			
-			PrintText(White, "Auto Cube: Processing stash items...");
+			processingEssenceHccMisc = false;
+			PrintText(White, "Auto Cube: Processing...");
 			return;
 		}
-		
-		// Retry opening cube or prompt if it doesn't work
+
 		if (currentTick - lastAutoCubeTick > 500) {
-			// Try to open cube again
 			DWORD cubeId = 0;
 			for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
 				if (pItem->pItemData->ItemLocation == STORAGE_INVENTORY) {
@@ -2278,7 +1881,6 @@ void ItemMover::ProcessStashInteraction() {
 					}
 				}
 			}
-			
 			if (cubeId > 0) {
 				BYTE PacketData[13] = { 0x20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 				*reinterpret_cast<int*>(PacketData + 1) = cubeId;
@@ -2290,196 +1892,66 @@ void ItemMover::ProcessStashInteraction() {
 		}
 		return;
 	}
-	
-	// Phase 3: Wait for cube to close (after AutoCube finishes)
-	if (waitingForCubeToClose) {
-		if (!D2CLIENT_GetUIState(UI_CUBE)) {
-			// Cube closed, now reopen stash
-			waitingForCubeToClose = false;
-			waitingForStashToReopen = true;
-			lastAutoCubeTick = currentTick;
-			PrintText(Yellow, "Auto Cube: Open stash to restore items");
-			return;
-		}
-		
-		// Send ESC to close cube
-		if (currentTick - lastAutoCubeTick > 300) {
-			keybd_event(VK_ESCAPE, 0, 0, 0);
-			keybd_event(VK_ESCAPE, 0, KEYEVENTF_KEYUP, 0);
-			lastAutoCubeTick = currentTick;
-		}
+
+	if (currentTick - lastAutoCubeTick < 100) {
 		return;
 	}
-	
-	// Phase 4: Wait for stash to reopen
-	if (waitingForStashToReopen) {
-		if (D2CLIENT_GetUIState(UI_STASH)) {
-			// Stash reopened, start restoring items
-			waitingForStashToReopen = false;
-			restoringItemsToStash = true;
-			stashRestoreIndex = 0;
+
+	if (autoStackItems.state) {
+		if (ProcessAutoStackStep()) {
 			lastAutoCubeTick = currentTick;
-			PrintText(White, "Auto Cube: Restoring items to stash...");
 			return;
 		}
-		
-		// Try to reopen stash automatically using saved unit ID
-		if (currentTick - lastAutoCubeTick > 500) {
-			if (savedStashUnitId != 0) {
-				// Send interact packet (0x13) to open stash
-				BYTE PacketData[9] = {0x13, 0, 0, 0, 0, 0, 0, 0, 0};
-				*(DWORD*)&PacketData[1] = UNIT_OBJECT;
-				*(DWORD*)&PacketData[5] = savedStashUnitId;
-				D2NET_SendPacket(9, 1, PacketData);
-			} else {
-				PrintText(Yellow, "Auto Cube: Open stash to restore items");
-			}
-			lastAutoCubeTick = currentTick;
-		}
-		return;
 	}
-	
-	// Phase 5: Restore items to stash
-	if (restoringItemsToStash) {
-		// Check if stash is still open
-		if (!D2CLIENT_GetUIState(UI_STASH)) {
-			PrintText(Red, "Auto Cube: Stash closed during restore");
-			isAutoCubing = false;
-			stashInteractionMode = false;
-			ResetStashInteractionState();
-			return;
-		}
-		
-		// Process one item at a time
-		while (stashRestoreIndex < (int)stashItemsToMove.size()) {
-			StashItemRecord& record = stashItemsToMove[stashRestoreIndex];
-			
-			// Find item in inventory by matching item code
-			UnitAny* item = NULL;
-			for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
-				if (pItem->pItemData->ItemLocation == STORAGE_INVENTORY) {
-					ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-					if (pItemText && pItemText->szCode) {
-						char* itemCode = pItemText->szCode;
-						if (itemCode[0] == record.itemCode[0] &&
-						    itemCode[1] == record.itemCode[1] &&
-						    itemCode[2] == record.itemCode[2]) {
-							item = pItem;
-							break;
-						}
-					}
-				}
-			}
-			
-			if (!item) {
-				// Item not found (was cubed), skip
-				stashRestoreIndex++;
-				continue;
-			}
-			
-			// Check if original position is free
-			if (!Init()) {
-				isAutoCubing = false;
-				stashInteractionMode = false;
-				return;
-			}
-			
-			// Build stash grid
-			memset(StashItemIds, 0, STASH_WIDTH * STASH_HEIGHT * sizeof(int));
-			for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
-				if (pItem->pItemData->ItemLocation == STORAGE_STASH) {
-					int xStart = pItem->pObjectPath->dwPosX;
-					int yStart = pItem->pObjectPath->dwPosY;
-					BYTE xSize = D2COMMON_GetItemText(pItem->dwTxtFileNo)->xSize;
-					BYTE ySize = D2COMMON_GetItemText(pItem->dwTxtFileNo)->ySize;
-					for (int x = xStart; x < xStart + xSize && x < STASH_WIDTH; x++) {
-						for (int y = yStart; y < yStart + ySize && y < STASH_HEIGHT; y++) {
-							StashItemIds[y * STASH_WIDTH + x] = pItem->dwUnitId;
-						}
-					}
-				}
-			}
-			
-			// Check if original position is free
-			ItemText* pItemText = D2COMMON_GetItemText(item->dwTxtFileNo);
-			if (!pItemText) {
-				stashRestoreIndex++;
-				continue;
-			}
-			
-			BYTE xSize = pItemText->xSize;
-			BYTE ySize = pItemText->ySize;
-			bool positionFree = true;
-			for (unsigned int x = record.x; x < record.x + xSize && x < (unsigned int)STASH_WIDTH; x++) {
-				for (unsigned int y = record.y; y < record.y + ySize && y < (unsigned int)STASH_HEIGHT; y++) {
-					if (StashItemIds[y * STASH_WIDTH + x] != 0) {
-						positionFree = false;
-						break;
-					}
-				}
-				if (!positionFree) break;
-			}
-			
-			if (!positionFree) {
-				PrintText(Orange, "Auto Cube: Original position blocked, skipping item");
-				stashRestoreIndex++;
-				continue;
-			}
-			
-			// Manually set up ActivePacket with original stash position
-			Lock();
-			if (ActivePacket.startTicks == 0) {
-				ActivePacket.itemId = item->dwUnitId;
-				ActivePacket.x = record.x;  // Original X position
-				ActivePacket.y = record.y;  // Original Y position
-				ActivePacket.startTicks = BHGetTickCount();
-				ActivePacket.destination = STORAGE_STASH;
-				Unlock();
-				
-				// Pick up item - packet handler will place it at ActivePacket coordinates
-				PickUpItem();
-				waitingForInvToStashMove = true;
-				lastAutoCubeTick = currentTick;
-				return;
-			} else {
-				Unlock();
-				// Another move in progress, wait
-				return;
-			}
-		}
-		
-		// All items in current batch restored - update batch index
-		stashBatchStartIndex += (int)stashItemsToMove.size();
-		
-		// Check if there are more items to process
-		if (stashBatchStartIndex < (int)allStashInputItems.size()) {
-			// Prepare next batch - copy remaining items
-			stashItemsToMove.clear();
-			stashMoveIndex = 0;
-			stashRestoreIndex = 0;
-			stashMovedItemCodes.clear();  // Clear for next batch
-			
-			int remainingItems = (int)allStashInputItems.size() - stashBatchStartIndex;
-			for (int i = 0; i < remainingItems; i++) {
-				stashItemsToMove.push_back(allStashInputItems[stashBatchStartIndex + i]);
-			}
-			
-			// Reset state to go back to Phase 1 (moving stash items to inventory)
-			restoringItemsToStash = false;
-			waitingForCubeToClose = false;
-			waitingForStashToReopen = false;
-			lastAutoCubeTick = currentTick;
-			
-			PrintText(White, "Auto Cube: Starting next batch (%d items remaining)...", remainingItems);
-			return;
-		}
-		
-		// All batches complete
-		PrintText(Green, "Auto Cube: Complete! All %d items processed", allStashInputItems.size());
+
+	bool essenceEnabled = autoEssenceGems.state || autoEssenceRunes.state ||
+	                      autoEssenceUniques.state || autoEssenceHccMisc.state;
+	if (!essenceEnabled) {
+		PrintText(White, autoStackItems.state ? "Auto Cube: Finished stacking" : "Auto Cube: Finished");
 		isAutoCubing = false;
 		stashInteractionMode = false;
 		ResetStashInteractionState();
 		return;
+	}
+
+	if (D2CLIENT_GetCursorItem() != NULL) {
+		return;
+	}
+
+	if (!D2CLIENT_GetUIState(UI_STASH)) {
+		isAutoCubing = false;
+		stashInteractionMode = false;
+		PrintText(Red, "Auto Cube: Stash closed unexpectedly");
+		return;
+	}
+
+	DWORD cubeId = 0;
+	for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
+		if (pItem->pItemData->ItemLocation == STORAGE_INVENTORY) {
+			ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
+			if (pItemText && pItemText->szCode) {
+				char* code = pItemText->szCode;
+				if (code[0] == 'b' && code[1] == 'o' && code[2] == 'x') {
+					cubeId = pItem->dwUnitId;
+					break;
+				}
+			}
+		}
+	}
+
+	if (cubeId > 0) {
+		BYTE PacketData[13] = { 0x20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+		*reinterpret_cast<int*>(PacketData + 1) = cubeId;
+		*reinterpret_cast<WORD*>(PacketData + 5) = (WORD)unit->pPath->xPos;
+		*reinterpret_cast<WORD*>(PacketData + 9) = (WORD)unit->pPath->yPos;
+		D2NET_SendPacket(13, 0, PacketData);
+		PrintText(White, "Auto Cube: Opening cube...");
+		waitingForCubeToOpen = true;
+		lastAutoCubeTick = currentTick;
+	} else {
+		PrintText(Red, "Auto Cube: Horadric Cube not found in inventory");
+		isAutoCubing = false;
+		stashInteractionMode = false;
 	}
 }
 
@@ -2511,18 +1983,7 @@ bool ItemMover::PerformAutoCube() {
 	
 	// Start the auto-cube process (non-blocking)
 	isAutoCubing = true;
-	currentRecipeIdx = 0;
-	currentRecipeIteration = 0;
 	lastAutoCubeTick = BHGetTickCount();
-	waitingForOutputTransmute = false; // Reset flag
-	waitingForNormalTransmute = false; // Reset flag
-	targetOutputCount = 0;
-	movedOutputCount = 0;
-	clearingNonRecipeItems = false;
-	progressMadeThisCycle = false; // Reset progress tracking
-	failedOutputOnlyCount = 0; // Reset failure count
-	validRecipeIndices.clear(); // Clear valid recipe list
-	validRecipesScanned = false; // Mark that we need to scan
 	processingEssenceGems = false; // Reset essence gem processing
 	essenceGemsMoved = 0; // Reset essence gem count
 	essenceCubeInCube = false; // Reset cube in cube flag
@@ -2562,6 +2023,17 @@ void ItemMover::ProcessAutoCubeStep() {
 	}
 	
 	ULONGLONG currentTick = BHGetTickCount();
+
+	// Place leftover stack remainder immediately instead of waiting on the generic cursor timeout
+	if (autoStackItems.state &&
+	    !processingEssenceGems && !processingEssenceRunes &&
+	    !processingEssenceUniques && !processingEssenceHccMisc &&
+	    D2CLIENT_GetCursorItem() != NULL) {
+		if (ProcessAutoStackStep()) {
+			lastAutoCubeTick = currentTick;
+			return;
+		}
+	}
 	
 	// Check if cursor has an item (wait for it to clear, but with timeout)
 	UnitAny* cursorItem = D2CLIENT_GetCursorItem();
@@ -2694,8 +2166,19 @@ void ItemMover::ProcessAutoCubeStep() {
 		isAutoCubing = false;
 		return;
 	}
+
+	// Combine stackable items by dropping one stack onto another (same item code).
+	// Skip while an essence recipe is using the cube.
+	if (autoStackItems.state &&
+	    !processingEssenceGems && !processingEssenceRunes &&
+	    !processingEssenceUniques && !processingEssenceHccMisc) {
+		if (ProcessAutoStackStep()) {
+			lastAutoCubeTick = currentTick;
+			return;
+		}
+	}
 	
-	// Process Auto Essence Gems recipe if enabled (process before regular recipes)
+	// Process Auto Essence Gems if enabled
 	// Only process essence gems if the checkbox is enabled
 	if (autoEssenceGems.state) {
 		// Convert dropdown index to gem level (0=Chipped=1, 1=Flawed=2, 2=Normal=3, 3=Flawless=4, 4=Perfect=5)
@@ -2767,7 +2250,7 @@ void ItemMover::ProcessAutoCubeStep() {
 					lastAutoCubeTick = currentTick;
 					return; // Wait for catalyst to be moved
 				} else {
-					// Can't find catalyst, skip essence gems and continue to regular recipes
+					// Can't find catalyst, skip essence gems
 					processingEssenceGems = false;
 					essenceCubeInCube = false;
 				}
@@ -2776,7 +2259,7 @@ void ItemMover::ProcessAutoCubeStep() {
 				processingEssenceGems = true;
 			}
 		} else {
-			// No matching gems available, skip essence gems and continue to regular recipes
+			// No matching gems available, skip essence gems
 			processingEssenceGems = false;
 			essenceCubeInCube = false;
 		}
@@ -2848,12 +2331,12 @@ void ItemMover::ProcessAutoCubeStep() {
 						lastAutoCubeTick = currentTick;
 						return; // Wait for transmute
 					} else {
-						// No gems at all, done with essence gems - clear cube and reset state for regular recipes
+						// No gems at all, done with essence gems - clear cube and reset state
 						processingEssenceGems = false;
 						essenceCubeInCube = false;
 						essenceGemsMoved = 0;
 						
-						// Clear the cube completely before starting regular recipes
+						// Clear the cube completely
 						int clearResult = ClearCube(unit);
 						if (clearResult == -1) {
 							// Inventory full, stop auto-cubing
@@ -2865,15 +2348,6 @@ void ItemMover::ProcessAutoCubeStep() {
 							lastAutoCubeTick = currentTick;
 							return;
 						}
-						
-						// Reset recipe state when switching from essence gems to regular recipes
-						currentRecipeIdx = 0;
-						targetOutputCount = 0;
-						movedOutputCount = 0;
-						clearingNonRecipeItems = false;
-						clearingItemId = 0;
-						waitingForOutputTransmute = false;
-						validRecipesScanned = false; // Force rescan
 					}
 				}
 			} else {
@@ -2894,7 +2368,7 @@ void ItemMover::ProcessAutoCubeStep() {
 		}
 	}
 	
-	// If we're still processing essence gems, don't process regular recipes yet
+	// If we're still processing essence gems, don't continue yet
 	if (processingEssenceGems) {
 		return;
 	}
@@ -2971,7 +2445,7 @@ void ItemMover::ProcessAutoCubeStep() {
 				processingEssenceRunes = true;
 			}
 		} else {
-			// No matching runes available, skip essence runes and continue to regular recipes
+			// No matching runes available, skip essence runes
 			processingEssenceRunes = false;
 			essenceRunesCubeInCube = false;
 		}
@@ -3125,12 +2599,12 @@ void ItemMover::ProcessAutoCubeStep() {
 						lastAutoCubeTick = currentTick;
 						return; // Wait for transmute
 					} else {
-						// No runes at all, done with essence runes - clear cube and reset state for regular recipes
+						// No runes at all, done with essence runes - clear cube and reset state
 						processingEssenceRunes = false;
 						essenceRunesCubeInCube = false;
 						essenceRunesMoved = 0;
 						
-						// Clear the cube completely before starting regular recipes
+						// Clear the cube completely
 						int clearResult = ClearCube(unit);
 						if (clearResult == -1) {
 							// Inventory full, stop auto-cubing
@@ -3142,15 +2616,6 @@ void ItemMover::ProcessAutoCubeStep() {
 							lastAutoCubeTick = currentTick;
 							return;
 						}
-						
-						// Reset recipe state when switching from essence runes to regular recipes
-						currentRecipeIdx = 0;
-						targetOutputCount = 0;
-						movedOutputCount = 0;
-						clearingNonRecipeItems = false;
-						clearingItemId = 0;
-						waitingForOutputTransmute = false;
-						validRecipesScanned = false; // Force rescan
 					}
 				}
 			} else if (!hasHighRune && runesInCube >= 3) {
@@ -3171,7 +2636,7 @@ void ItemMover::ProcessAutoCubeStep() {
 		}
 	}
 	
-	// If we're still processing essence runes, don't process regular recipes yet
+	// If we're still processing essence runes, don't continue yet
 	if (processingEssenceRunes) {
 		return;
 	}
@@ -3235,7 +2700,7 @@ void ItemMover::ProcessAutoCubeStep() {
 				processingEssenceHccMisc = true;
 			}
 		} else {
-			// No matching items available, skip essence HCC misc and continue to regular recipes
+			// No matching items available, skip essence HCC misc
 			processingEssenceHccMisc = false;
 			essenceHccMiscCubeInCube = false;
 		}
@@ -3325,11 +2790,11 @@ void ItemMover::ProcessAutoCubeStep() {
 					}
 				} else {
 					// No more matching HCC misc items available
-					// Done with essence HCC misc - clear cube and reset state for regular recipes
+					// Done with essence HCC misc - clear cube and reset state
 					processingEssenceHccMisc = false;
 					essenceHccMiscCubeInCube = false;
 					
-					// Clear the cube completely before starting regular recipes
+					// Clear the cube completely
 					int clearResult = ClearCube(unit);
 					if (clearResult == -1) {
 						// Inventory full, stop auto-cubing
@@ -3341,15 +2806,6 @@ void ItemMover::ProcessAutoCubeStep() {
 						lastAutoCubeTick = currentTick;
 						return;
 					}
-					
-					// Reset recipe state when switching from essence HCC misc to regular recipes
-					currentRecipeIdx = 0;
-					targetOutputCount = 0;
-					movedOutputCount = 0;
-					clearingNonRecipeItems = false;
-					clearingItemId = 0;
-					waitingForOutputTransmute = false;
-					validRecipesScanned = false; // Force rescan
 				}
 			} else {
 				// We have an HCC misc item in cube with catalyst, transmute
@@ -3367,12 +2823,12 @@ void ItemMover::ProcessAutoCubeStep() {
 		}
 	}
 	
-	// If we're still processing essence HCC misc, don't process regular recipes yet
+	// If we're still processing essence HCC misc, don't continue yet
 	if (processingEssenceHccMisc) {
 		return;
 	}
 	
-	// Process Auto Essence Uniques/Sets recipe if enabled (process after essence gems, runes, and HCC misc, before regular recipes)
+	// Process Auto Essence Uniques/Sets if enabled (after essence gems, runes, and HCC misc)
 	// Only process essence uniques if the checkbox is enabled
 	if (autoEssenceUniques.state) {
 		// Convert dropdown index to tier (0=Tier 1, 1=Tier 2, 2=Tier 3, 3=Tier 4, 4=Tier 5, 5=Tier 6)
@@ -3449,7 +2905,7 @@ void ItemMover::ProcessAutoCubeStep() {
 					lastAutoCubeTick = currentTick;
 					return; // Wait for catalyst to be moved
 				} else {
-					// Can't find catalyst, skip essence uniques and continue to regular recipes
+					// Can't find catalyst, skip essence uniques
 					processingEssenceUniques = false;
 					essenceUniquesCubeInCube = false;
 				}
@@ -3459,7 +2915,7 @@ void ItemMover::ProcessAutoCubeStep() {
 				processingEssenceUniques = true;
 			}
 		} else {
-			// No matching items available, skip essence uniques and continue to regular recipes
+			// No matching items available, skip essence uniques
 			processingEssenceUniques = false;
 			essenceUniquesCubeInCube = false;
 		}
@@ -3586,11 +3042,11 @@ void ItemMover::ProcessAutoCubeStep() {
 					}
 				} else {
 					// No more matching unique/set items available
-					// Done with essence uniques - clear cube and reset state for regular recipes
+					// Done with essence uniques - clear cube and reset state
 					processingEssenceUniques = false;
 					essenceUniquesCubeInCube = false;
 					
-					// Clear the cube completely before starting regular recipes
+					// Clear the cube completely
 					int clearResult = ClearCube(unit);
 					if (clearResult == -1) {
 						// Inventory full, stop auto-cubing
@@ -3602,15 +3058,6 @@ void ItemMover::ProcessAutoCubeStep() {
 						lastAutoCubeTick = currentTick;
 						return;
 					}
-					
-					// Reset recipe state when switching from essence uniques to regular recipes
-					currentRecipeIdx = 0;
-					targetOutputCount = 0;
-					movedOutputCount = 0;
-					clearingNonRecipeItems = false;
-					clearingItemId = 0;
-					waitingForOutputTransmute = false;
-					validRecipesScanned = false; // Force rescan
 				}
 			} else {
 				// We have a unique/set item in cube with catalyst, transmute
@@ -3628,8 +3075,8 @@ void ItemMover::ProcessAutoCubeStep() {
 		}
 	}
 	
-	// If we're still processing ANY essence recipe, don't process regular recipes yet
-	// Process ALL essence recipes first (gems, runes, HCC misc, uniques) before regular recipes
+	// If we're still processing any essence recipe, don't continue yet
+	// Process all essence recipes first (gems, runes, HCC misc, uniques)
 	if (processingEssenceGems || processingEssenceRunes || processingEssenceHccMisc || processingEssenceUniques) {
 		return;
 	}
@@ -3692,2059 +3139,16 @@ void ItemMover::ProcessAutoCubeStep() {
 		}
 	}
 	
-	// Use the recipes array from GetRecipesArray() (single source of truth)
-	const CubeRecipe* recipes = GetRecipesArray();
-	const int numRecipes = GetRecipesArraySize();
-	
-	// Scan inventory once per cycle to find which recipes have matching items
-	if (!validRecipesScanned) {
-		validRecipeIndices.clear();
-		
-		// Build a set of available item codes from inventory and cube
-		std::set<std::string> availableCodes;
-		for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
-			if (pItem->pItemData->ItemLocation == STORAGE_INVENTORY || 
-			    pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-				ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-				if (pItemText && pItemText->szCode) {
-					std::string itemCodeStr(pItemText->szCode, 3);
-					availableCodes.insert(itemCodeStr);
-				}
-			}
-		}
-		
-		// Check each recipe to see if we have matching items
-		for (int i = 0; i < numRecipes; i++) {
-			const CubeRecipe& recipe = recipes[i];
-			std::string inputCodeStr(recipe.inputCode, 3);
-			std::string outputCodeStr(recipe.outputCode, 3);
-			
-			// If processing stash batch, only allow recipes that use items moved from stash
-			if (processingStashBatch && !stashMovedItemCodes.empty()) {
-				bool inputFromStash = (stashMovedItemCodes.find(inputCodeStr) != stashMovedItemCodes.end());
-				bool outputFromStash = (stashMovedItemCodes.find(outputCodeStr) != stashMovedItemCodes.end());
-				if (!inputFromStash && !outputFromStash) {
-					continue;  // Skip recipes that don't use stash items
-				}
-			}
-			
-			// Recipe is valid if:
-			// 1. We have input AND output (normal recipe)
-			// 2. We have output only (output-only recipe)
-			// 3. We have input only AND it's a stat 508 limited recipe (can process input alone to generate outputs)
-			bool hasInput = (availableCodes.find(inputCodeStr) != availableCodes.end());
-			bool hasOutput = (availableCodes.find(outputCodeStr) != availableCodes.end());
-			bool isStat508Limited = IsStat508LimitedRecipe(recipe.inputCode);
-			
-			if ((hasInput && hasOutput) || (!hasInput && hasOutput) || (hasInput && !hasOutput && isStat508Limited)) {
-				validRecipeIndices.push_back(i);
-			}
-		}
-		
-		validRecipesScanned = true;
-		
-		// If no valid recipes found, stop auto-cubing
-		if (validRecipeIndices.empty()) {
-			// Check if we need to restore stash items
-			if (!stashItemsToMove.empty()) {
-				stashInteractionMode = true;
-				waitingForCubeToClose = true;
-				processingStashBatch = false;  // Done processing stash batch
-				lastAutoCubeTick = currentTick;
-				PrintText(White, "Auto Cube: Finished - restoring stash items...");
-			} else {
-				isAutoCubing = false;
-				processingStashBatch = false;
-				PrintText(White, "Auto Cube: Finished (no matching recipes)");
-			}
-			return;
-		}
-	}
-	
-	// Use valid recipe indices instead of all recipes
-	const int numValidRecipes = (int)validRecipeIndices.size();
-	
-	// Safety check: ensure validRecipeIndices is not empty and currentRecipeIdx is valid
-	// But only check for invalid state if we've already scanned (numValidRecipes == 0 after scanning means no recipes found)
-	if (numValidRecipes == 0) {
-		// No recipes found - this should have been handled during scanning, but handle it here as a safety net
-		// Only show error if we haven't just finished scanning (which would have handled it already)
-		if (validRecipesScanned) {
-			// We scanned but found no recipes - this is normal, just stop
-			// Check if we need to restore stash items
-			if (!stashItemsToMove.empty()) {
-				stashInteractionMode = true;
-				waitingForCubeToClose = true;
-				processingStashBatch = false;
-				lastAutoCubeTick = currentTick;
-				PrintText(White, "Auto Cube: Finished - restoring stash items...");
-			} else {
-				isAutoCubing = false;
-				processingStashBatch = false;
-				PrintText(White, "Auto Cube: Finished (no matching recipes)");
-			}
-			return;
-		} else {
-			// Invalid state - recipes haven't been scanned but indices are empty
-			isAutoCubing = false;
-			processingStashBatch = false;
-			validRecipesScanned = false;
-			validRecipeIndices.clear();
-			currentRecipeIdx = 0;
-			PrintText(Red, "Auto Cube: Stopped - invalid recipe state");
-			return;
-		}
-	}
-	
-	// Wrap around recipe index BEFORE checking bounds (if we've gone past the end, wrap around and rescan)
-	if (currentRecipeIdx >= numValidRecipes) {
-		currentRecipeIdx = 0;
-		currentRecipeIteration++;
-		
-		// Reset failure count for failed recipes when starting new cycle
-		failedOutputOnlyCount = 0;
-		
-		// Check if we made any progress in the previous cycle
-		if (!progressMadeThisCycle && currentRecipeIteration > 1) {
-			// No progress was made in the last full cycle - no more recipes to process
-			// Check if we need to restore stash items
-			if (!stashItemsToMove.empty()) {
-				stashInteractionMode = true;
-				waitingForCubeToClose = true;
-				processingStashBatch = false;
-				lastAutoCubeTick = currentTick;
-				PrintText(White, "Auto Cube: Finished - restoring stash items...");
-			} else {
-				isAutoCubing = false;
-				processingStashBatch = false;
-				PrintText(White, "Auto Cube: Finished (no more recipes)");
-			}
-			return;
-		}
-		
-		// Reset progress tracking for the new cycle
-		progressMadeThisCycle = false;
-		validRecipesScanned = false; // Rescan for next cycle
-		
-		// Reset recipe state when wrapping around
-		targetOutputCount = 0;
-		movedOutputCount = 0;
-		clearingNonRecipeItems = false;
-		clearingItemId = 0;
-		waitingForOutputTransmute = false;
-		waitingForNormalTransmute = false;
-		processingLowerStatItem = false;
-		waitingForLowerStatTransmute = false;
-		waitingForLowerStatOutputMove = false;
-		
-		// Clear the cube when wrapping around to start fresh
-		int clearResult = ClearCube(unit);
-		if (clearResult == -1) {
-			// Inventory full, stop auto-cubing
-			isAutoCubing = false;
-			PrintText(Red, "Auto Cube: Stopped - inventory full (cannot move items from cube)");
-			return;
-		} else if (clearResult == 1) {
-			// Item is being moved, wait for it
-			lastAutoCubeTick = currentTick;
-			return;
-		}
-		
-		// Safety limit - stop after many full cycles (fallback)
-		if (currentRecipeIteration > 100) {
-			// Check if we need to restore stash items
-			if (!stashItemsToMove.empty()) {
-				stashInteractionMode = true;
-				waitingForCubeToClose = true;
-				processingStashBatch = false;
-				lastAutoCubeTick = currentTick;
-				PrintText(White, "Auto Cube: Finished - restoring stash items...");
-			} else {
-				isAutoCubing = false;
-				processingStashBatch = false;
-				PrintText(White, "Auto Cube: Finished (safety limit)");
-			}
-			return;
-		}
-		
-		// After wrapping around, rescan recipes (will happen on next iteration since validRecipesScanned = false)
-		// Return here to let the rescan happen on the next iteration
-		return;
-	}
-	
-	// Check if currentRecipeIdx is out of bounds (shouldn't happen after wrap-around check, but safety check)
-	if (currentRecipeIdx < 0) {
-		// Invalid recipe index - reset and stop
-		isAutoCubing = false;
-		validRecipesScanned = false;
-		validRecipeIndices.clear();
-		currentRecipeIdx = 0;
-		PrintText(Red, "Auto Cube: Stopped - invalid recipe index");
-		return;
-	}
-	
-	// After wrapping around, we need to rescan recipes on the next iteration
-	// If we just wrapped around, return here to let the rescan happen
-	if (!validRecipesScanned) {
-		return; // Will rescan on next iteration
-	}
-	
-	// Wait for active packet to complete before processing next step
-	// BUT: Allow lower stat item processing to check if item has been moved even if ActivePacket is still set
-	// (The item might be in cube but ActivePacket hasn't been cleared yet by the packet handler)
-	if (ActivePacket.startTicks > 0 && !processingLowerStatItem && !waitingForLowerStatTransmute && !waitingForLowerStatOutputMove) {
-		// Still moving an item - wait for it to complete
-		if (currentTick - ActivePacket.startTicks > 3000) {
-			// Timeout - clear packet (item movement failed or took too long)
-			Lock();
-			DWORD stuckItemId = ActivePacket.itemId;
-			ActivePacket.itemId = 0;
-			ActivePacket.x = 0;
-			ActivePacket.y = 0;
-			ActivePacket.startTicks = 0;
-			ActivePacket.destination = 0;
-			Unlock();
-			
-			// If there's an item on cursor that matches the stuck packet, trigger recovery
-			UnitAny* cursorItem = D2CLIENT_GetCursorItem();
-			if (cursorItem != NULL && cursorItem->dwUnitId == stuckItemId) {
-				// Item is stuck on cursor, trigger recovery immediately
-				cursorItemStartTick = currentTick - 2000; // Set to trigger recovery immediately
-				cursorItemRecoveryAttempted = false;
-			}
-			
-			// If we were clearing non-recipe items, mark as done
-			if (clearingNonRecipeItems) {
-				clearingNonRecipeItems = false;
-				clearingItemId = 0;
-			}
-			
-			// Clear last moved tracking on timeout
-			lastMovedItemId = 0;
-			lastMovedDestination = 0;
-			lastMovedX = 0;
-			lastMovedY = 0;
-			lastMoveVerified = true;
-		}
-		return; // Wait for current operation to complete
-	}
-	
-	
-	// If we just finished clearing a non-recipe item, continue clearing more if needed
-	if (clearingNonRecipeItems && ActivePacket.startTicks == 0) {
-		// Check if there are more non-recipe items to clear
-		if (currentRecipeIdx < numRecipes) {
-			const CubeRecipe& recipe = recipes[currentRecipeIdx];
-			int clearResult = ClearNonRecipeItemsFromCube(unit, recipe.inputCode, recipe.outputCode);
-			if (clearResult == -1) {
-				// Inventory full, stop auto-cubing
-				isAutoCubing = false;
-				PrintText(Red, "Auto Cube: Stopped - inventory full (cannot move items from cube)");
-				return;
-			} else if (clearResult == 1) {
-				// Still clearing more items, wait for next movement
-				lastAutoCubeTick = currentTick;
-				return;
-			} else {
-				// All non-recipe items cleared, continue with normal processing (will transmute)
-				clearingNonRecipeItems = false;
-				clearingItemId = 0;
-				// Continue processing below to transmute
-			}
-		} else {
-			// Invalid recipe index, reset clearing flag
-			clearingNonRecipeItems = false;
-			clearingItemId = 0;
-		}
-	}
-	
-	// Wrap around recipe index (using valid recipes)
-	if (currentRecipeIdx >= numValidRecipes) {
-		currentRecipeIdx = 0;
-		currentRecipeIteration++;
-		
-		// Reset failure count for failed recipes when starting new cycle
-		failedOutputOnlyCount = 0;
-		
-		// Check if we made any progress in the previous cycle
-		if (!progressMadeThisCycle && currentRecipeIteration > 1) {
-			// No progress was made in the last full cycle - no more recipes to process
-			// Check if we need to restore stash items
-			if (!stashItemsToMove.empty()) {
-				stashInteractionMode = true;
-				waitingForCubeToClose = true;
-				processingStashBatch = false;
-				lastAutoCubeTick = currentTick;
-				PrintText(White, "Auto Cube: Finished - restoring stash items...");
-			} else {
-				isAutoCubing = false;
-				processingStashBatch = false;
-				PrintText(White, "Auto Cube: Finished (no more recipes)");
-			}
-			return;
-		}
-		
-		// Reset progress tracking for the new cycle
-		progressMadeThisCycle = false;
-		validRecipesScanned = false; // Rescan for next cycle
-		
-		// Reset recipe state when wrapping around
-		targetOutputCount = 0;
-		movedOutputCount = 0;
-		clearingNonRecipeItems = false;
-		clearingItemId = 0;
-		waitingForOutputTransmute = false;
-		processingLowerStatItem = false;
-		waitingForLowerStatTransmute = false;
-		waitingForLowerStatOutputMove = false;
-		
-		// Clear the cube when wrapping around to start fresh
-		int clearResult = ClearCube(unit);
-		if (clearResult == -1) {
-			// Inventory full, stop auto-cubing
-			isAutoCubing = false;
-			processingStashBatch = false;
-			PrintText(Red, "Auto Cube: Stopped - inventory full (cannot move items from cube)");
-			return;
-		} else if (clearResult == 1) {
-			// Item is being moved, wait for it
-			lastAutoCubeTick = currentTick;
-			return;
-		}
-		
-		// Safety limit - stop after many full cycles (fallback)
-		if (currentRecipeIteration > 100) {
-			// Check if we need to restore stash items
-			if (!stashItemsToMove.empty()) {
-				stashInteractionMode = true;
-				waitingForCubeToClose = true;
-				processingStashBatch = false;
-				lastAutoCubeTick = currentTick;
-				PrintText(White, "Auto Cube: Finished - restoring stash items...");
-			} else {
-				isAutoCubing = false;
-				processingStashBatch = false;
-				PrintText(White, "Auto Cube: Finished (safety limit)");
-			}
-			return;
-		}
-	}
-	
-	// Get the actual recipe index from our valid recipes list
-	// (Safety check for validRecipeIndices and currentRecipeIdx was already done above)
-	// But double-check right before accessing the array (recipes might have been consumed)
-	if (numValidRecipes == 0 || currentRecipeIdx < 0 || currentRecipeIdx >= numValidRecipes) {
-		// No recipes or index out of bounds - this can happen if recipes were consumed
-		// Rescan to see if there are any recipes left
-		validRecipesScanned = false;
-		lastAutoCubeTick = currentTick;
-		return; // Will rescan on next iteration
-	}
-	
-	int actualRecipeIdx = validRecipeIndices[currentRecipeIdx];
-	if (actualRecipeIdx < 0 || actualRecipeIdx >= numRecipes) {
-		// Invalid recipe index - this shouldn't happen, but handle it gracefully
-		// This might happen if recipes array changed or there's a bug
-		isAutoCubing = false;
-		validRecipesScanned = false;
-		validRecipeIndices.clear();
-		currentRecipeIdx = 0;
-		PrintText(Red, "Auto Cube: Stopped - invalid recipe index");
-		return;
-	}
-	const CubeRecipe& recipe = recipes[actualRecipeIdx];
-	
-	// All current recipes require stacking (they all have maxQuantity > 1)
-	// If autoStackItems is unchecked, skip all current recipes
-	// If autoStackItems is checked, process the current recipes
-	if (!autoStackItems.state) {
-		// Auto Stack Items is unchecked, skip all current recipes (they all require stacking)
-		// Reset stat 508 processing state when switching recipes
-		processingLowerStatItem = false;
-		waitingForLowerStatTransmute = false;
-		waitingForLowerStatOutputMove = false;
-		lowerStatTargetOutputs = 0;
-		lowerStatOutputsGenerated = 0;
-		highestStatValue = 0;
-		targetOutputCount = 0;
-		movedOutputCount = 0;
-		// Clear cube before moving to next recipe
-		int clearResult = ClearCube(unit);
-		if (clearResult == -1) {
-			isAutoCubing = false;
-			PrintText(Red, "Auto Cube: Stopped - inventory full (cannot move items from cube)");
-			return;
-		} else if (clearResult == 1) {
-			lastAutoCubeTick = currentTick;
-			return; // Wait for cube to clear
-		}
-		currentRecipeIdx++;
-		lastAutoCubeTick = currentTick;
-		return;
-	}
-	
-	// Count available items
-	int inputCount = CountItemsInInventoryAndCube(unit, recipe.inputCode);
-	int outputCount = CountItemsInInventoryAndCube(unit, recipe.outputCode);
-	
-	// Check what's currently in the cube
-	int cubeInputCount = CountItemsInCube(unit, recipe.inputCode);
-	int cubeOutputCount = CountItemsInCube(unit, recipe.outputCode);
-	
-	// For stat 508 limited recipes, check if we have any USABLE input items (stat 508 < 100)
-	// If all input items have stat 508 = 100, treat it as if we have no input items (use output-only logic)
-	int usableInputCount = inputCount;
-	if (IsStat508LimitedRecipe(recipe.inputCode) && inputCount > 0) {
-		usableInputCount = 0;
-		for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
-			if (pItem->pItemData->ItemLocation == STORAGE_INVENTORY || pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-				ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-				if (pItemText && pItemText->szCode) {
-					char* itemCode = pItemText->szCode;
-					if (itemCode && strlen(recipe.inputCode) >= 3) {
-						if (itemCode[0] == recipe.inputCode[0] && itemCode[1] == recipe.inputCode[1] && itemCode[2] == recipe.inputCode[2]) {
-							int stat508 = GetItemStat508(pItem);
-							if (stat508 >= 0 && stat508 < 100) {
-								usableInputCount++;
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-	
-	// Check if this recipe has any items to process
-	bool recipeHasItems = (usableInputCount > 0 && outputCount > 0) || (usableInputCount == 0 && outputCount > 0);
-	
-	// First, check if we need to process lower stat items (transmute them alone to generate output items)
-	// This should happen before normal input+output processing
-	// Only process if game is initialized and we have a valid unit with inventory
-	// BUT: If we have ENOUGH outputs to fill the highest stat item to 100, we should process the highest stat item first, not the lowest
-	if (IsStat508LimitedRecipe(recipe.inputCode) && usableInputCount >= 2 && !processingLowerStatItem && !waitingForLowerStatTransmute && !waitingForLowerStatOutputMove && unit && unit->pInventory && unit->pInventory->pFirstItem) {
-		// Find the input item with the lowest stat 508 and highest stat 508
-		UnitAny* lowestStatItem = NULL;
-		int lowestStat508 = 100;
-		int highestStat508 = -1;
-		int itemsWithLowStat = 0;
-		
-		for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData ? pItem->pItemData->pNextInvItem : NULL) {
-			if (!pItem->pItemData) continue;
-			if (pItem->pItemData->ItemLocation == STORAGE_INVENTORY || pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-				ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-				if (pItemText && pItemText->szCode) {
-					char* itemCode = pItemText->szCode;
-					if (itemCode && strlen(recipe.inputCode) >= 3) {
-						if (itemCode[0] == recipe.inputCode[0] && itemCode[1] == recipe.inputCode[1] && itemCode[2] == recipe.inputCode[2]) {
-							int stat508 = GetItemStat508(pItem);
-							if (stat508 >= 0 && stat508 < 100) {
-								itemsWithLowStat++;
-								if (stat508 < lowestStat508) {
-									lowestStat508 = stat508;
-									lowestStatItem = pItem;
-								}
-								if (stat508 > highestStat508) {
-									highestStat508 = stat508;
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-		
-		// If we have 2+ items with stat 508 < 100, calculate how many outputs we need to generate
-		// We need enough to fill the highest stat item to 100
-		if (itemsWithLowStat >= 2 && lowestStatItem && lowestStatItem->pItemData && lowestStatItem->pItemData->ItemLocation == STORAGE_INVENTORY && highestStat508 >= 0) {
-			// Calculate target outputs needed: 100 - highest_stat
-			// Also account for any outputs we already have
-			int outputsNeeded = (100 - highestStat508);
-			// We need to generate (outputsNeeded - outputCount), but only if it's positive
-			int outputsToGenerate = outputsNeeded - outputCount;
-			if (outputsToGenerate < 0) outputsToGenerate = 0; // We already have enough outputs
-			
-			// Only process lowest stat item if we need to generate more outputs
-			// If we already have enough outputs, skip this and let normal logic handle the highest stat item
-			if (outputsToGenerate > 0) {
-				// Double-check that lowestStatItem is valid and in inventory
-				if (!lowestStatItem || !lowestStatItem->pItemData || lowestStatItem->pItemData->ItemLocation != STORAGE_INVENTORY) {
-					// Item is not valid or not in inventory, skip processing
-					processingLowerStatItem = false;
-					lastAutoCubeTick = currentTick;
-					return;
-				}
-				
-				// Initialize tracking variables if not already set
-				if (lowerStatTargetOutputs == 0 || highestStatValue != highestStat508) {
-					lowerStatTargetOutputs = outputsToGenerate;
-					lowerStatOutputsGenerated = 0;
-					highestStatValue = highestStat508;
-				}
-				// First, check if there are any input items already in the cube - if so, clear them first
-				// (This shouldn't happen, but if it does, we need to clear the cube before processing lower stat items)
-				int cubeInputCount = CountItemsInCube(unit, recipe.inputCode);
-				if (cubeInputCount > 0) {
-					// There's an input item in the cube - move it out first
-					for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData ? pItem->pItemData->pNextInvItem : NULL) {
-						if (!pItem->pItemData) continue;
-						if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-							ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-							if (pItemText && pItemText->szCode) {
-								char* itemCode = pItemText->szCode;
-								if (itemCode && strlen(recipe.inputCode) >= 3) {
-									if (itemCode[0] == recipe.inputCode[0] && itemCode[1] == recipe.inputCode[1] && itemCode[2] == recipe.inputCode[2]) {
-										// This is an input item in the cube, move it out
-										if (MoveItemToInventory(unit, pItem)) {
-											lastAutoCubeTick = currentTick;
-											return; // Wait for item to be moved
-										} else {
-											// Inventory full, stop processing lower stat items
-											processingLowerStatItem = false;
-											lastAutoCubeTick = currentTick;
-											return;
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-				
-				// Cube is clear (or being cleared), now move the lowest stat item to cube
-				// Double-check that lowestStatItem is still valid and has pObjectPath
-				if (!lowestStatItem || !lowestStatItem->pObjectPath) {
-					processingLowerStatItem = false;
-					lastAutoCubeTick = currentTick;
-					return;
-				}
-				int itemGridX = lowestStatItem->pObjectPath->dwPosX;
-				int itemGridY = lowestStatItem->pObjectPath->dwPosY;
-				int invUI = D2CLIENT_GetUIState(UI_INVENTORY);
-				int stashUI = D2CLIENT_GetUIState(UI_STASH);
-				if (LoadInventory(unit, STORAGE_INVENTORY, itemGridX, itemGridY, true, false, stashUI, invUI)) {
-					PickUpItem();
-					processingLowerStatItem = true;
-					lastAutoCubeTick = currentTick;
-					return; // Wait for item to be moved
-				} else {
-					// Failed to load inventory, stop processing
-					processingLowerStatItem = false;
-					lastAutoCubeTick = currentTick;
-					return;
-				}
-			}
-		}
-	}
-	
-	// Handle waiting for lower stat item to be moved to cube
-	if (processingLowerStatItem && !waitingForLowerStatTransmute && !waitingForLowerStatOutputMove) {
-		// Check if item is now in cube
-		int cubeInputCount = CountItemsInCube(unit, recipe.inputCode);
-		if (cubeInputCount > 0) {
-			// Item is in cube - check if movement has completed (ActivePacket cleared or timeout)
-			// Allow a small delay after movement starts before checking if item is in cube
-			bool movementCompleted = (ActivePacket.startTicks == 0);
-			if (!movementCompleted && ActivePacket.startTicks > 0) {
-				// Check if enough time has passed that the item should be in cube even if ActivePacket isn't cleared yet
-				ULONGLONG timeSinceMove = currentTick - ActivePacket.startTicks;
-				if (timeSinceMove > 500) { // Give it 500ms for the packet to arrive and clear ActivePacket
-					// Item should be in cube by now, even if ActivePacket hasn't been cleared yet
-					// Double-check that item is actually in cube and cursor is empty
-					UnitAny* cursorItem = D2CLIENT_GetCursorItem();
-					if (cursorItem == NULL && cubeInputCount > 0) {
-						// Cursor is empty and item is in cube - movement must have completed
-						movementCompleted = true;
-					}
-				}
-			}
-			
-			if (movementCompleted) {
-				// Movement completed, transmute the item alone
-				D2CLIENT_Transmute();
-				processingLowerStatItem = false;
-				waitingForLowerStatTransmute = true;
-				lastAutoCubeTick = currentTick;
-				return; // Wait for transmute
-			}
-			// Still waiting for movement to complete, but item appears to be in cube
-			// This can happen if ActivePacket hasn't been cleared yet by the packet handler
-			// Just wait a bit longer and check again next iteration
-			return;
-		} else {
-			// Item not in cube yet, wait
-			if (ActivePacket.startTicks > 0) {
-				// Still moving - wait a bit and check again
-				if (currentTick - ActivePacket.startTicks > 3000) {
-					// Timeout - movement failed, reset
-					processingLowerStatItem = false;
-					lastAutoCubeTick = currentTick;
-					return;
-				}
-				return; // Still moving
-			}
-			// Movement failed or completed but item not in cube, reset
-			processingLowerStatItem = false;
-		}
-	}
-	
-	// Handle waiting for lower stat transmute to complete
-	if (waitingForLowerStatTransmute) {
-		// Check if transmute completed (cube should now have new @f4 with stat508 - 1 and cf4)
-		int cubeInputCount = CountItemsInCube(unit, recipe.inputCode);
-		int cubeOutputCount = CountItemsInCube(unit, recipe.outputCode);
-		
-		// Wait a bit for transmute to complete
-		if (currentTick - lastAutoCubeTick < 100) {
-			return; // Still waiting
-		}
-		
-		// Transmute should be complete, move cf4 to inventory
-		if (cubeOutputCount > 0) {
-			// Find and move cf4 to inventory
-			for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData ? pItem->pItemData->pNextInvItem : NULL) {
-				if (!pItem->pItemData) continue;
-				if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-					ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-					if (pItemText && pItemText->szCode) {
-						char* itemCode = pItemText->szCode;
-						if (itemCode && strlen(recipe.outputCode) >= 3) {
-							if (itemCode[0] == recipe.outputCode[0] && itemCode[1] == recipe.outputCode[1] && itemCode[2] == recipe.outputCode[2]) {
-								// This is a cf4, move it to inventory
-								if (MoveItemToInventory(unit, pItem)) {
-									lowerStatOutputsGenerated++; // Track that we've generated one output
-									waitingForLowerStatTransmute = false;
-									waitingForLowerStatOutputMove = true;
-									lastAutoCubeTick = currentTick;
-									return; // Wait for movement
-								} else {
-									// Inventory full, stop processing lower stat items
-									waitingForLowerStatTransmute = false;
-									processingLowerStatItem = false;
-									waitingForLowerStatOutputMove = false;
-									// Continue with normal logic
-									break;
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-		
-		// If no output items found, transmute might have failed or created different items
-		// Check if there's still an @f4 in cube to process
-		if (cubeInputCount > 0) {
-			// Check if the @f4 in cube has stat 508 < 100 (can continue processing)
-			for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData ? pItem->pItemData->pNextInvItem : NULL) {
-				if (!pItem->pItemData) continue;
-				if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-					ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-					if (pItemText && pItemText->szCode) {
-						char* itemCode = pItemText->szCode;
-						if (itemCode && strlen(recipe.inputCode) >= 3) {
-							if (itemCode[0] == recipe.inputCode[0] && itemCode[1] == recipe.inputCode[1] && itemCode[2] == recipe.inputCode[2]) {
-								int stat508 = GetItemStat508(pItem);
-								if (stat508 >= 0 && stat508 < 100) {
-									// Still have an @f4 with stat < 100, but no output items to move - reset and try again
-									waitingForLowerStatTransmute = false;
-									processingLowerStatItem = false;
-									break;
-								}
-							}
-						}
-					}
-				}
-			}
-		} else {
-			// No input items in cube - item was consumed (stat reached 0, generated 2 cf4)
-			// Check if there are cf4 in cube (they might not have appeared yet due to timing)
-			// Wait a bit more for them to appear, or handle in the waitingForLowerStatOutputMove section
-			// This case is handled in the waitingForLowerStatOutputMove section when cubeInputCount becomes 0
-			// So just reset and let that section handle it
-			waitingForLowerStatTransmute = false;
-			processingLowerStatItem = false;
-		}
-	}
-	
-	// Handle waiting for lower stat output item to be moved to inventory
-	if (waitingForLowerStatOutputMove) {
-		if (ActivePacket.startTicks == 0) {
-			// Movement completed, check if there are more cf4 to move (if stat508 was 2, there will be 2 cf4)
-			int cubeOutputCount = CountItemsInCube(unit, recipe.outputCode);
-			if (cubeOutputCount > 0) {
-				// Still have cf4 in cube, move the next one
-				for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData ? pItem->pItemData->pNextInvItem : NULL) {
-					if (!pItem->pItemData) continue;
-					if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-						ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-						if (pItemText && pItemText->szCode) {
-							char* itemCode = pItemText->szCode;
-							if (itemCode && strlen(recipe.outputCode) >= 3) {
-								if (itemCode[0] == recipe.outputCode[0] && itemCode[1] == recipe.outputCode[1] && itemCode[2] == recipe.outputCode[2]) {
-									// This is a cf4, move it to inventory
-									if (MoveItemToInventory(unit, pItem)) {
-										lowerStatOutputsGenerated++; // Track that we've generated one output
-										lastAutoCubeTick = currentTick;
-										return; // Wait for movement
-									} else {
-										// Inventory full, stop processing lower stat items
-										waitingForLowerStatOutputMove = false;
-										processingLowerStatItem = false;
-										// Continue with normal logic
-										break;
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-			
-			// All cf4 moved, check if we've generated enough outputs or if item was consumed
-			// Check if we've generated enough outputs to fill the highest stat item to 100
-			if (lowerStatOutputsGenerated >= lowerStatTargetOutputs && lowerStatTargetOutputs > 0) {
-				// We've generated enough outputs, move the @f4 back to inventory if it's still in cube
-				int cubeInputCount = CountItemsInCube(unit, recipe.inputCode);
-				if (cubeInputCount > 0) {
-					// Move the @f4 back to inventory (we've generated enough outputs)
-					for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData ? pItem->pItemData->pNextInvItem : NULL) {
-						if (!pItem->pItemData) continue;
-						if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-							ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-							if (pItemText && pItemText->szCode) {
-								char* itemCode = pItemText->szCode;
-								if (itemCode && strlen(recipe.inputCode) >= 3) {
-									if (itemCode[0] == recipe.inputCode[0] && itemCode[1] == recipe.inputCode[1] && itemCode[2] == recipe.inputCode[2]) {
-										// Move this @f4 back to inventory
-										if (MoveItemToInventory(unit, pItem)) {
-											waitingForLowerStatOutputMove = false;
-											processingLowerStatItem = false;
-											waitingForLowerStatTransmute = false;
-											lastAutoCubeTick = currentTick;
-											return; // Wait for item to be moved back
-										} else {
-											// Inventory full, stop processing
-											waitingForLowerStatOutputMove = false;
-											processingLowerStatItem = false;
-											waitingForLowerStatTransmute = false;
-											break;
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-				// Done processing lower stat item - we've generated enough outputs
-				waitingForLowerStatOutputMove = false;
-				processingLowerStatItem = false;
-				waitingForLowerStatTransmute = false;
-			} else {
-				// Check if there's still an @f4 in cube to process
-				// Keep transmuting until we've generated enough outputs OR the item is consumed
-				int cubeInputCount = CountItemsInCube(unit, recipe.inputCode);
-				if (cubeInputCount > 0) {
-					// Check if the @f4 in cube has stat 508 < 100 (can continue processing)
-					for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData ? pItem->pItemData->pNextInvItem : NULL) {
-						if (!pItem->pItemData) continue;
-						if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-							ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-							if (pItemText && pItemText->szCode) {
-								char* itemCode = pItemText->szCode;
-								if (itemCode && strlen(recipe.inputCode) >= 3) {
-									if (itemCode[0] == recipe.inputCode[0] && itemCode[1] == recipe.inputCode[1] && itemCode[2] == recipe.inputCode[2]) {
-										int stat508 = GetItemStat508(pItem);
-										if (stat508 >= 0 && stat508 < 100) {
-											// Still have an @f4 with stat < 100, transmute it again
-											D2CLIENT_Transmute();
-											waitingForLowerStatOutputMove = false;
-											waitingForLowerStatTransmute = true;
-											lastAutoCubeTick = currentTick;
-											return; // Wait for transmute
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-				// No more @f4 in cube (item was consumed - stat reached 0 and turned into cf4)
-				// Need to move the 2 cf4 that were generated to inventory first
-				int cubeOutputCount = CountItemsInCube(unit, recipe.outputCode);
-				if (cubeOutputCount > 0) {
-					// Move the cf4 generated from consuming the item to inventory
-					for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData ? pItem->pItemData->pNextInvItem : NULL) {
-						if (!pItem->pItemData) continue;
-						if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-							ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-							if (pItemText && pItemText->szCode) {
-								char* itemCode = pItemText->szCode;
-								if (itemCode && strlen(recipe.outputCode) >= 3) {
-									if (itemCode[0] == recipe.outputCode[0] && itemCode[1] == recipe.outputCode[1] && itemCode[2] == recipe.outputCode[2]) {
-										// This is a cf4, move it to inventory
-										if (MoveItemToInventory(unit, pItem)) {
-											lowerStatOutputsGenerated++; // Count the cf4 from consuming the item
-											waitingForLowerStatOutputMove = true;
-											lastAutoCubeTick = currentTick;
-											return; // Wait for movement
-										} else {
-											// Inventory full, stop processing
-											waitingForLowerStatOutputMove = false;
-											processingLowerStatItem = false;
-											waitingForLowerStatTransmute = false;
-											break;
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-				// No more cf4 to move, done processing lower stat item
-				// Now we'll process the highest stat item next
-				waitingForLowerStatOutputMove = false;
-				processingLowerStatItem = false;
-				waitingForLowerStatTransmute = false;
-			}
-			
-			// Reset tracking variables after processing lower stat item
-			lowerStatTargetOutputs = 0;
-			lowerStatOutputsGenerated = 0;
-			highestStatValue = 0;
-			
-			// After processing a lower stat item, check if we still have 2+ usable input items
-			// If so, we should continue processing lower stat items, not run normal logic
-			// Recalculate usableInputCount to see if we should continue
-			int remainingUsableInputCount = 0;
-			for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData ? pItem->pItemData->pNextInvItem : NULL) {
-				if (!pItem->pItemData) continue;
-				if (pItem->pItemData->ItemLocation == STORAGE_INVENTORY || pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-					ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-					if (pItemText && pItemText->szCode) {
-						char* itemCode = pItemText->szCode;
-						if (itemCode && strlen(recipe.inputCode) >= 3) {
-							if (itemCode[0] == recipe.inputCode[0] && itemCode[1] == recipe.inputCode[1] && itemCode[2] == recipe.inputCode[2]) {
-								int stat508 = GetItemStat508(pItem);
-								if (stat508 >= 0 && stat508 < 100) {
-									remainingUsableInputCount++;
-								}
-							}
-						}
-					}
-				}
-			}
-			
-			// After consuming the lowest stat item, recalculate outputCount to include newly generated outputs
-			int updatedOutputCount = 0;
-			for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData ? pItem->pItemData->pNextInvItem : NULL) {
-				if (!pItem->pItemData) continue;
-				if (pItem->pItemData->ItemLocation == STORAGE_INVENTORY || pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-					ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-					if (pItemText && pItemText->szCode) {
-						char* itemCode = pItemText->szCode;
-						if (itemCode && strlen(recipe.outputCode) >= 3) {
-							if (itemCode[0] == recipe.outputCode[0] && itemCode[1] == recipe.outputCode[1] && itemCode[2] == recipe.outputCode[2]) {
-								updatedOutputCount++;
-							}
-						}
-					}
-				}
-			}
-			
-			// If we still have 2+ usable input items and outputs available, process the highest stat item next
-			// (Alternating between lowest and highest)
-			if (remainingUsableInputCount >= 2 && updatedOutputCount > 0) {
-				// Process the highest stat item to use the outputs we just generated
-				// Reset tracking variables so we don't try to process lowest stat items again
-				// The normal logic below will handle processing the highest stat item
-				// Update outputCount to reflect the newly generated outputs so normal logic uses correct count
-				outputCount = updatedOutputCount;
-				// Recalculate cube counts after lower stat processing (they may have changed)
-				cubeInputCount = CountItemsInCube(unit, recipe.inputCode);
-				cubeOutputCount = CountItemsInCube(unit, recipe.outputCode);
-				// Don't return here - let normal logic handle it
-			} else if (remainingUsableInputCount >= 2) {
-				// No outputs available, continue processing lower stat items on next iteration
-				lastAutoCubeTick = currentTick;
-				return; // Continue processing lower stat items on next iteration
-			}
-			// If only 1 usable input item remains, fall through to normal logic
-		}
-	}
-	
-	// Logic: If we have USABLE input (@f4 with stat 508 < 100) AND output (cf4)
-	// Process normal logic which will handle either:
-	// - Processing the highest stat item (if we have 2+ usable inputs and just processed a lowest stat item)
-	// - Processing the single remaining input item (if we have only 1 usable input)
-	// Recalculate outputCount to ensure we have the latest count (may have been updated after processing lowest stat item)
-	int currentOutputCount = outputCount;
-	if (IsStat508LimitedRecipe(recipe.inputCode) && usableInputCount >= 2) {
-		// Recalculate to ensure we have the latest count after processing lowest stat items
-		// This is important because outputs may have been generated from processing lowest stat items
-		currentOutputCount = 0;
-		for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData ? pItem->pItemData->pNextInvItem : NULL) {
-			if (!pItem->pItemData) continue;
-			if (pItem->pItemData->ItemLocation == STORAGE_INVENTORY || pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-				ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-				if (pItemText && pItemText->szCode) {
-					char* itemCode = pItemText->szCode;
-					if (itemCode && strlen(recipe.outputCode) >= 3) {
-						if (itemCode[0] == recipe.outputCode[0] && itemCode[1] == recipe.outputCode[1] && itemCode[2] == recipe.outputCode[2]) {
-							currentOutputCount++;
-						}
-					}
-				}
-			}
-		}
-	}
-	
-	if (usableInputCount > 0 && currentOutputCount > 0 && !processingLowerStatItem && !waitingForLowerStatTransmute && !waitingForLowerStatOutputMove) {
-		// For stat 508 limited recipes with 2+ usable input items, process the highest stat item
-		if (IsStat508LimitedRecipe(recipe.inputCode) && usableInputCount >= 2) {
-			// Find the highest stat item and process it (try to fill it to 100)
-			// Check both inventory AND cube to find the highest stat item
-			UnitAny* highestStatItem = NULL;
-			int highestStat508 = -1;
-			
-			for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData ? pItem->pItemData->pNextInvItem : NULL) {
-				if (!pItem->pItemData) continue;
-				if (pItem->pItemData->ItemLocation == STORAGE_INVENTORY || pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-					ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-					if (pItemText && pItemText->szCode) {
-						char* itemCode = pItemText->szCode;
-						if (itemCode && strlen(recipe.inputCode) >= 3) {
-							if (itemCode[0] == recipe.inputCode[0] && itemCode[1] == recipe.inputCode[1] && itemCode[2] == recipe.inputCode[2]) {
-								int stat508 = GetItemStat508(pItem);
-								if (stat508 >= 0 && stat508 < 100) {
-									if (stat508 > highestStat508) {
-										highestStat508 = stat508;
-										// Only set highestStatItem if it's in inventory (we can't move items from cube to cube)
-										if (pItem->pItemData->ItemLocation == STORAGE_INVENTORY) {
-											highestStatItem = pItem;
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-			
-			// If we found a highest stat item, process it with available outputs
-			// Even if outputs don't add up to 100, still combine them into one stack
-			// Note: highestStatItem may be NULL if the highest stat item is already in the cube
-			if (highestStat508 >= 0) {
-				int outputsNeeded = 100 - highestStat508;
-				// Process if we have any outputs available (even if not enough to reach 100)
-				// This allows combining outputs into one stack even when they don't add up to 100
-				if (currentOutputCount > 0) {
-				// Check if the highest stat item is already in the cube
-				bool highestItemInCube = false;
-				if (cubeInputCount > 0) {
-					for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData ? pItem->pItemData->pNextInvItem : NULL) {
-						if (!pItem->pItemData) continue;
-						if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-							ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-							if (pItemText && pItemText->szCode) {
-								char* itemCode = pItemText->szCode;
-								if (itemCode && strlen(recipe.inputCode) >= 3) {
-									if (itemCode[0] == recipe.inputCode[0] && itemCode[1] == recipe.inputCode[1] && itemCode[2] == recipe.inputCode[2]) {
-										int stat508 = GetItemStat508(pItem);
-										if (stat508 == highestStat508) {
-											// This is the highest stat item, it's already in cube - continue processing
-											highestItemInCube = true;
-											break;
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-				
-				if (highestItemInCube) {
-					// The highest stat item is already in cube
-					// Don't clear output items here - let normal logic handle moving the correct number
-					// Only clear if we're not in the middle of moving outputs (targetOutputCount == 0 means we haven't started)
-					// If targetOutputCount > 0, we're actively moving outputs, so don't interfere
-					if (cubeOutputCount > 0 && targetOutputCount == 0) {
-						// We have output items but haven't started moving outputs yet
-						// This might be leftover from a previous failed transmute, clear them
-						for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData ? pItem->pItemData->pNextInvItem : NULL) {
-							if (!pItem->pItemData) continue;
-							if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-								ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-								if (pItemText && pItemText->szCode) {
-									char* itemCode = pItemText->szCode;
-									if (itemCode && strlen(recipe.outputCode) >= 3) {
-										if (itemCode[0] == recipe.outputCode[0] && itemCode[1] == recipe.outputCode[1] && itemCode[2] == recipe.outputCode[2]) {
-											// This is an output item, move it out
-											if (MoveItemToInventory(unit, pItem)) {
-												lastAutoCubeTick = currentTick;
-												return; // Wait for item to be moved
-											}
-										}
-									}
-								}
-							}
-						}
-					}
-					// Fall through to normal logic which will process the item already in cube
-				} else if (cubeInputCount == 0 && cubeOutputCount == 0) {
-					// Cube is empty, move the highest stat item to cube
-					// If highestStatItem is NULL (item is already in cube), skip moving it
-					if (highestStatItem && highestStatItem->pObjectPath) {
-						int itemGridX = highestStatItem->pObjectPath->dwPosX;
-						int itemGridY = highestStatItem->pObjectPath->dwPosY;
-						int invUI = D2CLIENT_GetUIState(UI_INVENTORY);
-						int stashUI = D2CLIENT_GetUIState(UI_STASH);
-						if (LoadInventory(unit, STORAGE_INVENTORY, itemGridX, itemGridY, true, false, stashUI, invUI)) {
-							PickUpItem();
-							lastAutoCubeTick = currentTick;
-							return; // Wait for item to be moved
-						}
-					}
-					// If we couldn't move the item, fall through to normal logic
-				} else {
-					// Cube has items that aren't the highest stat item, clear it first
-					int clearResult = ClearCube(unit);
-					if (clearResult == -1) {
-						isAutoCubing = false;
-						PrintText(Red, "Auto Cube: Stopped - inventory full (cannot move items from cube)");
-						return;
-					} else if (clearResult == 1) {
-						lastAutoCubeTick = currentTick;
-						return;
-					}
-					// Cube cleared, fall through to normal logic
-				}
-				} else {
-					// Not enough outputs to fill highest stat item, skip this and let lowest stat processing handle it
-					// (The lowest stat processing block should have already started if needed)
-				}
-			} else {
-				// No highest stat item found, skip
-				lastAutoCubeTick = currentTick;
-				return;
-			}
-		}
-		
-		// Recalculate cube counts before checking (they may have changed after lower stat processing or item movements)
-		cubeInputCount = CountItemsInCube(unit, recipe.inputCode);
-		cubeOutputCount = CountItemsInCube(unit, recipe.outputCode);
-		
-		// For stat 508 limited recipes, if there's already an input item in the cube and we have 2+ usable input items,
-		// but it's NOT the highest stat item (which was handled above), we should clear it
-		// This should not happen in normal flow, but handle it as a safety check
-		if (IsStat508LimitedRecipe(recipe.inputCode) && cubeInputCount > 0 && usableInputCount >= 2) {
-			// Check if the item in cube is the highest stat item - if so, we already handled it above, skip this
-			bool isHighestInCube = false;
-			for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData ? pItem->pItemData->pNextInvItem : NULL) {
-				if (!pItem->pItemData) continue;
-				if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-					ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-					if (pItemText && pItemText->szCode) {
-						char* itemCode = pItemText->szCode;
-						if (itemCode && strlen(recipe.inputCode) >= 3) {
-							if (itemCode[0] == recipe.inputCode[0] && itemCode[1] == recipe.inputCode[1] && itemCode[2] == recipe.inputCode[2]) {
-								int stat508 = GetItemStat508(pItem);
-								if (stat508 >= 0 && stat508 < 100) {
-									// Check if this is the highest stat item
-									// Check both inventory AND cube to find the highest stat item
-									int maxStat = -1;
-									for (UnitAny *pItem2 = unit->pInventory->pFirstItem; pItem2; pItem2 = pItem2->pItemData ? pItem2->pItemData->pNextInvItem : NULL) {
-										if (!pItem2->pItemData) continue;
-										if (pItem2->pItemData->ItemLocation == STORAGE_INVENTORY || pItem2->pItemData->ItemLocation == STORAGE_CUBE) {
-											ItemText* pItemText2 = D2COMMON_GetItemText(pItem2->dwTxtFileNo);
-											if (pItemText2 && pItemText2->szCode) {
-												char* itemCode2 = pItemText2->szCode;
-												if (itemCode2 && strlen(recipe.inputCode) >= 3) {
-													if (itemCode2[0] == recipe.inputCode[0] && itemCode2[1] == recipe.inputCode[1] && itemCode2[2] == recipe.inputCode[2]) {
-														int stat508_2 = GetItemStat508(pItem2);
-														if (stat508_2 > maxStat && stat508_2 < 100) {
-															maxStat = stat508_2;
-														}
-													}
-												}
-											}
-										}
-									}
-									if (stat508 == maxStat) {
-										isHighestInCube = true;
-										break;
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-			
-			// If the item in cube is the highest stat item, skip this - we already handled it above
-			if (isHighestInCube) {
-				// Skip this block, let normal logic handle it
-			} else {
-				// There's an input item in the cube but it's NOT the highest stat item - clear it
-				// Clear the cube and let lower stat processing handle it on the next iteration
-			for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData ? pItem->pItemData->pNextInvItem : NULL) {
-				if (!pItem->pItemData) continue;
-				if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-					ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-					if (pItemText && pItemText->szCode) {
-						char* itemCode = pItemText->szCode;
-						if (itemCode && strlen(recipe.inputCode) >= 3) {
-							if (itemCode[0] == recipe.inputCode[0] && itemCode[1] == recipe.inputCode[1] && itemCode[2] == recipe.inputCode[2]) {
-								// This is an input item in the cube, move it out
-								if (MoveItemToInventory(unit, pItem)) {
-									lastAutoCubeTick = currentTick;
-									return; // Wait for item to be moved
-								} else {
-									// Inventory full, stop auto-cubing
-									isAutoCubing = false;
-									PrintText(Red, "Auto Cube: Stopped - inventory full (cannot move items from cube)");
-									return;
-								}
-							}
-						}
-					}
-				}
-			}
-			// Also clear any output items
-			for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData ? pItem->pItemData->pNextInvItem : NULL) {
-				if (!pItem->pItemData) continue;
-				if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-					ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-					if (pItemText && pItemText->szCode) {
-						char* itemCode = pItemText->szCode;
-						if (itemCode && strlen(recipe.outputCode) >= 3) {
-							if (itemCode[0] == recipe.outputCode[0] && itemCode[1] == recipe.outputCode[1] && itemCode[2] == recipe.outputCode[2]) {
-								// This is an output item in the cube, move it out
-								if (MoveItemToInventory(unit, pItem)) {
-									lastAutoCubeTick = currentTick;
-									return; // Wait for item to be moved
-								}
-							}
-						}
-					}
-				}
-			}
-			// Cube cleared, let lower stat processing handle it on next iteration
-			lastAutoCubeTick = currentTick;
-			return;
-			}
-		}
-		
-		// Mark that we have items to process
-		if (recipeHasItems) {
-			progressMadeThisCycle = true;
-		}
-		
-		// Recalculate cube counts right before normal logic (they may have changed after lower stat processing)
-		cubeInputCount = CountItemsInCube(unit, recipe.inputCode);
-		cubeOutputCount = CountItemsInCube(unit, recipe.outputCode);
-		
-		// Check if we're waiting for a normal transmute to complete
-		if (waitingForNormalTransmute) {
-			// Wait a bit for transmute to complete
-			if (currentTick - lastAutoCubeTick < 100) {
-				return; // Still waiting
-			}
-			
-			// Transmute should be complete, check if items reached stat 508 = 100 and clear cube
-			waitingForNormalTransmute = false;
-			
-			// Recalculate cube counts after transmute
-			cubeInputCount = CountItemsInCube(unit, recipe.inputCode);
-			cubeOutputCount = CountItemsInCube(unit, recipe.outputCode);
-			
-			// For stat 508 limited recipes, check if input items reached stat 508 = 100
-			if (IsStat508LimitedRecipe(recipe.inputCode) && cubeInputCount > 0) {
-				bool movedStat100Item = false;
-				for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData ? pItem->pItemData->pNextInvItem : NULL) {
-					if (!pItem->pItemData) continue;
-					if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-						ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-						if (pItemText && pItemText->szCode) {
-							char* itemCode = pItemText->szCode;
-							if (itemCode && strlen(recipe.inputCode) >= 3) {
-								if (itemCode[0] == recipe.inputCode[0] && itemCode[1] == recipe.inputCode[1] && itemCode[2] == recipe.inputCode[2]) {
-									int stat508 = GetItemStat508(pItem);
-									if (stat508 >= 100) {
-										// This item has stat 508 = 100, move it out
-										if (MoveItemToInventory(unit, pItem)) {
-											movedStat100Item = true;
-											lastAutoCubeTick = currentTick;
-											return; // Wait for item to be moved
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-				
-				// If we moved a stat 100 item, check for remaining items on next iteration
-				if (movedStat100Item) {
-					return;
-				}
-			}
-			
-			// Clear any remaining items from cube after transmute
-			if (cubeInputCount > 0 || cubeOutputCount > 0) {
-				int clearResult = ClearCube(unit);
-				if (clearResult == -1) {
-					isAutoCubing = false;
-					PrintText(Red, "Auto Cube: Stopped - inventory full (cannot move items from cube)");
-					return;
-				} else if (clearResult == 1) {
-					lastAutoCubeTick = currentTick;
-					return; // Wait for cube to clear
-				}
-			}
-			
-			// Cube is cleared, continue with normal logic
-		}
-		
-		if (cubeInputCount == 0 && cubeOutputCount == 0) {
-			// Cube is empty, start fresh - move 1 input item first
-			targetOutputCount = 0;
-			movedOutputCount = 0;
-			if (FindAndMoveItemsToCube(unit, recipe.inputCode, 1)) {
-				lastAutoCubeTick = currentTick;
-				return; // Wait for movement
-			} else {
-				// Couldn't move an input item - if no usable input items, fall through to output-only logic
-				// (This will happen automatically since usableInputCount will be 0)
-				lastAutoCubeTick = currentTick;
-				return;
-			}
-		} else if (cubeInputCount > 0 && cubeOutputCount == 0) {
-			// Input is in cube, now we need to move output items
-			// Set target if not already set
-			if (targetOutputCount == 0) {
-				int availableOutput = currentOutputCount; // Items in inventory + cube (use updated count)
-				int maxAllowed = recipe.maxQuantity;
-				
-				// Check if this is a stat 508 limited recipe (@f4, @f8, @x2)
-				// Check ALL input items in cube to find the most restrictive limit
-				if (IsStat508LimitedRecipe(recipe.inputCode)) {
-					int minMaxAllowed = GetMinMaxAllowedFromCubeInputs(unit, recipe.inputCode, recipe.maxQuantity);
-					if (minMaxAllowed == 0) {
-						// All input items in cube have stat 508 = 100, cannot cube with any outputs
-						// After transmute, output items are consumed, so we need to move the input item with stat 100 out first
-						// First priority: move input items with stat 100 out (they block further processing)
-						bool movedItem = false;
-						for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
-							if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-								ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-								if (pItemText && pItemText->szCode) {
-									char* itemCode = pItemText->szCode;
-									if (itemCode && strlen(recipe.inputCode) >= 3) {
-										if (itemCode[0] == recipe.inputCode[0] && itemCode[1] == recipe.inputCode[1] && itemCode[2] == recipe.inputCode[2]) {
-											int stat508 = GetItemStat508(pItem);
-											if (stat508 >= 100) {
-												// This item has stat 508 = 100, move it out
-												if (MoveItemToInventory(unit, pItem)) {
-													movedItem = true;
-													lastAutoCubeTick = currentTick;
-													return; // Wait for item to be moved
-												}
-											}
-										}
-									}
-								}
-							}
-						}
-						// If we moved an input item, wait for it
-						if (movedItem) {
-							return;
-						}
-						// No input items with stat 100 to move, check for any remaining output items (shouldn't happen after transmute, but handle it)
-						for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
-							if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-								ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-								if (pItemText && pItemText->szCode) {
-									char* itemCode = pItemText->szCode;
-									// Move any remaining output items out
-									if (itemCode && strlen(recipe.outputCode) >= 3) {
-										if (itemCode[0] == recipe.outputCode[0] && itemCode[1] == recipe.outputCode[1] && itemCode[2] == recipe.outputCode[2]) {
-											// This is an output item, move it out
-											if (MoveItemToInventory(unit, pItem)) {
-												movedItem = true;
-												lastAutoCubeTick = currentTick;
-												return; // Wait for item to be moved
-											}
-										}
-									}
-								}
-							}
-						}
-						// If we moved an output item, wait for it
-						if (movedItem) {
-							return;
-						}
-						// If we couldn't move items, check if we have usable items in inventory
-						// Check if there are any input items in inventory with stat 508 < 100
-						bool hasUsableItems = false;
-						for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
-							if (pItem->pItemData->ItemLocation == STORAGE_INVENTORY) {
-								ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-								if (pItemText && pItemText->szCode) {
-									char* itemCode = pItemText->szCode;
-									if (itemCode && strlen(recipe.inputCode) >= 3) {
-										if (itemCode[0] == recipe.inputCode[0] && itemCode[1] == recipe.inputCode[1] && itemCode[2] == recipe.inputCode[2]) {
-											int stat508 = GetItemStat508(pItem);
-											if (stat508 >= 0 && stat508 < 100) {
-												hasUsableItems = true;
-												break;
-											}
-										}
-									}
-								}
-							}
-						}
-						if (!hasUsableItems) {
-							// No usable items, skip this recipe
-							// Reset stat 508 processing state when switching recipes
-							processingLowerStatItem = false;
-							waitingForLowerStatTransmute = false;
-							waitingForLowerStatOutputMove = false;
-							lowerStatTargetOutputs = 0;
-							lowerStatOutputsGenerated = 0;
-							highestStatValue = 0;
-							targetOutputCount = 0;
-							movedOutputCount = 0;
-							// Clear cube before moving to next recipe
-							int clearResult = ClearCube(unit);
-							if (clearResult == -1) {
-								isAutoCubing = false;
-								PrintText(Red, "Auto Cube: Stopped - inventory full (cannot move items from cube)");
-								return;
-							} else if (clearResult == 1) {
-								lastAutoCubeTick = currentTick;
-								return; // Wait for cube to clear
-							}
-							currentRecipeIdx++;
-							lastAutoCubeTick = currentTick;
-							return;
-						}
-						// We have usable items, clear cube and try again
-						int clearResult = ClearCube(unit);
-						if (clearResult == -1) {
-							isAutoCubing = false;
-							PrintText(Red, "Auto Cube: Stopped - inventory full (cannot move items from cube)");
-							return;
-						} else if (clearResult == 1) {
-							lastAutoCubeTick = currentTick;
-							return;
-						}
-						// Cube cleared, will try to move a usable item on next iteration
-						lastAutoCubeTick = currentTick;
-						return;
-					}
-					if (minMaxAllowed < maxAllowed) {
-						maxAllowed = minMaxAllowed;
-					}
-				}
-				
-				targetOutputCount = (availableOutput > maxAllowed) ? maxAllowed : availableOutput;
-				movedOutputCount = 0;
-			}
-			
-			// Check how many more we need to move
-			int stillNeeded = targetOutputCount - movedOutputCount;
-			if (stillNeeded > 0) {
-				// Move one output item at a time (wait for each to be placed before moving the next)
-				if (FindAndMoveItemsToCube(unit, recipe.outputCode, 1)) {
-					movedOutputCount++;
-					lastAutoCubeTick = currentTick;
-					return; // Wait for movement
-				} else {
-					// Can't move more items (cube full or no more items), clear non-recipe items and transmute
-					if (movedOutputCount > 0) {
-						int clearResult = ClearNonRecipeItemsFromCube(unit, recipe.inputCode, recipe.outputCode);
-						if (clearResult == -1) {
-							// Inventory full, stop auto-cubing
-							isAutoCubing = false;
-							PrintText(Red, "Auto Cube: Stopped - inventory full (cannot move items from cube)");
-							return;
-						} else if (clearResult == 1) {
-							clearingNonRecipeItems = true;
-							lastAutoCubeTick = currentTick;
-							return; // Wait for clearing to complete
-						}
-						// No non-recipe items to clear, transmute
-						D2CLIENT_Transmute();
-						targetOutputCount = 0;
-						movedOutputCount = 0;
-						clearingNonRecipeItems = false;
-						waitingForNormalTransmute = true; // Wait for transmute to complete
-						lastAutoCubeTick = currentTick;
-						return;
-					}
-				}
-			} else {
-				// We've moved all the output items we wanted, clear non-recipe items and transmute
-				int clearResult = ClearNonRecipeItemsFromCube(unit, recipe.inputCode, recipe.outputCode);
-				if (clearResult == -1) {
-					// Inventory full, stop auto-cubing
-					isAutoCubing = false;
-					PrintText(Red, "Auto Cube: Stopped - inventory full (cannot move items from cube)");
-					return;
-				} else if (clearResult == 1) {
-					clearingNonRecipeItems = true;
-					lastAutoCubeTick = currentTick;
-					return; // Wait for clearing to complete
-				}
-				// No non-recipe items to clear, transmute
-				D2CLIENT_Transmute();
-				targetOutputCount = 0;
-				movedOutputCount = 0;
-				clearingNonRecipeItems = false;
-				waitingForNormalTransmute = true; // Wait for transmute to complete
-				lastAutoCubeTick = currentTick;
-				return;
-			}
-		} else if (cubeInputCount > 0 && cubeOutputCount > 0) {
-			// Both are in cube - set target if not already set
-			if (targetOutputCount == 0) {
-				int availableOutput = currentOutputCount; // Items in inventory + cube (use updated count)
-				int maxAllowed = recipe.maxQuantity;
-				
-				// Check if this is a stat 508 limited recipe (@f4, @f8, @x2)
-				// Check ALL input items in cube to find the most restrictive limit
-				if (IsStat508LimitedRecipe(recipe.inputCode)) {
-					int minMaxAllowed = GetMinMaxAllowedFromCubeInputs(unit, recipe.inputCode, recipe.maxQuantity);
-					if (minMaxAllowed == 0) {
-						// All input items in cube have stat 508 = 100, cannot cube with any outputs
-						// After transmute, output items are consumed, so we need to move the input item with stat 100 out first
-						// First priority: move input items with stat 100 out (they block further processing)
-						bool movedItem = false;
-						for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
-							if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-								ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-								if (pItemText && pItemText->szCode) {
-									char* itemCode = pItemText->szCode;
-									if (itemCode && strlen(recipe.inputCode) >= 3) {
-										if (itemCode[0] == recipe.inputCode[0] && itemCode[1] == recipe.inputCode[1] && itemCode[2] == recipe.inputCode[2]) {
-											int stat508 = GetItemStat508(pItem);
-											if (stat508 >= 100) {
-												// This item has stat 508 = 100, move it out
-												if (MoveItemToInventory(unit, pItem)) {
-													movedItem = true;
-													lastAutoCubeTick = currentTick;
-													return; // Wait for item to be moved
-												}
-											}
-										}
-									}
-								}
-							}
-						}
-						// If we moved an input item, wait for it
-						if (movedItem) {
-							return;
-						}
-						// No input items with stat 100 to move, check for any remaining output items (shouldn't happen after transmute, but handle it)
-						for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
-							if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-								ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-								if (pItemText && pItemText->szCode) {
-									char* itemCode = pItemText->szCode;
-									// Move any remaining output items out
-									if (itemCode && strlen(recipe.outputCode) >= 3) {
-										if (itemCode[0] == recipe.outputCode[0] && itemCode[1] == recipe.outputCode[1] && itemCode[2] == recipe.outputCode[2]) {
-											// This is an output item, move it out
-											if (MoveItemToInventory(unit, pItem)) {
-												movedItem = true;
-												lastAutoCubeTick = currentTick;
-												return; // Wait for item to be moved
-											}
-										}
-									}
-								}
-							}
-						}
-						// If we moved an output item, wait for it
-						if (movedItem) {
-							return;
-						}
-						// If we couldn't move items, check if we have usable items in inventory
-						// Check if there are any input items in inventory with stat 508 < 100
-						bool hasUsableItems = false;
-						for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
-							if (pItem->pItemData->ItemLocation == STORAGE_INVENTORY) {
-								ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-								if (pItemText && pItemText->szCode) {
-									char* itemCode = pItemText->szCode;
-									if (itemCode && strlen(recipe.inputCode) >= 3) {
-										if (itemCode[0] == recipe.inputCode[0] && itemCode[1] == recipe.inputCode[1] && itemCode[2] == recipe.inputCode[2]) {
-											int stat508 = GetItemStat508(pItem);
-											if (stat508 >= 0 && stat508 < 100) {
-												hasUsableItems = true;
-												break;
-											}
-										}
-									}
-								}
-							}
-						}
-						if (!hasUsableItems) {
-							// No usable items, skip this recipe
-							// Reset stat 508 processing state when switching recipes
-							processingLowerStatItem = false;
-							waitingForLowerStatTransmute = false;
-							waitingForLowerStatOutputMove = false;
-							lowerStatTargetOutputs = 0;
-							lowerStatOutputsGenerated = 0;
-							highestStatValue = 0;
-							targetOutputCount = 0;
-							movedOutputCount = 0;
-							// Clear cube before moving to next recipe
-							int clearResult = ClearCube(unit);
-							if (clearResult == -1) {
-								isAutoCubing = false;
-								PrintText(Red, "Auto Cube: Stopped - inventory full (cannot move items from cube)");
-								return;
-							} else if (clearResult == 1) {
-								lastAutoCubeTick = currentTick;
-								return; // Wait for cube to clear
-							}
-							currentRecipeIdx++;
-							lastAutoCubeTick = currentTick;
-							return;
-						}
-						// We have usable items, clear cube and try again
-						int clearResult = ClearCube(unit);
-						if (clearResult == -1) {
-							isAutoCubing = false;
-							PrintText(Red, "Auto Cube: Stopped - inventory full (cannot move items from cube)");
-							return;
-						} else if (clearResult == 1) {
-							lastAutoCubeTick = currentTick;
-							return;
-						}
-						// Cube cleared, will try to move a usable item on next iteration
-						lastAutoCubeTick = currentTick;
-						return;
-					}
-					if (minMaxAllowed < maxAllowed) {
-						maxAllowed = minMaxAllowed;
-					}
-				}
-				
-				targetOutputCount = (availableOutput > maxAllowed) ? maxAllowed : availableOutput;
-				movedOutputCount = cubeOutputCount; // We already have some in cube
-			}
-			
-			// Check if we've finished moving all output items
-			if (targetOutputCount > 0 && movedOutputCount < targetOutputCount) {
-				// Still need to move more output items
-				int stillNeeded = targetOutputCount - movedOutputCount;
-				if (stillNeeded > 0) {
-					// Move one output item at a time (wait for each to be placed before moving the next)
-					if (FindAndMoveItemsToCube(unit, recipe.outputCode, 1)) {
-						movedOutputCount++;
-						lastAutoCubeTick = currentTick;
-						return; // Wait for movement
-					}
-				}
-			}
-			
-			// We have input and output in cube - clear non-recipe items and transmute only if we've finished moving items
-			if (movedOutputCount >= targetOutputCount) {
-				int clearResult = ClearNonRecipeItemsFromCube(unit, recipe.inputCode, recipe.outputCode);
-				if (clearResult == -1) {
-					// Inventory full, stop auto-cubing
-					isAutoCubing = false;
-					PrintText(Red, "Auto Cube: Stopped - inventory full (cannot move items from cube)");
-					return;
-				} else if (clearResult == 1) {
-					clearingNonRecipeItems = true;
-					lastAutoCubeTick = currentTick;
-					return; // Wait for clearing to complete
-				}
-				// No non-recipe items to clear, transmute
-				D2CLIENT_Transmute();
-				targetOutputCount = 0;
-				movedOutputCount = 0;
-				clearingNonRecipeItems = false;
-				waitingForNormalTransmute = true; // Wait for transmute to complete
-				lastAutoCubeTick = currentTick;
-				return;
-			}
-		} else {
-			// Cube has wrong items or partial state, clear it and reset
-			int clearResult = ClearCube(unit);
-			if (clearResult == -1) {
-				// Inventory full, stop auto-cubing
-				isAutoCubing = false;
-				PrintText(Red, "Auto Cube: Stopped - inventory full (cannot move items from cube)");
-				return;
-			} else if (clearResult == 1) {
-				// Item is being moved, wait for it
-				lastAutoCubeTick = currentTick;
-				return;
-			}
-			targetOutputCount = 0;
-			movedOutputCount = 0;
+	// Combine any remaining stacks after essence cubing, then finish.
+	if (autoStackItems.state) {
+		if (ProcessAutoStackStep()) {
 			lastAutoCubeTick = currentTick;
 			return;
 		}
 	}
-	
-	// Logic: If we DON'T have USABLE input but have multiple output items
-	// Need at least 2 output items to create the input (2 output items -> 1 input item)
-	// This includes the case where all input items have stat 508 = 100 (usableInputCount == 0)
-	if (usableInputCount == 0 && outputCount >= 2) {
-		// Skip output-only recipe if it has failed multiple times (recipe might not work output-only)
-		if (failedOutputOnlyCount >= 2) {
-			// This recipe doesn't work with output-only, skip to next recipe
-			// Reset stat 508 processing state when switching recipes
-			processingLowerStatItem = false;
-			waitingForLowerStatTransmute = false;
-			waitingForLowerStatOutputMove = false;
-			lowerStatTargetOutputs = 0;
-			lowerStatOutputsGenerated = 0;
-			highestStatValue = 0;
-			targetOutputCount = 0;
-			movedOutputCount = 0;
-			// Clear cube before moving to next recipe
-			int clearResult = ClearCube(unit);
-			if (clearResult == -1) {
-				isAutoCubing = false;
-				PrintText(Red, "Auto Cube: Stopped - inventory full (cannot move items from cube)");
-				return;
-			} else if (clearResult == 1) {
-				lastAutoCubeTick = currentTick;
-				return; // Wait for cube to clear
-			}
-			currentRecipeIdx++;
-			lastAutoCubeTick = currentTick;
-			return;
-		}
-		
-		// Mark that we have items to process
-		progressMadeThisCycle = true;
-		if (cubeOutputCount == 0) {
-			// Set target if not already set - only cube 2 output items to create the input
-			if (targetOutputCount == 0) {
-				targetOutputCount = 2; // Always need exactly 2 output items to create 1 input
-				movedOutputCount = 0;
-			}
-			
-			// Move one output item at a time until we reach the target
-			int stillNeeded = targetOutputCount - movedOutputCount;
-			if (stillNeeded > 0) {
-				if (FindAndMoveItemsToCube(unit, recipe.outputCode, 1)) {
-					movedOutputCount++;
-					lastAutoCubeTick = currentTick;
-					return;
-				} else {
-					// Can't move more, clear non-recipe items and transmute what we have
-					if (movedOutputCount > 0) {
-						int clearResult = ClearNonRecipeItemsFromCube(unit, recipe.inputCode, recipe.outputCode);
-						if (clearResult == -1) {
-							// Inventory full, stop auto-cubing
-							isAutoCubing = false;
-							PrintText(Red, "Auto Cube: Stopped - inventory full (cannot move items from cube)");
-							return;
-						} else if (clearResult == 1) {
-							clearingNonRecipeItems = true;
-							lastAutoCubeTick = currentTick;
-							return; // Wait for clearing to complete
-						}
-						// No non-recipe items to clear, transmute (this creates the input item)
-						D2CLIENT_Transmute();
-						targetOutputCount = 0;
-						movedOutputCount = 0;
-						clearingNonRecipeItems = false;
-						waitingForOutputTransmute = true; // Wait for input item to appear from transmute
-						lastAutoCubeTick = currentTick;
-						return;
-					}
-				}
-			} else {
-				// We've moved all the output items we wanted, clear non-recipe items and transmute
-				int clearResult = ClearNonRecipeItemsFromCube(unit, recipe.inputCode, recipe.outputCode);
-				if (clearResult == -1) {
-					// Inventory full, stop auto-cubing
-					isAutoCubing = false;
-					PrintText(Red, "Auto Cube: Stopped - inventory full (cannot move items from cube)");
-					return;
-				} else if (clearResult == 1) {
-					clearingNonRecipeItems = true;
-					lastAutoCubeTick = currentTick;
-					return; // Wait for clearing to complete
-				}
-				// No non-recipe items to clear, transmute (this creates the input item)
-				D2CLIENT_Transmute();
-				targetOutputCount = 0;
-				movedOutputCount = 0;
-				clearingNonRecipeItems = false;
-				waitingForOutputTransmute = true; // Wait for input item to appear from transmute
-				lastAutoCubeTick = currentTick;
-				return;
-			}
-		} else {
-			// Output is in cube - check if we've finished moving all items
-			// Re-count to see how many items are actually in cube now
-			int actualCubeOutputCount = CountItemsInCube(unit, recipe.outputCode);
-			
-			// If target not set yet, set it now (in case we got here from a different path)
-			if (targetOutputCount == 0) {
-				targetOutputCount = (currentOutputCount > 2) ? 2 : currentOutputCount;
-			}
-			
-			// Update movedOutputCount to reflect what's actually in the cube
-			// This handles cases where items were moved but counter wasn't updated
-			if (actualCubeOutputCount > movedOutputCount) {
-				movedOutputCount = actualCubeOutputCount;
-			}
-			
-			// Check if we still need to move more items
-			if (targetOutputCount > 0 && movedOutputCount < targetOutputCount) {
-				// Still need to move more - make sure previous move completed first
-				if (ActivePacket.startTicks > 0) {
-					// Still waiting for previous item to finish moving
-					return;
-				}
-				
-				int stillNeeded = targetOutputCount - movedOutputCount;
-				if (stillNeeded > 0) {
-					// Try to move one more output item
-					if (FindAndMoveItemsToCube(unit, recipe.outputCode, 1)) {
-						movedOutputCount++;
-						lastAutoCubeTick = currentTick;
-						return; // Wait for movement
-					} else {
-						// Can't move more (no more items or cube full), transmute what we have
-						if (movedOutputCount >= 1) {
-							int clearResult = ClearNonRecipeItemsFromCube(unit, recipe.inputCode, recipe.outputCode);
-							if (clearResult == -1) {
-								// Inventory full, stop auto-cubing
-								isAutoCubing = false;
-								PrintText(Red, "Auto Cube: Stopped - inventory full (cannot move items from cube)");
-								return;
-							} else if (clearResult == 1) {
-								clearingNonRecipeItems = true;
-								lastAutoCubeTick = currentTick;
-								return; // Wait for clearing to complete
-							}
-							// No non-recipe items to clear, transmute (this creates the input item)
-							D2CLIENT_Transmute();
-							targetOutputCount = 0;
-							movedOutputCount = 0;
-							clearingNonRecipeItems = false;
-							waitingForOutputTransmute = true; // Wait for input item to appear from transmute
-							lastAutoCubeTick = currentTick;
-							return;
-						}
-					}
-				}
-			}
-			
-			// We've moved all the items we wanted, clear non-recipe items and transmute
-			if (targetOutputCount > 0 && movedOutputCount >= targetOutputCount) {
-				// Make sure previous move completed first
-				if (ActivePacket.startTicks > 0) {
-					return; // Still waiting for previous item to finish moving
-				}
-				
-				int clearResult = ClearNonRecipeItemsFromCube(unit, recipe.inputCode, recipe.outputCode);
-				if (clearResult == -1) {
-					// Inventory full, stop auto-cubing
-					isAutoCubing = false;
-					PrintText(Red, "Auto Cube: Stopped - inventory full (cannot move items from cube)");
-					return;
-				} else if (clearResult == 1) {
-					clearingNonRecipeItems = true;
-					lastAutoCubeTick = currentTick;
-					return; // Wait for clearing to complete
-				}
-				// No non-recipe items to clear, transmute (this creates the input item)
-				D2CLIENT_Transmute();
-				targetOutputCount = 0;
-				movedOutputCount = 0;
-				clearingNonRecipeItems = false;
-				waitingForOutputTransmute = true; // We just transmuted output-only, wait for input to appear
-				lastAutoCubeTick = currentTick;
-				return;
-			}
-			
-			// Fallback: if we have items in cube but logic isn't working, transmute with what we have
-			if (actualCubeOutputCount >= 1) {
-				if (ActivePacket.startTicks > 0) {
-					return; // Still waiting for previous item to finish moving
-				}
-				int clearResult = ClearNonRecipeItemsFromCube(unit, recipe.inputCode, recipe.outputCode);
-				if (clearResult == -1) {
-					// Inventory full, stop auto-cubing
-					isAutoCubing = false;
-					PrintText(Red, "Auto Cube: Stopped - inventory full (cannot move items from cube)");
-					return;
-				} else if (clearResult == 1) {
-					clearingNonRecipeItems = true;
-					lastAutoCubeTick = currentTick;
-					return;
-				}
-				D2CLIENT_Transmute();
-				targetOutputCount = 0;
-				movedOutputCount = 0;
-				clearingNonRecipeItems = false;
-				waitingForOutputTransmute = true;
-				lastAutoCubeTick = currentTick;
-				return;
-			}
-		}
-	}
-	
-	// If we just transmuted output-only and are waiting for input to appear, check if input is now available
-	if (waitingForOutputTransmute) {
-		// Re-count items after transmute (the transmute should have created the input item)
-		inputCount = CountItemsInInventoryAndCube(unit, recipe.inputCode);
-		outputCount = CountItemsInInventoryAndCube(unit, recipe.outputCode);
-		
-		// Check what's currently in the cube
-		int cubeInputCount = CountItemsInCube(unit, recipe.inputCode);
-		int cubeOutputCount = CountItemsInCube(unit, recipe.outputCode);
-		
-		// Recalculate usable input count for stat 508 limited recipes
-		int usableInputCount = inputCount;
-		if (IsStat508LimitedRecipe(recipe.inputCode) && inputCount > 0) {
-			usableInputCount = 0;
-			for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
-				if (pItem->pItemData->ItemLocation == STORAGE_INVENTORY || pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-					ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-					if (pItemText && pItemText->szCode) {
-						char* itemCode = pItemText->szCode;
-						if (itemCode && strlen(recipe.inputCode) >= 3) {
-							if (itemCode[0] == recipe.inputCode[0] && itemCode[1] == recipe.inputCode[1] && itemCode[2] == recipe.inputCode[2]) {
-								int stat508 = GetItemStat508(pItem);
-								if (stat508 >= 0 && stat508 < 100) {
-									usableInputCount++;
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-		
-			// If cube is empty and we have no input, transmute might have failed or consumed items differently
-			// Give it a bit more time, but if too much time passes, give up
-			if (cubeInputCount == 0 && cubeOutputCount == 0 && usableInputCount == 0 && outputCount > 0) {
-				// Cube is empty but transmute didn't produce input - might need more items or recipe doesn't work output-only
-				// Wait a bit, but not too long
-				if (currentTick - lastAutoCubeTick > 3000) {
-					// Give up - this recipe doesn't work with output-only
-					waitingForOutputTransmute = false;
-					// Reset stat 508 processing state when switching recipes
-					processingLowerStatItem = false;
-					waitingForLowerStatTransmute = false;
-					waitingForLowerStatOutputMove = false;
-					lowerStatTargetOutputs = 0;
-					lowerStatOutputsGenerated = 0;
-					highestStatValue = 0;
-					targetOutputCount = 0;
-					movedOutputCount = 0;
-					failedOutputOnlyCount++; // Track that output-only failed for this recipe
-					// Clear cube before moving to next recipe
-					int clearResult = ClearCube(unit);
-					if (clearResult == -1) {
-						isAutoCubing = false;
-						PrintText(Red, "Auto Cube: Stopped - inventory full (cannot move items from cube)");
-						return;
-					} else if (clearResult == 1) {
-						lastAutoCubeTick = currentTick;
-						return; // Wait for cube to clear
-					}
-					// Move to next recipe
-					currentRecipeIdx++;
-					lastAutoCubeTick = currentTick;
-					return;
-				}
-				return; // Still waiting for items to appear
-			}
-		
-		// For stat 508 limited recipes, check if the input item in cube has reached stat 508 = 100
-		// If so, move it out, then clear any remaining output items
-		if (IsStat508LimitedRecipe(recipe.inputCode) && cubeInputCount > 0) {
-			bool movedStat100Item = false;
-			for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData ? pItem->pItemData->pNextInvItem : NULL) {
-				if (!pItem->pItemData) continue;
-				if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-					ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-					if (pItemText && pItemText->szCode) {
-						char* itemCode = pItemText->szCode;
-						if (itemCode && strlen(recipe.inputCode) >= 3) {
-							if (itemCode[0] == recipe.inputCode[0] && itemCode[1] == recipe.inputCode[1] && itemCode[2] == recipe.inputCode[2]) {
-								int stat508 = GetItemStat508(pItem);
-								if (stat508 >= 100) {
-									// This item has stat 508 = 100, move it out
-									movedStat100Item = true;
-									if (MoveItemToInventory(unit, pItem)) {
-										waitingForOutputTransmute = false;
-										lastAutoCubeTick = currentTick;
-										return; // Wait for item to be moved
-									} else {
-										// Inventory full, stop auto-cubing
-										isAutoCubing = false;
-										waitingForOutputTransmute = false;
-										PrintText(Red, "Auto Cube: Stopped - inventory full (cannot move items from cube)");
-										return;
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-			// If we moved a stat 100 item, check for remaining output items on next iteration
-			if (movedStat100Item) {
-				return;
-			}
-			
-			// Check for any remaining output items in cube (shouldn't happen after transmute, but clear them)
-			if (cubeOutputCount > 0) {
-				for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData ? pItem->pItemData->pNextInvItem : NULL) {
-					if (!pItem->pItemData) continue;
-					if (pItem->pItemData->ItemLocation == STORAGE_CUBE) {
-						ItemText* pItemText = D2COMMON_GetItemText(pItem->dwTxtFileNo);
-						if (pItemText && pItemText->szCode) {
-							char* itemCode = pItemText->szCode;
-							if (itemCode && strlen(recipe.outputCode) >= 3) {
-								if (itemCode[0] == recipe.outputCode[0] && itemCode[1] == recipe.outputCode[1] && itemCode[2] == recipe.outputCode[2]) {
-									// This is an output item, move it out
-									if (MoveItemToInventory(unit, pItem)) {
-										waitingForOutputTransmute = false;
-										lastAutoCubeTick = currentTick;
-										return; // Wait for item to be moved
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-		
-		// If we now have both usable input and output, clear cube and switch to input+output recipe mode
-		if (usableInputCount > 0 && outputCount > 0) {
-			waitingForOutputTransmute = false;
-			targetOutputCount = 0; // Reset so we recalculate
-			movedOutputCount = 0;
-			// Clear cube to start fresh with input+output recipe
-			if (cubeInputCount > 0 || cubeOutputCount > 0) {
-				int clearResult = ClearCube(unit);
-				if (clearResult == -1) {
-					// Inventory full, stop auto-cubing
-					isAutoCubing = false;
-					PrintText(Red, "Auto Cube: Stopped - inventory full (cannot move items from cube)");
-					return;
-				} else if (clearResult == 1) {
-					lastAutoCubeTick = currentTick;
-					return; // Wait for cube to clear
-				}
-			}
-			// Cube is already clear, continue to input+output recipe logic below (will restart at top of function)
-		} else if (inputCount > 0 && outputCount == 0) {
-			// We got input but no more output, we're done with this recipe
-			waitingForOutputTransmute = false;
-			targetOutputCount = 0;
-			movedOutputCount = 0;
-			// Clear cube before moving to next recipe
-			if (cubeInputCount > 0 || cubeOutputCount > 0) {
-				int clearResult = ClearCube(unit);
-				if (clearResult == -1) {
-					// Inventory full, stop auto-cubing
-					isAutoCubing = false;
-					PrintText(Red, "Auto Cube: Stopped - inventory full (cannot move items from cube)");
-					return;
-				} else if (clearResult == 1) {
-					lastAutoCubeTick = currentTick;
-					return; // Wait for cube to clear
-				}
-			}
-			// Move to next recipe
-			// Reset stat 508 processing state when switching recipes
-			processingLowerStatItem = false;
-			waitingForLowerStatTransmute = false;
-			waitingForLowerStatOutputMove = false;
-			lowerStatTargetOutputs = 0;
-			lowerStatOutputsGenerated = 0;
-			highestStatValue = 0;
-			targetOutputCount = 0;
-			movedOutputCount = 0;
-			currentRecipeIdx++;
-			lastAutoCubeTick = currentTick;
-			return;
-		} else {
-			// Still waiting for input to appear (might need more time for transmute to complete)
-			// Only wait a reasonable amount of time (3 seconds max)
-			if (currentTick - lastAutoCubeTick > 3000) {
-				// Timeout - input didn't appear after transmuting output-only
-				// This means the transmute either failed or requires more items
-				// Clear the cube and move to next recipe
-				waitingForOutputTransmute = false;
-				targetOutputCount = 0;
-				movedOutputCount = 0;
-				failedOutputOnlyCount++; // Track that output-only failed for this recipe
-				
-				// Clear cube - transmute might have left items in cube
-				if (cubeInputCount > 0 || cubeOutputCount > 0) {
-					int clearResult = ClearCube(unit);
-					if (clearResult == -1) {
-						// Inventory full, stop auto-cubing
-						isAutoCubing = false;
-						PrintText(Red, "Auto Cube: Stopped - inventory full (cannot move items from cube)");
-						return;
-					} else if (clearResult == 1) {
-						lastAutoCubeTick = currentTick;
-						return; // Wait for cube to clear
-					}
-				}
-				
-				// Move to next recipe
-				// Reset stat 508 processing state when switching recipes
-				processingLowerStatItem = false;
-				waitingForLowerStatTransmute = false;
-				waitingForLowerStatOutputMove = false;
-				lowerStatTargetOutputs = 0;
-				lowerStatOutputsGenerated = 0;
-				highestStatValue = 0;
-				targetOutputCount = 0;
-				movedOutputCount = 0;
-				currentRecipeIdx++;
-				lastAutoCubeTick = currentTick;
-				return;
-			}
-			return; // Still waiting
-		}
-	}
-	
-	// No items for this recipe, move to next and reset counters
-	// Reset stat 508 processing state when switching recipes
-	processingLowerStatItem = false;
-	waitingForLowerStatTransmute = false;
-	waitingForLowerStatOutputMove = false;
-	lowerStatTargetOutputs = 0;
-	lowerStatOutputsGenerated = 0;
-	highestStatValue = 0;
-	targetOutputCount = 0;
-	movedOutputCount = 0;
-	// Clear cube before moving to next recipe
-	int clearResult = ClearCube(unit);
-	if (clearResult == -1) {
-		isAutoCubing = false;
-		PrintText(Red, "Auto Cube: Stopped - inventory full (cannot move items from cube)");
-		return;
-	} else if (clearResult == 1) {
-		lastAutoCubeTick = currentTick;
-		return; // Wait for cube to clear
-	}
-	currentRecipeIdx++;
-	lastAutoCubeTick = currentTick;
+
+	isAutoCubing = false;
+	PrintText(White, "Auto Cube: Finished");
 }
 
 void ItemMover::OnGameExit() {
@@ -5753,6 +3157,7 @@ void ItemMover::OnGameExit() {
 	ActivePacket.y = 0;
 	ActivePacket.startTicks = 0;
 	ActivePacket.destination = 0;
+	stackDropOnItem = false;
 	goldPickupQueue.clear();
 	previousHP = 0;
 	damageTakenTick = 0;

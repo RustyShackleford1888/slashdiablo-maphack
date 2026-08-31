@@ -115,7 +115,7 @@ Mustache[stash]: {{#this}}* {{>item}}\n\n{{/this}}
 
 ## ItemMover — Auto Cube system
 
-**What:** Automated horadric cube workflows — stacking, gem/rune cubing, unique/set dusting, batch stash processing.
+**What:** Automated horadric cube workflows — stack combining, gem/rune cubing, unique/set dusting.
 
 **How to use:**
 
@@ -125,8 +125,8 @@ Mustache[stash]: {{#this}}* {{>item}}\n\n{{/this}}
   * **Auto Stack Items**
   * **Auto Essence Gems / Runes / Uniques** (+ tier dropdowns)
   * **Auto Essence Messages** (HCC/misc tier)
-* **Normal mode:** Open cube → press Auto Cube key → runs recipes
-* **Stash batch mode:** Open stash (with items to process) → press Auto Cube key → moves items from stash → cubes → restores to stash
+* **Cube open:** press Auto Cube key → combines stacks (if enabled), then runs essence recipes
+* **Stash open:** press Auto Cube key → combines stacks in stash/inventory; opens the cube only if essence cubing is enabled
 * Press key again or click elsewhere to stop; chat shows progress/errors
 
 Also included in this release:
@@ -136,13 +136,12 @@ Also included in this release:
 
 Auto Cube capabilities:
 
-* Automatically cube multiple stacks of the same item into one (or more if you have more than 100)
-* Automatically stack stackable items into an existing stack when available
+* Combine stackable items by dropping one stack onto another of the same item (up to 500 per stack)
+* With stash and inventory open, inventory stacks are dropped onto matching stacks in the stash
 * Automatically cube gems by tier based on what you choose to be dusted
 * Automatically cube runes based on what you choose to be automatically dusted
 * Automatically dust uniques/sets based on tier (`BH.cfg`) based on your preference
 * Automatically cube messages based on tier (`BH.cfg`) based on your preference
-* Automatically pull and restore stacks from stash needed for cubing recipes when Auto Cube is used with stash open
 * All of these features can be turned on or off in the Interaction tab of the menu
 
 ## BreakpointsDisplay
