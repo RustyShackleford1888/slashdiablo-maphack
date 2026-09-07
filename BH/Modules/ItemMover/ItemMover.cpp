@@ -103,6 +103,7 @@ bool ItemMover::LoadInventory(UnitAny *unit, int source, int sourceX, int source
 
 	unsigned int itemId = 0;
 	BYTE itemXSize, itemYSize;
+	UnitAny* movingItem = NULL;
 	bool cubeInInventory = false, cubeAnywhere = false;
 	for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
 		int *p, width;
@@ -149,6 +150,7 @@ bool ItemMover::LoadInventory(UnitAny *unit, int source, int sourceX, int source
 					itemId = pItem->dwUnitId;
 					itemXSize = xSize;
 					itemYSize = ySize;
+					movingItem = pItem;
 				}
 			}
 		}
@@ -171,7 +173,32 @@ bool ItemMover::LoadInventory(UnitAny *unit, int source, int sourceX, int source
 
 	// Find a spot for the item in the destination container
 	if (itemId > 0) {
-		returnValue = FindDestination(destination, itemId, itemXSize, itemYSize);
+		if (destination != STORAGE_NULL && movingItem && IsAutoStackableItem(movingItem)) {
+			UnitAny* target = FindMatchingStackInLocation(unit, movingItem, destination);
+			if (target && target->pObjectPath && target->pItemData) {
+				Lock();
+				if (ActivePacket.startTicks == 0) {
+					ActivePacket.itemId = itemId;
+					ActivePacket.x = target->pObjectPath->dwPosX;
+					ActivePacket.y = target->pObjectPath->dwPosY;
+					ActivePacket.startTicks = BHGetTickCount();
+					ActivePacket.destination = destination;
+					Unlock();
+					stackTargetItemId = target->dwUnitId;
+					stackDropOnItem = true;
+					clickStackDestination = destination;
+					lastClickStackTick = 0;
+					returnValue = true;
+				} else {
+					Unlock();
+				}
+			}
+		}
+		if (!returnValue) {
+			stackDropOnItem = false;
+			clickStackDestination = 0;
+			returnValue = FindDestination(destination, itemId, itemXSize, itemYSize);
+		}
 	}
 
 	FirstInit = true;
@@ -303,7 +330,7 @@ void ItemMover::OnLeftClick(bool up, unsigned int x, unsigned int y, bool* block
 	
 	// Don't allow movement if there's already an item being moved (same check as auto-cube uses)
 	Lock();
-	bool itemInProgress = (ActivePacket.startTicks > 0);
+	bool itemInProgress = (ActivePacket.startTicks > 0 || clickStackDestination != 0);
 	Unlock();
 	
 	if (up || !unit || !shiftState || D2CLIENT_GetCursorItem()>0 ||
@@ -371,7 +398,7 @@ void ItemMover::OnRightClick(bool up, unsigned int x, unsigned int y, bool* bloc
 	
 	// Don't allow movement if there's already an item being moved (same check as auto-cube uses)
 	Lock();
-	bool itemInProgress = (ActivePacket.startTicks > 0);
+	bool itemInProgress = (ActivePacket.startTicks > 0 || clickStackDestination != 0);
 	Unlock();
 	
 	if (up || !unit || !(shiftState || ctrlState) || !Init() || itemInProgress) {
@@ -447,6 +474,8 @@ void ItemMover::OnLoad() {
 	new Drawing::Keyhook(settingsTab, x, (y += 15), &HealKey,     "Use Healing Potion:    ");
 	new Drawing::Keyhook(settingsTab, x, (y += 15), &ManaKey,     "Use Mana Potion:       ");
 	new Drawing::Keyhook(settingsTab, x, (y += 15), &JuvKey,      "Use Rejuv Potion:      ");
+	colored_text = new Drawing::Texthook(settingsTab, x, (y += 15), "Shift+Heal/Rejuv: give potion to merc");
+	colored_text->SetColor(Gold);
 	
 	// Second column
 	new Drawing::Keyhook(settingsTab, x2, (y2 += 15), &TransmuteKey,"Cube Transmute:        ");
@@ -567,6 +596,8 @@ void ItemMover::OnLoop() {
 		} else {
 			ProcessAutoCubeStep();
 		}
+	} else {
+		ProcessClickStackStep();
 	}
 	
 	if (!autoPickupGold.state) {
@@ -734,36 +765,43 @@ void ItemMover::OnKey(bool up, BYTE key, LPARAM lParam, bool* block)  {
 	if (!up && (key == HealKey || key == ManaKey || key == JuvKey)) {
 		int idx = key == JuvKey ? 2 : key == ManaKey ? 1 : 0;
 		std::string startChars = POTIONS[idx];
+		bool shiftState = ((GetKeyState(VK_LSHIFT) & 0x80) || (GetKeyState(VK_RSHIFT) & 0x80));
+		bool giveToMerc = shiftState && (key == HealKey || key == JuvKey) && D2CLIENT_GetMercUnit() != NULL;
 		char minPotion = 127;
+		char minBeltPotion = 127;
 		DWORD minItemId = 0;
+		DWORD minBeltItemId = 0;
 		bool isBelt = false;
 		for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
 			if (pItem->pItemData->ItemLocation == STORAGE_INVENTORY ||
 				pItem->pItemData->ItemLocation == STORAGE_NULL && pItem->pItemData->NodePage == NODEPAGE_BELTSLOTS) {
 				char* code = D2COMMON_GetItemText(pItem->dwTxtFileNo)->szCode;
-				if (code[0] == startChars[0] && code[1] == startChars[1] && code[2] < minPotion) {
-					minPotion = code[2];
-					minItemId = pItem->dwUnitId;
-					isBelt = pItem->pItemData->NodePage == NODEPAGE_BELTSLOTS;
+				if (code[0] == startChars[0] && code[1] == startChars[1]) {
+					bool itemIsBelt = pItem->pItemData->NodePage == NODEPAGE_BELTSLOTS;
+					if (code[2] < minPotion) {
+						minPotion = code[2];
+						minItemId = pItem->dwUnitId;
+						isBelt = itemIsBelt;
+					}
+					if (itemIsBelt && code[2] < minBeltPotion) {
+						minBeltPotion = code[2];
+						minBeltItemId = pItem->dwUnitId;
+					}
 				}
 			}
-			//char *code = D2COMMON_GetItemText(pItem->dwTxtFileNo)->szCode;
-			//if (code[0] == 'b' && code[1] == 'o' && code[2] == 'x') {
-			//	// Hack to pick up cube to fix cube-in-cube problem
-			//	BYTE PacketDataCube[5] = {0x19,0,0,0,0};
-			//	*reinterpret_cast<int*>(PacketDataCube + 1) = pItem->dwUnitId;
-			//	D2NET_SendPacket(5, 1, PacketDataCube);
-			//	break;
-			//}
+		}
+		if (giveToMerc && minBeltItemId > 0) {
+			minItemId = minBeltItemId;
+			isBelt = true;
 		}
 		if (minItemId > 0) {
-			if (isBelt){
+			if (isBelt || giveToMerc) {
 				BYTE PacketData[13] = { 0x26, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 				*reinterpret_cast<int*>(PacketData + 1) = minItemId;
+				*reinterpret_cast<int*>(PacketData + 5) = giveToMerc ? 1 : 0;
 				D2NET_SendPacket(13, 0, PacketData);
 			}
 			else{
-				//PrintText(1, "Sending packet %d, %d, %d", minItemId, unit->pPath->xPos, unit->pPath->yPos);
 				BYTE PacketData[13] = { 0x20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 				*reinterpret_cast<int*>(PacketData + 1) = minItemId;
 				*reinterpret_cast<WORD*>(PacketData + 5) = (WORD)unit->pPath->xPos;
@@ -1543,6 +1581,135 @@ bool ItemMover::IsAutoStackableItem(UnitAny* item) {
 		return false;
 	}
 	return IsKnownStackableCode(txt->szCode);
+}
+
+UnitAny* ItemMover::FindMatchingStackInLocation(UnitAny* unit, UnitAny* source, int destLocation) {
+	if (!unit || !unit->pInventory || !source) {
+		return NULL;
+	}
+	ItemText* sourceText = D2COMMON_GetItemText(source->dwTxtFileNo);
+	if (!sourceText || !sourceText->szCode || !IsKnownStackableCode(sourceText->szCode)) {
+		return NULL;
+	}
+
+	UnitAny* best = NULL;
+	int bestAmount = -1;
+	for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
+		if (!pItem || pItem == source || !pItem->pItemData || pItem->dwUnitId == source->dwUnitId) {
+			continue;
+		}
+		if (pItem->pItemData->ItemLocation != destLocation) {
+			continue;
+		}
+		ItemText* txt = D2COMMON_GetItemText(pItem->dwTxtFileNo);
+		if (!txt || !txt->szCode ||
+		    txt->szCode[0] != sourceText->szCode[0] ||
+		    txt->szCode[1] != sourceText->szCode[1] ||
+		    txt->szCode[2] != sourceText->szCode[2]) {
+			continue;
+		}
+		int amount = GetItemStackAmount(pItem);
+		if (amount < 1 || amount >= AUTO_STACK_MAX) {
+			continue;
+		}
+		if (amount > bestAmount) {
+			bestAmount = amount;
+			best = pItem;
+		}
+	}
+	return best;
+}
+
+void ItemMover::ProcessClickStackStep() {
+	if (clickStackDestination == 0 && !stackDropOnItem) {
+		return;
+	}
+
+	UnitAny* unit = D2CLIENT_GetPlayerUnit();
+	if (!unit || !unit->pInventory) {
+		stackDropOnItem = false;
+		clickStackDestination = 0;
+		return;
+	}
+
+	ULONGLONG currentTick = BHGetTickCount();
+	Lock();
+	bool busy = (ActivePacket.startTicks > 0);
+	ULONGLONG packetStart = ActivePacket.startTicks;
+	DWORD packetItemId = ActivePacket.itemId;
+	Unlock();
+
+	UnitAny* cursorItem = D2CLIENT_GetCursorItem();
+
+	if (busy) {
+		if (cursorItem != NULL && cursorItem->dwUnitId == packetItemId && stackDropOnItem) {
+			if ((currentTick - packetStart) < 50) {
+				return;
+			}
+			DWORD targetId = stackTargetItemId;
+			stackDropOnItem = false;
+			lastClickStackTick = currentTick;
+			StackCursorItemOnTarget(cursorItem->dwUnitId, targetId);
+			Lock();
+			ActivePacket.itemId = 0;
+			ActivePacket.x = 0;
+			ActivePacket.y = 0;
+			ActivePacket.startTicks = 0;
+			ActivePacket.destination = 0;
+			Unlock();
+			return;
+		}
+		if ((currentTick - packetStart) > 3000) {
+			Lock();
+			ActivePacket.itemId = 0;
+			ActivePacket.x = 0;
+			ActivePacket.y = 0;
+			ActivePacket.startTicks = 0;
+			ActivePacket.destination = 0;
+			Unlock();
+			stackDropOnItem = false;
+			clickStackDestination = 0;
+		}
+		return;
+	}
+
+	if (clickStackDestination == 0) {
+		return;
+	}
+
+	if (cursorItem == NULL) {
+		clickStackDestination = 0;
+		return;
+	}
+
+	if (lastClickStackTick != 0 && (currentTick - lastClickStackTick) < 150) {
+		return;
+	}
+
+	if (!Init()) {
+		return;
+	}
+
+	UnitAny* dropTarget = FindMatchingStackInLocation(unit, cursorItem, clickStackDestination);
+	if (dropTarget) {
+		lastClickStackTick = currentTick;
+		StackCursorItemOnTarget(cursorItem->dwUnitId, dropTarget->dwUnitId);
+		return;
+	}
+
+	ItemText* cursorText = D2COMMON_GetItemText(cursorItem->dwTxtFileNo);
+	if (!cursorText) {
+		clickStackDestination = 0;
+		return;
+	}
+
+	int invUI = D2CLIENT_GetUIState(UI_INVENTORY);
+	int stashUI = D2CLIENT_GetUIState(UI_STASH);
+	LoadInventory(unit, STORAGE_INVENTORY, -1, -1, false, false, stashUI, invUI);
+	if (FindDestination(clickStackDestination, cursorItem->dwUnitId, cursorText->xSize, cursorText->ySize)) {
+		PutItemInContainer();
+	}
+	clickStackDestination = 0;
 }
 
 bool ItemMover::MoveItemOntoStack(UnitAny* source, UnitAny* target) {
@@ -3158,6 +3325,7 @@ void ItemMover::OnGameExit() {
 	ActivePacket.startTicks = 0;
 	ActivePacket.destination = 0;
 	stackDropOnItem = false;
+	clickStackDestination = 0;
 	goldPickupQueue.clear();
 	previousHP = 0;
 	damageTakenTick = 0;
