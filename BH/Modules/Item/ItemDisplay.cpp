@@ -163,16 +163,21 @@ BYTE RuneNumberFromItemCode(char *code){
 	return (BYTE)(((code[1] - '0') * 10) + code[2] - '0');
 }
 
-// Find the item description. This code is called only when there's a cache miss
+// Find the item description. This code is called only when there's a cache miss.
+// If several matching rules have {}, use only the last one that loaded.
 string ItemDescLookupCache::make_cached_T(UnitItemInfo *uInfo) {
 	string new_name;
+	const string *last_description = NULL;
 	for (vector<Rule*>::const_iterator it = this->RuleList.begin(); it != this->RuleList.end(); it++) {
 		if ((*it)->Evaluate(uInfo, NULL)) {
-			SubstituteNameVariables(uInfo, new_name, (*it)->action.description);
+			last_description = &(*it)->action.description;
 			if ((*it)->action.stopProcessing) {
 				break;
 			}
 		}
+	}
+	if (last_description) {
+		SubstituteNameVariables(uInfo, new_name, *last_description);
 	}
 	return new_name;
 }
