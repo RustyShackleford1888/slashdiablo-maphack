@@ -117,3 +117,28 @@ void __declspec(naked) __fastcall D2CLIENT_StartGamble(void)
 		ret
 	}
 }
+
+void D2CLIENT_SubmitChat(const wchar_t* wMsg)
+{
+	if (!wMsg || !*wMsg || !D2CLIENT_GetPlayerUnit())
+		return;
+
+	size_t len = wcslen(wMsg);
+	if (len == 0 || len > 255)
+		return;
+
+	wchar_t* chatBuf = (wchar_t*)p_D2CLIENT_ChatMsg;
+	memcpy(chatBuf, wMsg, (len + 1) * sizeof(wchar_t));
+
+	char ansi[256];
+	if (!WideCharToMultiByte(CP_ACP, 0, wMsg, -1, ansi, sizeof(ansi), NULL, NULL))
+		return;
+
+	char* pAnsi = ansi;
+	__asm {
+		push 0
+		mov eax, chatBuf
+		mov edx, pAnsi
+		call D2CLIENT_ProcessChat_I
+	}
+}

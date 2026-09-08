@@ -301,6 +301,9 @@ ASMPTR(D2CLIENT, InputCall_I, 0x147A0, 0xB6890)
 
 ASMPTR(D2CLIENT, Say_I, 0x70EC6, 0xB27A6)
 
+// In-game chat command processor (slash commands including /players). 1.13c: function at 0x707F0.
+ASMPTR(D2CLIENT, ProcessChat_I, 0x707F0, 0xB1D10)
+
 ASMPTR(D2CLIENT, BodyClickTable, 0xE0EC4, 0xEE4B8)
 
 ASMPTR(D2CLIENT, LoadUiImage_I, 0x2B420, 0xA9480)

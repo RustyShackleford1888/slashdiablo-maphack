@@ -1330,6 +1330,11 @@ void Bnet::OnLoad() {
 	defaultGsIndex = &ints["Default Gs"];
 	*defaultGsIndex = 0;
 
+	defaultPlayersIndex = &ints["Default Players"];
+	*defaultPlayersIndex = 0;
+	pendingDefaultPlayers = false;
+	defaultPlayersJoinTick = 0;
+
 	failToJoin = 4000;
 	LoadConfig();
 }
@@ -1342,6 +1347,9 @@ void Bnet::LoadConfig() {
 	BH::config->ReadInt("Fail To Join", failToJoin);
 	BH::config->ReadInt("Default Gs", *defaultGsIndex);
 	defaultGsString = "gs" + std::to_string(*defaultGsIndex + 1);
+	BH::config->ReadInt("Default Players", *defaultPlayersIndex);
+	if (*defaultPlayersIndex > 8)
+		*defaultPlayersIndex = 8;
 	BH::config->ReadString("Default Game Name", DefaultGame);
 	BH::config->ReadString("Default Password", DefaultPassword);
 
@@ -1448,6 +1456,9 @@ void Bnet::OnGameJoin() {
 	ClearFollowJoinPanelArm();
 	g_lastFollowExitGameMs = 0;
 	g_lastFollowBnetAutoActionMs = 0;
+
+	pendingDefaultPlayers = (defaultPlayersIndex && *defaultPlayersIndex >= 1 && *defaultPlayersIndex <= 8);
+	defaultPlayersJoinTick = GetTickCount();
 }
 
 void Bnet::OnGameExit() {
@@ -1455,6 +1466,7 @@ void Bnet::OnGameExit() {
 	g_pendingJoinGame.clear();
 	ClearFollowJoinPanelArm();
 	g_lastFollowExitGameMs = 0;
+	pendingDefaultPlayers = false;
 
 	if (*nextInstead) {
 		std::smatch match;
@@ -1490,7 +1502,42 @@ void Bnet::OnGameExit() {
 	InstallPatches();
 }
 
+void Bnet::TrySendDefaultPlayersCommand() {
+	if (!pendingDefaultPlayers)
+		return;
+	if (!defaultPlayersIndex || *defaultPlayersIndex < 1 || *defaultPlayersIndex > 8) {
+		pendingDefaultPlayers = false;
+		return;
+	}
+	if (!D2CLIENT_GetPlayerUnit())
+		return;
+
+	DWORD now = GetTickCount();
+	if (now - defaultPlayersJoinTick < 1000)
+		return;
+
+	int count = 0;
+	for (RosterUnit* pRoster = *p_D2CLIENT_PlayerUnitList; pRoster; pRoster = pRoster->pNext)
+		++count;
+
+	if (count > 1) {
+		pendingDefaultPlayers = false;
+		return;
+	}
+	if (count < 1) {
+		if (now - defaultPlayersJoinTick > 3000)
+			pendingDefaultPlayers = false;
+		return;
+	}
+
+	wchar_t wcmd[16];
+	swprintf_s(wcmd, L"/players %u", *defaultPlayersIndex);
+	D2CLIENT_SubmitChat(wcmd);
+	pendingDefaultPlayers = false;
+}
+
 void Bnet::OnLoop() {
+	TrySendDefaultPlayersCommand();
 	if (!LeaderFollowEnabled(this)) {
 		ClearFollowJoinPanelArm();
 		return;

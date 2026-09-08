@@ -86,6 +86,18 @@ void AutoTele::OnLoad() {
 	new Texthook(settingsTab, col + 5, (Y += 16), "Default Password:");
 	defaultPasswordInput = new Inputhook(settingsTab, col + 5, (Y += 12), 200, "%s", "");
 	defaultPasswordInput->SetFont(0);
+	new Texthook(settingsTab, col + 5, (Y += 16), "Default Players:");
+	vector<string> players_options;
+	players_options.push_back("Off");
+	players_options.push_back("1");
+	players_options.push_back("2");
+	players_options.push_back("3");
+	players_options.push_back("4");
+	players_options.push_back("5");
+	players_options.push_back("6");
+	players_options.push_back("7");
+	players_options.push_back("8");
+	new Combohook(settingsTab, col + 110, Y, 70, &(*bnetInts)["Default Players"], players_options);
 
 }
 
