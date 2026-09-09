@@ -584,11 +584,11 @@ enum D2States
 	STATE_FIREMASTERY = 0x47,
 	STATE_LIGHTNINGMASTERY = 0x48,
 	STATE_COLDMASTERY = 0x49,
-	STATE_SWORDMASTERY = 0x4A,
-	STATE_AXEMASTERY = 0x4B,
+	STATE_BERSERKERSTANCE = 0x4A,
+	STATE_VANGUARDSTANCE = 0x4B,
 	STATE_MACEMASTERY = 0x4C,
 	STATE_POLEARMMASTERY = 0x4D,
-	STATE_THROWINGMASTERY = 0x4E,
+	STATE_CHAMPIONSTANCE = 0x4E,
 	STATE_SPEARMASTERY = 0x4F,
 	STATE_INCREASEDSTAMINA = 0x50,
 	STATE_IRONSKIN = 0x51,
@@ -697,6 +697,8 @@ enum D2States
 	STATE_UBERMINION = 0xB8,
 	STATE_POISE = 0xD3,
 	STATE_ELIXIR = 0xDD,
+	STATE_REAVERSTANCE = 0xF2,
+	STATE_IRONREFLEXES = 0xF7,
 };
 
 ///////////////////////////////////////////////////
@@ -823,11 +825,11 @@ enum D2States
 #define STATE_FIREMASTERY             71
 #define STATE_LIGHTNINGMASTERY        72
 #define STATE_COLDMASTERY             73
-#define STATE_SWORDMASTERY            74
-#define STATE_AXEMASTERY              75
+#define STATE_BERSERKERSTANCE         74
+#define STATE_VANGUARDSTANCE          75
 #define STATE_MACEMASTERY             76
 #define STATE_POLEARMMASTERY          77
-#define STATE_THROWINGMASTERY         78
+#define STATE_CHAMPIONSTANCE          78
 #define STATE_SPEARMASTERY            79
 #define STATE_INCREASEDSTAMINA        80
 #define STATE_IRONSKIN                81
@@ -912,6 +914,9 @@ enum D2States
 #define STATE_MONSTERSET			  176
 #define STATE_POISE                   211
 #define STATE_ELIXIR                  221
+#define STATE_REAVERSTANCE            242
+#define STATE_IRONREFLEXES            247
+
 
 ///////////////////////////////////////////////////
 // Skill Tab Definitions

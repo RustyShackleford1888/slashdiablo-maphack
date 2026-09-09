@@ -26,11 +26,11 @@ void ScreenInfo::OnLoad() {
 		//debuffs
 		STATE_AMPLIFYDAMAGE, STATE_WEAKEN, STATE_DECREPIFY, STATE_LOWERRESIST, STATE_POISON, STATE_COLD,
 		//back to buffs, because i'm lazy.
-		STATE_POISE, STATE_ELIXIR };
+		STATE_POISE, STATE_ELIXIR, STATE_CHAMPIONSTANCE, STATE_REAVERSTANCE, STATE_VANGUARDSTANCE, STATE_BERSERKERSTANCE };
 
 	buffNames = { L"Burst of Speed", L"Fade", L"Cloak of Shadows", L"Venom", L"Shout", L"Battle Orders", L"Battle Command", L"Oak Sage", L"Cyclone Armor", L"Hurricane", L"Bone Armor", L"Holy Shield", L"Shiver Armor", L"Molten Armor", L"Enchant", L"Energy Shield", L"Thunder Storm", L"Experience Shrine",
 	L"Might", L"Resist Fire", L"Holy Fire", L"Thorns", L"Defiance", L"Resist Cold", L"Fortify", L"Vigor", L"Resist Lightning", L"Concentration", L"Holy Freeze", L"Cleansing", L"Holy Shock", L"Sanctuary", L"Meditation", L"Fanaticism", L"Redemption", L"Conviction", L"Salvation",
-	L"Amplify Damage", L"Weaken", L"Decrepify", L"Lower Resist", L"Poisoned", L"Frozen", L"Poise", L"Elixir" };
+	L"Amplify Damage", L"Weaken", L"Decrepify", L"Lower Resist", L"Poisoned", L"Frozen", L"Poise", L"Elixir", L"Champion Stance", L"Reaver Stance", L"Vanguard Stance", L"Berserker Stance" };
 
 	bhText = new Texthook(OutOfGame, 795, 6, BH_VERSION " (planqi Resurgence/Slash branch)");
 	bhText->SetAlignment(Right);
@@ -478,43 +478,41 @@ void ScreenInfo::OnDraw() {
 	strftime(szTime, sizeof(szTime), "%I:%M:%S %p", &time);
 
 	if (cf && pUnit) {
-		//dc6 is loaded!		
-		if (manageBuffs) {
-			//received packet 0xA8 or 0xA9. Change on one of players states.
-			for (unsigned int i = 0; i < buffs.size(); i++) {
-				int state = D2COMMON_GetUnitState(pUnit, buffs[i]);
-				BOOL buffFound = false;
-				int pos = 0;
-				for (unsigned j = 0; j < activeBuffs.size(); j++) {
-					if (activeBuffs[j].state == buffs[i]) {
-						buffFound = true;
-						pos = j;
-						break;
-					}
-				}
-				if (state != 0 && !buffFound) {
-					//add buff to activeBuffs
-					Buff newBuff = {};
-					newBuff.state = buffs[i];
-					newBuff.index = i;
-					newBuff.addedTicks = ticks;  // Record when buff was added
-					if (manageConv && buffs[i] == STATE_CONVICTION) {
-						newBuff.isBuff = (int)D2COMMON_GetUnitStat(pUnit, STAT_FIRERESIST, 0) < resTracker ? false : true;
-						manageConv = false;
-					}
-					else {
-						newBuff.isBuff = (i < 37 || i > 42) ? true : false;
-					}
-					
-					activeBuffs.push_back(newBuff);
-				}
-				else if (state == 0 && buffFound) {
-					//remove buff from activeBuffs
-					activeBuffs.erase(activeBuffs.begin() + pos);
+		// Poll every frame. Some custom states (Vanguard Stance reused axe mastery id 75)
+		// may have nosend set and never fire 0xA8/0xA9.
+		for (unsigned int i = 0; i < buffs.size(); i++) {
+			int state = D2COMMON_GetUnitState(pUnit, buffs[i]);
+			BOOL buffFound = false;
+			int pos = 0;
+			for (unsigned j = 0; j < activeBuffs.size(); j++) {
+				if (activeBuffs[j].state == buffs[i]) {
+					buffFound = true;
+					pos = j;
+					break;
 				}
 			}
-			manageBuffs = false;
+			if (state != 0 && !buffFound) {
+				//add buff to activeBuffs
+				Buff newBuff = {};
+				newBuff.state = buffs[i];
+				newBuff.index = i;
+				newBuff.addedTicks = ticks;  // Record when buff was added
+				if (manageConv && buffs[i] == STATE_CONVICTION) {
+					newBuff.isBuff = (int)D2COMMON_GetUnitStat(pUnit, STAT_FIRERESIST, 0) < resTracker ? false : true;
+					manageConv = false;
+				}
+				else {
+					newBuff.isBuff = (i < 37 || i > 42) ? true : false;
+				}
+				
+				activeBuffs.push_back(newBuff);
+			}
+			else if (state == 0 && buffFound) {
+				//remove buff from activeBuffs
+				activeBuffs.erase(activeBuffs.begin() + pos);
+			}
 		}
+		manageBuffs = false;
 		DWORD mouseX = *p_D2CLIENT_MouseX;
 		DWORD mouseY = *p_D2CLIENT_MouseY;
 		int screenX = *p_D2CLIENT_ScreenSizeX;
@@ -948,11 +946,11 @@ StateCode StateCodes[] = {
 	{"FIREMASTERY", 71},
 	{"LIGHTNINGMASTERY", 72},
 	{"COLDMASTERY", 73},
-	{"SWORDMASTERY", 74},
-	{"AXEMASTERY", 75},
+	{"BERSERKERSTANCE", 74},
+	{"VANGUARDSTANCE", 75},
 	{"MACEMASTERY", 76},
 	{"POLEARMMASTERY", 77},
-	{"THROWINGMASTERY", 78},
+	{"CHAMPIONSTANCE", 78},
 	{"SPEARMASTERY", 79},
 	{"INCREASEDSTAMINA", 80},
 	{"IRONSKIN", 81},
@@ -1033,7 +1031,9 @@ StateCode StateCodes[] = {
 	{"CLOAKED", 156},
 	{"QUICKNESS", 157},
 	{"BLADESHIELD", 158},
-	{"FADE", 159}
+	{"FADE", 159},
+	{"REAVERSTANCE", 242},
+	{"IRONREFLEXES", 247},
 };
 
 long long ExpByLevel[] = {
