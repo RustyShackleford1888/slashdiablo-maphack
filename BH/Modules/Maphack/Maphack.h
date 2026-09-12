@@ -55,6 +55,13 @@ class Maphack : public Module {
 		bool cheaterLightLast;
 		bool justJoinedGame;
 
+		// Resurgence S→C 0x4B: server-authoritative player tile for desync ghost.
+		bool hasServerPos;
+		int serverPosX;
+		int serverPosY;
+		int serverPosLevel;
+		DWORD serverPosTick;
+
 	public:
 	Maphack();
 
@@ -68,7 +75,10 @@ class Maphack : public Module {
 	void OnDraw();
 	void OnAutomapDraw();
 	void OnGameJoin();
+	void OnGameExit();
 	void OnGamePacketRecv(BYTE* packet, bool *block);
+	void ResetServerPos();
+	bool ShouldShowServerPos(UnitAny* player);
 
 	void ResetRevealed();
 	void ResetPatches();

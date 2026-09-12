@@ -12,6 +12,7 @@
 #include "../Item/Item.h"
 #include "../../AsyncDrawBuffer.h"
 #include "../ScreenInfo/ScreenInfo.h"
+#include <cmath>
 
 #pragma optimize( "", off)
 
@@ -38,6 +39,24 @@ static DWORD mSkipQuestMessage = 1;
 
 DrawDirective automapDraw(true, 5);
 
+// Must match D2Resurgence D2PacketDef.h (PACKET_SERVERPOS_S2C / D2GSPacketSrvPos).
+#define PACKET_SERVERPOS_S2C        0x4B
+#define PACKET_SERVERPOS_SIZE       10
+#define SERVERPOS_NET_SIZETABLE     0xA900
+#define SERVERPOS_STALE_MS          1000
+#define SERVERPOS_SHOW_TILES        18
+#define SERVERPOS_COLOR             0x0A
+
+static void PatchServerPosSizeTable() {
+	// 1.13c/1.13d D2Net S→C size table: DWORD per opcode. A 0 entry mis-frames
+	// the rest of the inbound stream, so BH writes the same size Resurgence does.
+	int table = Patch::GetDllOffset(D2NET, SERVERPOS_NET_SIZETABLE);
+	if (!table)
+		return;
+	DWORD sz = PACKET_SERVERPOS_SIZE;
+	Patch::WriteBytes(table + PACKET_SERVERPOS_S2C * 4, 4, (BYTE*)&sz);
+}
+
 Maphack::Maphack() : Module("Maphack") {
 	revealType = MaphackRevealAct;
 	ResetRevealed();
@@ -46,6 +65,11 @@ Maphack::Maphack() : Module("Maphack") {
 	cheaterMonstersLast = Toggles["Show Monsters"].state;
 	cheaterLightLast = Toggles["Force Light Radius"].state;
 	justJoinedGame = false;
+	hasServerPos = false;
+	serverPosX = 0;
+	serverPosY = 0;
+	serverPosLevel = 0;
+	serverPosTick = 0;
 	missileColors["Player"] = 0x97;
 	missileColors["Neutral"] = 0x0A;
 	missileColors["Party"] = 0x84;
@@ -303,11 +327,39 @@ void Maphack::ResetPatches() {
 	}
 }
 
+void Maphack::ResetServerPos() {
+	hasServerPos = false;
+	serverPosX = 0;
+	serverPosY = 0;
+	serverPosLevel = 0;
+	serverPosTick = 0;
+}
+
+bool Maphack::ShouldShowServerPos(UnitAny* player) {
+	if (!hasServerPos || !player)
+		return false;
+	if ((GetTickCount() - serverPosTick) >= SERVERPOS_STALE_MS)
+		return false;
+
+	int clientLevel = 0;
+	if (player->pPath && player->pPath->pRoom1 && player->pPath->pRoom1->pRoom2 &&
+		player->pPath->pRoom1->pRoom2->pLevel)
+		clientLevel = (int)player->pPath->pRoom1->pRoom2->pLevel->dwLevelNo;
+	if (serverPosLevel && clientLevel && serverPosLevel != clientLevel)
+		return true;
+
+	int dx = serverPosX - D2CLIENT_GetUnitX(player);
+	int dy = serverPosY - D2CLIENT_GetUnitY(player);
+	int dist = (int)sqrt((double)(dx * dx + dy * dy));
+	return dist >= SERVERPOS_SHOW_TILES;
+}
+
 void Maphack::OnLoad() {
 	/*ResetRevealed();
 	ReadConfig();
 	ResetPatches();*/
 	diabloDeadMessage->Install();
+	PatchServerPosSizeTable();
 
 	settingsTab = new UITab("Maphack", BH::settingsUI);
 
@@ -506,6 +558,7 @@ void Maphack::OnDraw() {
 
 	if (!player || !player->pAct || player->pPath->pRoom1->pRoom2->pLevel->dwLevelNo == 0)
 		return;
+
 	// We're looping over all items and setting 2 flags:
 	// UNITFLAG_NO_EXPERIENCE - Whether the item has been checked for a drop notification (to prevent checking it again)
 	// UNITFLAG_REVEALED      - Whether the item should be notified and drawn on the automap
@@ -832,6 +885,20 @@ void Maphack::OnAutomapDraw() {
 				}
 			}
 		}
+		if (ShouldShowServerPos(player)) {
+			int sx = serverPosX;
+			int sy = serverPosY;
+			int sLevel = serverPosLevel;
+			int clientLevel = (int)player->pPath->pRoom1->pRoom2->pLevel->dwLevelNo;
+			automapBuffer.push([sx, sy, sLevel, clientLevel]() {
+				if (sLevel && sLevel != clientLevel)
+					return;
+				POINT srvPos;
+				Drawing::Hook::ScreenToAutomap(&srvPos, sx, sy);
+				Drawing::Crosshook::Draw(srvPos.x, srvPos.y, SERVERPOS_COLOR);
+			});
+		}
+
 		if (!Toggles["Display Level Names"].state)
 			return;
 		for (list<LevelList*>::iterator it = automapLevels.begin(); it != automapLevels.end(); it++) {
@@ -859,8 +926,13 @@ void Maphack::OnAutomapDraw() {
 	});
 }
 
+void Maphack::OnGameExit() {
+	ResetServerPos();
+}
+
 void Maphack::OnGameJoin() {
 	ResetRevealed();
+	ResetServerPos();
 	automapLevels.clear();
 	*p_D2CLIENT_AutomapOn = Toggles["Show Automap On Join"].state;
 	if (Toggles["Auto Reveal"].state || Toggles["Show Monsters"].state || Toggles["Force Light Radius"].state)
@@ -888,6 +960,20 @@ void Squelch(DWORD Id, BYTE button) {
 
 void Maphack::OnGamePacketRecv(BYTE *packet, bool *block) {
 	switch (packet[0]) {
+
+	case PACKET_SERVERPOS_S2C: {
+		DWORD unitId = *(DWORD*)&packet[1];
+		UnitAny* me = D2CLIENT_GetPlayerUnit();
+		if (me && unitId == me->dwUnitId) {
+			serverPosX = *(WORD*)&packet[5];
+			serverPosY = *(WORD*)&packet[7];
+			serverPosLevel = packet[9];
+			serverPosTick = GetTickCount();
+			hasServerPos = true;
+		}
+		*block = true;
+		break;
+	}
 
 	case 0x9c: {
 		INT64 icode   = 0;
