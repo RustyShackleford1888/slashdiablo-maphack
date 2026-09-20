@@ -7,6 +7,7 @@
 #include "../../D2Intercepts.h"
 #include "Maphack.h"
 #include "../../BH.h"
+#include "../../D2Version.h"
 #include "../../Drawing.h"
 #include "../Item/ItemDisplay.h"
 #include "../Item/Item.h"
@@ -43,18 +44,25 @@ DrawDirective automapDraw(true, 5);
 #define PACKET_SERVERPOS_S2C        0x4B
 #define PACKET_SERVERPOS_SIZE       10
 #define SERVERPOS_NET_SIZETABLE     0xA900
+#define SERVERPOS_CL_HANDLER_TABLE  0xDDE60
 #define SERVERPOS_STALE_MS          1000
-#define SERVERPOS_SHOW_TILES        18
+#define SERVERPOS_SHOW_SUBTILES     18
 #define SERVERPOS_COLOR             0x0A
 
 static void PatchServerPosSizeTable() {
-	// 1.13c/1.13d D2Net S→C size table: DWORD per opcode. A 0 entry mis-frames
-	// the rest of the inbound stream, so BH writes the same size Resurgence does.
-	int table = Patch::GetDllOffset(D2NET, SERVERPOS_NET_SIZETABLE);
-	if (!table)
-		return;
+	// Keep D2Net and D2Client size fields in lockstep. A 0 vs 10 mismatch is
+	// Fog#10265 / exit(-1). Do not *block 0x4B — that zeroes the remaining
+	// receive length and drops every packet behind it in the same buffer.
 	DWORD sz = PACKET_SERVERPOS_SIZE;
-	Patch::WriteBytes(table + PACKET_SERVERPOS_S2C * 4, 4, (BYTE*)&sz);
+	int netTable = Patch::GetDllOffset(D2NET, SERVERPOS_NET_SIZETABLE);
+	if (netTable)
+		Patch::WriteBytes(netTable + PACKET_SERVERPOS_S2C * 4, 4, (BYTE*)&sz);
+	if (D2Version::GetGameVersionID() == VERSION_113c) {
+		int clSize = Patch::GetDllOffset(D2CLIENT,
+			SERVERPOS_CL_HANDLER_TABLE + PACKET_SERVERPOS_S2C * 12 + 4);
+		if (clSize)
+			Patch::WriteBytes(clSize, 4, (BYTE*)&sz);
+	}
 }
 
 Maphack::Maphack() : Module("Maphack") {
@@ -346,12 +354,12 @@ bool Maphack::ShouldShowServerPos(UnitAny* player) {
 		player->pPath->pRoom1->pRoom2->pLevel)
 		clientLevel = (int)player->pPath->pRoom1->pRoom2->pLevel->dwLevelNo;
 	if (serverPosLevel && clientLevel && serverPosLevel != clientLevel)
-		return true;
+		return false;
 
 	int dx = serverPosX - D2CLIENT_GetUnitX(player);
 	int dy = serverPosY - D2CLIENT_GetUnitY(player);
 	int dist = (int)sqrt((double)(dx * dx + dy * dy));
-	return dist >= SERVERPOS_SHOW_TILES;
+	return dist >= SERVERPOS_SHOW_SUBTILES;
 }
 
 void Maphack::OnLoad() {
@@ -888,11 +896,7 @@ void Maphack::OnAutomapDraw() {
 		if (ShouldShowServerPos(player)) {
 			int sx = serverPosX;
 			int sy = serverPosY;
-			int sLevel = serverPosLevel;
-			int clientLevel = (int)player->pPath->pRoom1->pRoom2->pLevel->dwLevelNo;
-			automapBuffer.push([sx, sy, sLevel, clientLevel]() {
-				if (sLevel && sLevel != clientLevel)
-					return;
+			automapBuffer.push([sx, sy]() {
 				POINT srvPos;
 				Drawing::Hook::ScreenToAutomap(&srvPos, sx, sy);
 				Drawing::Crosshook::Draw(srvPos.x, srvPos.y, SERVERPOS_COLOR);
@@ -971,7 +975,6 @@ void Maphack::OnGamePacketRecv(BYTE *packet, bool *block) {
 			serverPosTick = GetTickCount();
 			hasServerPos = true;
 		}
-		*block = true;
 		break;
 	}
 
