@@ -266,6 +266,19 @@ string IgnoreLookupCache::to_str(const bool &ignore) {
 	return ignore ? "blocked" : "not blocked";
 }
 
+// Resurgence internal flags. %STAT-#% and stash export should omit these.
+bool IsHiddenDisplayStat(int stat) {
+	switch (stat) {
+	case 241: // Chest Roll
+	case 283: // Corrupt
+	case 284: // Hallow
+	case 468: // Gamble
+		return true;
+	default:
+		return false;
+	}
+}
+
 // least recently used cache for storing a limited number of item names
 ItemDescLookupCache item_desc_cache(DescRuleList);
 ItemNameLookupCache item_name_cache(NameRuleList);
@@ -367,7 +380,7 @@ void SubstituteNameVariables(UnitItemInfo *uInfo, string &name, const string &ac
 		while (std::regex_search(name, stat_match, stat_reg)) {
 			int stat = stoi(stat_match[1].str(), nullptr, 10);
 			statVal[0] = '\0';
-			if (stat <= (int)STAT_MAX) {
+			if (stat <= (int)STAT_MAX && !IsHiddenDisplayStat(stat)) {
 				auto value = D2COMMON_GetUnitStat(item, stat, 0);
 				// Hp and mana need adjusting
 				if (stat == 7 || stat == 9)

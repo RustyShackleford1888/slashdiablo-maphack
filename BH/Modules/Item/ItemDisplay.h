@@ -740,6 +740,7 @@ BYTE GetOperation(string *op);
 inline bool IntegerCompare(unsigned int Lvalue, int operation, unsigned int Rvalue);
 void GetItemName(UnitItemInfo *uInfo, string &name);
 void SubstituteNameVariables(UnitItemInfo *uInfo, string &name, const string &action_name);
+bool IsHiddenDisplayStat(int stat);
 int GetDefense(ItemInfo *item);
 BYTE GetAffixLevel(BYTE ilvl, BYTE qlvl, BYTE mlvl);
 BYTE GetRequiredLevel(UnitAny* item);
