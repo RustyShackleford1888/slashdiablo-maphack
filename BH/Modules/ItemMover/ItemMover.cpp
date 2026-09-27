@@ -3662,14 +3662,14 @@ bool ProcessStat(unsigned int stat, BitReader &reader, ItemProperty &itemProp) {
 		switch (stat) {
 			case STAT_CLASSSKILLS:
 			{
-				itemProp.characterClass = reader.read(saveParamBits);
+				itemProp.characterClass = itemProp.param = reader.read(saveParamBits);
 				itemProp.value = reader.read(saveBits);
 				return true;
 			}
 			case STAT_NONCLASSSKILL:
 			case STAT_SINGLESKILL:
 			{
-				itemProp.skill = reader.read(saveParamBits);
+				itemProp.skill = itemProp.param = reader.read(saveParamBits);
 				itemProp.value = reader.read(saveBits);
 				return true;
 			}
@@ -3681,7 +3681,7 @@ bool ProcessStat(unsigned int stat, BitReader &reader, ItemProperty &itemProp) {
 			}
 			case STAT_AURA:
 			{
-				itemProp.skill = reader.read(saveParamBits);
+				itemProp.skill = itemProp.param = reader.read(saveParamBits);
 				itemProp.value = reader.read(saveBits);
 				return true;
 			}
@@ -3709,6 +3709,8 @@ bool ProcessStat(unsigned int stat, BitReader &reader, ItemProperty &itemProp) {
 				itemProp.level = reader.read(6);
 				itemProp.skill = reader.read(10);
 				itemProp.skillChance = reader.read(saveBits);
+				itemProp.param = (itemProp.skill << 6) | itemProp.level;
+				itemProp.value = itemProp.skillChance;
 				return true;
 			}
 			case STAT_CHARGED:
@@ -3729,8 +3731,10 @@ bool ProcessStat(unsigned int stat, BitReader &reader, ItemProperty &itemProp) {
 				return true;
 			}
 			default:
-				reader.read(saveParamBits);
-				reader.read(saveBits);
+				// R1 adds param stats (gain-*, att/anykill procs, aura-norm) that fall here.
+				// Keep them, or STAT/MULTI rules read 0 on the ground packet.
+				itemProp.param = reader.read(saveParamBits);
+				itemProp.value = reader.read(saveBits) - saveAdd;
 				return true;
 		}
 	}
@@ -3752,24 +3756,28 @@ bool ProcessStat(unsigned int stat, BitReader &reader, ItemProperty &itemProp) {
 		{
 			itemProp.minimum = reader.read(saveBits);
 			itemProp.maximum = reader.read(GetStatProperties(STAT_MAXIMUMFIREDAMAGE)->saveBits);
+			itemProp.value = itemProp.minimum;
 			return true;
 		}
 		case STAT_MINIMUMLIGHTNINGDAMAGE:
 		{
 			itemProp.minimum = reader.read(saveBits);
 			itemProp.maximum = reader.read(GetStatProperties(STAT_MAXIMUMLIGHTNINGDAMAGE)->saveBits);
+			itemProp.value = itemProp.minimum;
 			return true;
 		}
 		case STAT_MINIMUMMAGICALDAMAGE:
 		{
 			itemProp.minimum = reader.read(saveBits);
 			itemProp.maximum = reader.read(GetStatProperties(STAT_MAXIMUMMAGICALDAMAGE)->saveBits);
+			itemProp.value = itemProp.minimum;
 			return true;
 		}
 		case STAT_MINIMUMCOLDDAMAGE:
 		{
 			itemProp.minimum = reader.read(saveBits);
 			itemProp.maximum = reader.read(GetStatProperties(STAT_MAXIMUMCOLDDAMAGE)->saveBits);
+			itemProp.value = itemProp.minimum;
 			itemProp.length = reader.read(GetStatProperties(STAT_COLDDAMAGELENGTH)->saveBits);
 			return true;
 		}
@@ -3777,6 +3785,7 @@ bool ProcessStat(unsigned int stat, BitReader &reader, ItemProperty &itemProp) {
 		{
 			itemProp.minimum = reader.read(saveBits);
 			itemProp.maximum = reader.read(GetStatProperties(STAT_MAXIMUMPOISONDAMAGE)->saveBits);
+			itemProp.value = itemProp.minimum;
 			itemProp.length = reader.read(GetStatProperties(STAT_POISONDAMAGELENGTH)->saveBits);
 			return true;
 		}

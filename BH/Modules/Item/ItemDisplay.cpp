@@ -1772,8 +1772,9 @@ bool ItemStatCondition::EvaluateInternalFromPacket(ItemInfo *info, Condition *ar
 		}
 		return IntegerCompare(num, operation, targetStat);
 	default:
+		// itemStat2 is the MULTI param; STAT<n> passes 0 and sums every param.
 		for (vector<ItemProperty>::iterator prop = info->properties.begin(); prop < info->properties.end(); prop++) {
-			if (prop->stat == itemStat) {
+			if (prop->stat == itemStat && (itemStat2 == 0 || prop->param == itemStat2)) {
 				num += prop->value;
 			}
 		}

@@ -42,6 +42,10 @@ struct ItemProperty {
 
 	unsigned int skillChance;
 
+	// ItemStatCost param as D2COMMON_GetUnitStat's layer sees it, so MULTI-<stat>,<param>
+	// matches the same way on the ground packet as on the unit. Procs: skill << 6 | level.
+	unsigned int param;
+
 	unsigned int perLevel;
 };
 
