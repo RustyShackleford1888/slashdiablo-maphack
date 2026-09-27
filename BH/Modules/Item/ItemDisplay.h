@@ -675,6 +675,13 @@ struct Rule {
 	}
 };
 
+// First non-CONTINUE matching ItemDisplay line wins, same as names.
+// Blank %NL% / empty-colon hides still packet-hide even if a later
+// catch-all like `GEM>0: %NAME%` would have been a DoNotBlock whitelist.
+bool ActionHasMapPing(const Action &action);
+bool ActionIsBlankHide(const Action &action);
+bool FirstDecisiveItemDisplayRuleIsHide(UnitItemInfo *uInfo, ItemInfo *info);
+
 class ItemDescLookupCache : public RuleLookupCache<string> {
 	string make_cached_T(UnitItemInfo *uInfo) override;
 	string to_str(const string &name) override;

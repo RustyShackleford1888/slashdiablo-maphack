@@ -75,6 +75,36 @@ vector<Rule*> DoNotBlockRuleList;
 vector<Rule*> IgnoreRuleList;
 BYTE LastConditionType;
 
+std::string without_invis_chars(const std::string &name);
+
+bool ActionHasMapPing(const Action &action) {
+	return action.colorOnMap != UNDEFINED_COLOR ||
+		action.borderColor != UNDEFINED_COLOR ||
+		action.dotColor != UNDEFINED_COLOR ||
+		action.pxColor != UNDEFINED_COLOR ||
+		action.lineColor != UNDEFINED_COLOR;
+}
+
+bool ActionIsBlankHide(const Action &action) {
+	return action.stopProcessing &&
+		!ActionHasMapPing(action) &&
+		without_invis_chars(action.name).length() == 0 &&
+		without_invis_chars(action.description).length() == 0;
+}
+
+bool FirstDecisiveItemDisplayRuleIsHide(UnitItemInfo *uInfo, ItemInfo *info) {
+	for (vector<Rule*>::const_iterator it = RuleList.begin(); it != RuleList.end(); it++) {
+		if (!(*it)->Evaluate(uInfo, info)) {
+			continue;
+		}
+		if (!(*it)->action.stopProcessing) {
+			continue;
+		}
+		return ActionIsBlankHide((*it)->action);
+	}
+	return false;
+}
+
 TrueCondition *trueCondition = new TrueCondition();
 FalseCondition *falseCondition = new FalseCondition();
 
@@ -194,6 +224,13 @@ string ItemDescLookupCache::to_str(const string &name) {
 
 // Find the item name. This code is called only when there's a cache miss
 string ItemNameLookupCache::make_cached_T(UnitItemInfo *uInfo, const string &name) {
+	// Only blank GROUND leftovers. Blanking inventory/cursor names after a
+	// click-pickup made hidden items undroppable and froze the character.
+	// Item mode 3 = on ground (0 stored, 1 equip, 2 belt, 4 cursor, 5 dropping).
+	if (uInfo && uInfo->item && uInfo->item->dwMode == 3 &&
+			FirstDecisiveItemDisplayRuleIsHide(uInfo, NULL)) {
+		return "";
+	}
 	string new_name(name);
 	for (vector<Rule*>::const_iterator it = this->RuleList.begin(); it != this->RuleList.end(); it++) {
 		if ((*it)->Evaluate(uInfo, NULL)) {
@@ -202,25 +239,6 @@ string ItemNameLookupCache::make_cached_T(UnitItemInfo *uInfo, const string &nam
 				break;
 			}
 		}
-	}
-	// if the item is on the ignore list and not the map list, warn the user that this item is normally blocked
-	bool blocked = ignore_cache.Get(uInfo);
-	vector<Action> actions = map_action_cache.Get(uInfo);
-	if (blocked) {
-		bool has_map_action = false;
-		for (auto &action : actions) {
-			if (action.colorOnMap != UNDEFINED_COLOR ||
-				action.borderColor != UNDEFINED_COLOR ||
-				action.dotColor != UNDEFINED_COLOR ||
-				action.pxColor != UNDEFINED_COLOR ||
-				action.lineColor != UNDEFINED_COLOR) {
-				has_map_action = true;
-				break;
-			}
-					
-		}
-		bool whitelisted = do_not_block_cache.Get(uInfo);
-		if (!has_map_action && !whitelisted) return new_name + " [blocked]";
 	}
 	return new_name;
 }
@@ -489,6 +507,13 @@ std::string without_invis_chars(const std::string &name) {
 		removeSubstrs(wo_invis_chars, "%" + colors[n].key + "%");
 	}
 	removeSubstrs(wo_invis_chars, " ");
+	// %NL% is a line-wrap token, not a visible name. Leaving it here made
+	// `ItemDisplay[hp1]: %NL%` look like a whitelist (DoNotBlock + NameRule),
+	// so 0x9c never packet-hid the drop and the ground click-ghost stayed.
+	// Strip it only for the blank-name test. `%NAME%%NL%foo` still has a name.
+	removeSubstrs(wo_invis_chars, "%NL%");
+	removeSubstrs(wo_invis_chars, "\n");
+	removeSubstrs(wo_invis_chars, "\r");
 	return wo_invis_chars;
 }
 

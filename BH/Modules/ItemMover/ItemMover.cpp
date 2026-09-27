@@ -911,6 +911,85 @@ void ItemMover::OnKey(bool up, BYTE key, LPARAM lParam, bool* block)  {
 	}
 }
 
+// Monster drops that are "yours" for the pickup timer arrive as 0x9d, not 0x9c.
+// Stock BH 2.1 only packet-hides 0x9c NEW/OLD_GROUND.
+// Never hide DROP (0x02): that is the client ack for putting an item on the
+// ground. Blocking it leaves the item on cursor and freezes the character.
+static bool ItemActionIsWorldSpawn(unsigned int action) {
+	return action == ITEM_ACTION_NEW_GROUND
+		|| action == ITEM_ACTION_OLD_GROUND;
+}
+
+static void FilterIgnoredGroundItemPacket(BYTE* packet, bool* block, unsigned int skipItemId) {
+	if (!(*BH::MiscToggles2)["Advanced Item Display"].state) {
+		return;
+	}
+	bool success = true;
+	ItemInfo item = {};
+	ParseItem((unsigned char*)packet, &item, &success);
+	if (!success) {
+		return;
+	}
+	if (!item.ground) {
+		return;
+	}
+	if (!ItemActionIsWorldSpawn(item.action)) {
+		return;
+	}
+	if (skipItemId != 0 && item.id == skipItemId) {
+		return;
+	}
+	// First stopProcessing ItemDisplay line wins. A later GEM>0/RUNE>0 %NAME%
+	// catch-all must not un-hide an earlier %NL%.
+	if (FirstDecisiveItemDisplayRuleIsHide(NULL, &item)) {
+		*block = true;
+		return;
+	}
+	bool showOnMap = false;
+	bool noTracking = false;
+	auto pingLevel = -1;
+	auto color = UNDEFINED_COLOR;
+
+	for (vector<Rule*>::iterator it = MapRuleList.begin(); it != MapRuleList.end(); it++) {
+		if ((*it)->Evaluate(NULL, &item)) {
+			if ((*it)->action.pingLevel > Item::GetPingLevel()) continue;
+			auto action_color = (*it)->action.notifyColor;
+			if (action_color != UNDEFINED_COLOR && (action_color != DEAD_COLOR || color == UNDEFINED_COLOR))
+				color = action_color;
+			showOnMap = true;
+			noTracking = (*it)->action.noTracking;
+			pingLevel = (*it)->action.pingLevel;
+			if ((*it)->action.stopProcessing) break;
+		}
+	}
+	if (showOnMap && !(*BH::MiscToggles2)["Item Detailed Notifications"].state) {
+		if (!noTracking && !IsTown(GetPlayerArea()) && pingLevel >= 0 && (unsigned int)pingLevel <= Item::GetTrackerPingLevel()) {
+			ScreenInfo::AddDrop(item.name.c_str(), item.x, item.y);
+		}
+		if (color == UNDEFINED_COLOR) {
+			color = ItemColorFromQuality(item.quality);
+		}
+		if ((*BH::MiscToggles2)["Item Drop Notifications"].state &&
+				item.action == ITEM_ACTION_NEW_GROUND &&
+				color != DEAD_COLOR
+			 ) {
+			PrintText(color, "%s%s",
+					item.name.c_str(),
+					(*BH::MiscToggles2)["Verbose Notifications"].state ? " \377c5drop" : ""
+					);
+		}
+		if ((*BH::MiscToggles2)["Item Close Notifications"].state &&
+				item.action == ITEM_ACTION_OLD_GROUND &&
+				color != DEAD_COLOR
+			 ) {
+			PrintText(color, "%s%s",
+					item.name.c_str(),
+					(*BH::MiscToggles2)["Verbose Notifications"].state ? " \377c5close" : ""
+					);
+		}
+	}
+}
+
 void ItemMover::OnGamePacketRecv(BYTE* packet, bool* block) {
 	switch (packet[0])
 	{
@@ -932,6 +1011,7 @@ void ItemMover::OnGamePacketRecv(BYTE* packet, bool* block) {
 		case 0x9c:
 		{
 			// We get this packet after placing an item in a container or on the ground
+			unsigned int skipItemId = 0;
 			if (FirstInit) {
 				BYTE action = packet[1];
 				unsigned int itemId = *(unsigned int*)&packet[4];
@@ -945,107 +1025,44 @@ void ItemMover::OnGamePacketRecv(BYTE* packet, bool* block) {
 				// Clear ActivePacket if itemId matches
 				if (itemId == ActivePacket.itemId && ActivePacket.startTicks > 0) {
 					//PrintText(1, "Placed item id %d", itemId);
+					skipItemId = itemId;
 					ActivePacket.itemId = 0;
 					ActivePacket.x = 0;
 					ActivePacket.y = 0;
 					ActivePacket.startTicks = 0;
 					ActivePacket.destination = 0;
+				} else if (ActivePacket.startTicks > 0) {
+					skipItemId = ActivePacket.itemId;
 				}
 				Unlock();
 			}
 
-			if ((*BH::MiscToggles2)["Advanced Item Display"].state) {
-				bool success = true;
-				ItemInfo item = {};
-				ParseItem((unsigned char*)packet, &item, &success);
-				//PrintText(1, "Item packet: %s, %s, %X, %d, %d", item.name.c_str(), item.code, item.attrs->flags, item.sockets, GetDefense(&item));
-				if ((item.action == ITEM_ACTION_NEW_GROUND || item.action == ITEM_ACTION_OLD_GROUND) && success) {
-					bool showOnMap = false;
-					bool nameWhitelisted = false;
-					bool noTracking = false;
-					auto pingLevel = -1;
-					auto color = UNDEFINED_COLOR;
-
-					for (vector<Rule*>::iterator it = MapRuleList.begin(); it != MapRuleList.end(); it++) {
-						if ((*it)->Evaluate(NULL, &item)) {
-							nameWhitelisted = true;
-							// skip map and notification if ping level requirement is not met
-							if ((*it)->action.pingLevel > Item::GetPingLevel()) continue;
-							auto action_color = (*it)->action.notifyColor;
-							// never overwrite color with an undefined color. never overwrite a defined color with dead color.
-							if (action_color != UNDEFINED_COLOR && (action_color != DEAD_COLOR || color == UNDEFINED_COLOR))
-								color = action_color;
-							showOnMap = true;
-							noTracking = (*it)->action.noTracking;
-							pingLevel = (*it)->action.pingLevel;
-							// break unless %CONTINUE% is used
-							if ((*it)->action.stopProcessing) break;
-						}
-					}
-					// Don't block items that have a white-listed name
-					for (vector<Rule*>::iterator it = DoNotBlockRuleList.begin(); it != DoNotBlockRuleList.end(); it++) {
-						if ((*it)->Evaluate(NULL, &item)) {
-							nameWhitelisted = true;
-							break;
-						}
-					}
-					//PrintText(1, "Item on ground: %s, %s, %s, %X", item.name.c_str(), item.code, item.attrs->category.c_str(), item.attrs->flags);
-					if(showOnMap && !(*BH::MiscToggles2)["Item Detailed Notifications"].state) {
-						if (!noTracking && !IsTown(GetPlayerArea()) && pingLevel >= 0 && (unsigned int)pingLevel <= Item::GetTrackerPingLevel()) {
-							ScreenInfo::AddDrop(item.name.c_str(), item.x, item.y);
-						}
-						if (color == UNDEFINED_COLOR) {
-							color = ItemColorFromQuality(item.quality);
-						}
-						if ((*BH::MiscToggles2)["Item Drop Notifications"].state &&
-								item.action == ITEM_ACTION_NEW_GROUND &&
-								color != DEAD_COLOR
-							 ) {
-							PrintText(color, "%s%s",
-									item.name.c_str(),
-									(*BH::MiscToggles2)["Verbose Notifications"].state ? " \377c5drop" : ""
-									);
-						}
-						if ((*BH::MiscToggles2)["Item Close Notifications"].state &&
-								item.action == ITEM_ACTION_OLD_GROUND &&
-								color != DEAD_COLOR
-							 ) {
-							PrintText(color, "%s%s",
-									item.name.c_str(),
-									(*BH::MiscToggles2)["Verbose Notifications"].state ? " \377c5close" : ""
-									);
-						}
-					}
-					else if (!showOnMap && !nameWhitelisted) {
-						for (vector<Rule*>::iterator it = IgnoreRuleList.begin(); it != IgnoreRuleList.end(); it++) {
-							if ((*it)->Evaluate(NULL, &item)) {
-								*block = true;
-								//PrintText(1, "Blocking item: %s, %s, %d", item.name.c_str(), item.code, item.amount);
-								break;
-							}
-						}
-					}
-				}
-			}
+			FilterIgnoredGroundItemPacket(packet, block, skipItemId);
 			break;
 		}
 	case 0x9d:
 		{
 			// We get this packet after picking up an item
+			unsigned int skipItemId = 0;
 			if (FirstInit) {
 				BYTE action = packet[1];
 				unsigned int itemId = *(unsigned int*)&packet[4];
 				Lock();
 				if (itemId == ActivePacket.itemId) {
 					//PrintText(2, "Picked up item id %d", itemId);
+					skipItemId = itemId;
 					if (ActivePacket.destination == STORAGE_NULL) {
 						PutItemOnGround();
 					} else if (!stackDropOnItem) {
 						PutItemInContainer();
 					}
+				} else if (ActivePacket.startTicks > 0) {
+					skipItemId = ActivePacket.itemId;
 				}
 				Unlock();
 			}
+			// Owned ground drops (killer pickup timer) are 0x9d, not 0x9c.
+			FilterIgnoredGroundItemPacket(packet, block, skipItemId);
 			break;
 		}
 	default:
@@ -3491,6 +3508,15 @@ void ParseItem(const unsigned char *data, ItemInfo *item, bool *success) {
 
 		if (item->identified) {
 			switch(item->quality) {
+			case ITEM_QUALITY_NORMAL:
+				// Tome/scroll spell id. The engine keys this on item type, not
+				// stackable+useable; R1 crafting mats (prisms, cubes, orbs) are
+				// stackable+useable and carry no such field.
+				if (item->attrs->category == "book" || item->attrs->category == "scro") {
+					reader.read(5);
+				}
+				break;
+
 			case ITEM_QUALITY_INFERIOR:
 				item->prefix = reader.read(3);
 				break;
@@ -3552,32 +3578,29 @@ void ParseItem(const unsigned char *data, ItemInfo *item, bool *success) {
 		item->isArmor = (item->attrs->flags & ITEM_GROUP_ALLARMOR) > 0;
 		item->isWeapon = (item->attrs->flags & ITEM_GROUP_ALLWEAPON) > 0;
 
+		// Defense, durability and socket count are stored with their ItemStatCost
+		// Save Bits / Save Add, not fixed widths. R1 armorclass is 12 bits + 401
+		// (vanilla 11 + 10). Current durability is only written when max
+		// durability is non-zero; every R1 weapon has nodurability=1, so reading
+		// it unconditionally slipped 9 bits and the stat list became garbage.
 		if (item->isArmor) {
-			item->defense = reader.read(11) - 10;
+			StatProperties *ac = GetStatProperties(STAT_DEFENSE);
+			item->defense = reader.read(ac->saveBits) - ac->saveAdd;
 		}
 
-		/*if(entry.throwable)
-		{
-			reader.read(9);
-			reader.read(17);
-		} else */
-		//special case: indestructible phase blade
-		if (item->code[0] == '7' && item->code[1] == 'c' && item->code[2] == 'r') {
-			reader.read(8);
-		} else if (item->isArmor || item->isWeapon) {
-			item->maxDurability = reader.read(8);
+		if (item->isArmor || item->isWeapon) {
+			StatProperties *maxDur = GetStatProperties(STAT_MAXDURABILITY);
+			item->maxDurability = reader.read(maxDur->saveBits) - maxDur->saveAdd;
 			item->indestructible = item->maxDurability == 0;
-			/*if (!item->indestructible) {
-				item->durability = reader.read(8);
-				reader.readBool();
-			}*/
-			//D2Hackit always reads it, hmmm. Appears to work.
-			item->durability = reader.read(8);
-			reader.readBool();
+			if (!item->indestructible) {
+				StatProperties *dur = GetStatProperties(STAT_DURABILITY);
+				item->durability = reader.read(dur->saveBits) - dur->saveAdd;
+			}
 		}
 
 		if (item->hasSockets) {
-			item->sockets = (BYTE)reader.read(4);
+			StatProperties *sock = GetStatProperties(STAT_SOCKETS);
+			item->sockets = (BYTE)(reader.read(sock->saveBits) - sock->saveAdd);
 		}
 
 		if (!item->identified) {
@@ -3585,9 +3608,6 @@ void ParseItem(const unsigned char *data, ItemInfo *item, bool *success) {
 		}
 
 		if (item->attrs->stackable) {
-			if (item->attrs->useable) {
-				reader.read(5);
-			}
 			item->amount = reader.read(9);
 		}
 
@@ -3595,7 +3615,14 @@ void ParseItem(const unsigned char *data, ItemInfo *item, bool *success) {
 			unsigned long set_mods = reader.read(5);
 		}
 
+		// A layout mismatch walks past the packet and turns random bytes into
+		// stats, which then satisfy show rules. Fail the parse instead.
+		const std::size_t packetBits = messageSize * 8;
 		while (true) {
+			if (reader.offset + 9 > packetBits) {
+				*success = false;
+				break;
+			}
 			unsigned long stat_id = reader.read(9);
 			if (stat_id == 0x1ff) {
 				break;
