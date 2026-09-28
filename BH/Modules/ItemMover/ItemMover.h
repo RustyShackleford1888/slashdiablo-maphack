@@ -122,6 +122,8 @@ private:
 	bool waitingForCubeToOpen;           // Waiting for cube to open
 	bool stackDropOnItem;                // Pickup is for stacking onto another item, not an empty cell
 	DWORD stackTargetItemId;             // Item to merge the cursor stack onto
+	int clickStackDestination;           // STORAGE_* for shift-click stack leftover, or 0
+	ULONGLONG lastClickStackTick;        // When the last click-stack 0x21 was sent
 public:
 	ItemMover() : Module("Item Mover"),
 		ActivePacket(),
@@ -168,7 +170,9 @@ public:
 		stashInteractionMode(false),
 		waitingForCubeToOpen(false),
 		stackDropOnItem(false),
-		stackTargetItemId(0) {
+		stackTargetItemId(0),
+		clickStackDestination(0),
+		lastClickStackTick(0) {
 
 		InitializeCriticalSection(&crit);
 		// Initialize toggles to safe defaults
@@ -233,6 +237,8 @@ public:
 	bool IsAutoStackableItem(UnitAny* item);  // True if this item can be auto-stacked
 	bool MoveItemOntoStack(UnitAny* source, UnitAny* target);  // Pick up source and drop onto target
 	void StackCursorItemOnTarget(DWORD cursorItemId, DWORD targetItemId);  // 0x21 D2GS_STACKITEM
+	UnitAny* FindMatchingStackInLocation(UnitAny* unit, UnitAny* source, int destLocation);
+	void ProcessClickStackStep();  // Finish shift-click merge and leftover placement
 	bool ProcessAutoStackStep();  // Combine one pair of stacks; true if still working
 	bool PerformAutoCube();
 	void ProcessAutoCubeStep();

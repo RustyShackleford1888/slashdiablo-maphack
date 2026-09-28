@@ -100,10 +100,14 @@ bool ReadMPQFiles(std::string fileName) {
 		SFileReadFile = (MPQReadFile)GetProcAddress(dllHandle, "SFileReadFile");
 		SFileCloseFile = (MPQCloseFile)GetProcAddress(dllHandle, "SFileCloseFile");
 
-		HANDLE pMutex = CreateMutex(NULL, true, "Global\\BH_PATCH_D2_MPQ_MUTEX");
-		WaitForSingleObject(
-			pMutex,    // handle to mutex
-			INFINITE);  // no time-out interval
+		// bInitialOwner must be false. CreateMutex(true) already owns the
+		// mutex, and the Wait below takes it again. One ReleaseMutex then
+		// leaves the first client holding Global\BH_PATCH_D2_MPQ_MUTEX, so
+		// every later client blocks in this wait and never finishes MPQ init.
+		HANDLE pMutex = CreateMutex(NULL, false, "Global\\BH_PATCH_D2_MPQ_MUTEX");
+		if (pMutex) {
+			WaitForSingleObject(pMutex, INFINITE);
+		}
 
 		if (SFileOpenArchive && SFileCloseArchive && SFileOpenFileEx && SFileCloseFile && SFileGetFileSize && SFileReadFile) {
 			MPQArchive archive(fileName.c_str());
@@ -148,8 +152,10 @@ bool ReadMPQFiles(std::string fileName) {
 		}
 		FreeLibrary(dllHandle);
 
-		ReleaseMutex(pMutex);
-		CloseHandle(pMutex);
+		if (pMutex) {
+			ReleaseMutex(pMutex);
+			CloseHandle(pMutex);
+		}
 	}
 	return true;
 }

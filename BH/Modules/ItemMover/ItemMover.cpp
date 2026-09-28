@@ -103,6 +103,7 @@ bool ItemMover::LoadInventory(UnitAny *unit, int source, int sourceX, int source
 
 	unsigned int itemId = 0;
 	BYTE itemXSize, itemYSize;
+	UnitAny* movingItem = NULL;
 	bool cubeInInventory = false, cubeAnywhere = false;
 	for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
 		int *p, width;
@@ -149,6 +150,7 @@ bool ItemMover::LoadInventory(UnitAny *unit, int source, int sourceX, int source
 					itemId = pItem->dwUnitId;
 					itemXSize = xSize;
 					itemYSize = ySize;
+					movingItem = pItem;
 				}
 			}
 		}
@@ -171,7 +173,32 @@ bool ItemMover::LoadInventory(UnitAny *unit, int source, int sourceX, int source
 
 	// Find a spot for the item in the destination container
 	if (itemId > 0) {
-		returnValue = FindDestination(destination, itemId, itemXSize, itemYSize);
+		if (destination != STORAGE_NULL && movingItem && IsAutoStackableItem(movingItem)) {
+			UnitAny* target = FindMatchingStackInLocation(unit, movingItem, destination);
+			if (target && target->pObjectPath && target->pItemData) {
+				Lock();
+				if (ActivePacket.startTicks == 0) {
+					ActivePacket.itemId = itemId;
+					ActivePacket.x = target->pObjectPath->dwPosX;
+					ActivePacket.y = target->pObjectPath->dwPosY;
+					ActivePacket.startTicks = BHGetTickCount();
+					ActivePacket.destination = destination;
+					Unlock();
+					stackTargetItemId = target->dwUnitId;
+					stackDropOnItem = true;
+					clickStackDestination = destination;
+					lastClickStackTick = 0;
+					returnValue = true;
+				} else {
+					Unlock();
+				}
+			}
+		}
+		if (!returnValue) {
+			stackDropOnItem = false;
+			clickStackDestination = 0;
+			returnValue = FindDestination(destination, itemId, itemXSize, itemYSize);
+		}
 	}
 
 	FirstInit = true;
@@ -303,7 +330,7 @@ void ItemMover::OnLeftClick(bool up, unsigned int x, unsigned int y, bool* block
 	
 	// Don't allow movement if there's already an item being moved (same check as auto-cube uses)
 	Lock();
-	bool itemInProgress = (ActivePacket.startTicks > 0);
+	bool itemInProgress = (ActivePacket.startTicks > 0 || clickStackDestination != 0);
 	Unlock();
 	
 	if (up || !unit || !shiftState || D2CLIENT_GetCursorItem()>0 ||
@@ -371,7 +398,7 @@ void ItemMover::OnRightClick(bool up, unsigned int x, unsigned int y, bool* bloc
 	
 	// Don't allow movement if there's already an item being moved (same check as auto-cube uses)
 	Lock();
-	bool itemInProgress = (ActivePacket.startTicks > 0);
+	bool itemInProgress = (ActivePacket.startTicks > 0 || clickStackDestination != 0);
 	Unlock();
 	
 	if (up || !unit || !(shiftState || ctrlState) || !Init() || itemInProgress) {
@@ -447,6 +474,8 @@ void ItemMover::OnLoad() {
 	new Drawing::Keyhook(settingsTab, x, (y += 15), &HealKey,     "Use Healing Potion:    ");
 	new Drawing::Keyhook(settingsTab, x, (y += 15), &ManaKey,     "Use Mana Potion:       ");
 	new Drawing::Keyhook(settingsTab, x, (y += 15), &JuvKey,      "Use Rejuv Potion:      ");
+	colored_text = new Drawing::Texthook(settingsTab, x, (y += 15), "Shift+Heal/Rejuv: give potion to merc");
+	colored_text->SetColor(Gold);
 	
 	// Second column
 	new Drawing::Keyhook(settingsTab, x2, (y2 += 15), &TransmuteKey,"Cube Transmute:        ");
@@ -567,6 +596,8 @@ void ItemMover::OnLoop() {
 		} else {
 			ProcessAutoCubeStep();
 		}
+	} else {
+		ProcessClickStackStep();
 	}
 	
 	if (!autoPickupGold.state) {
@@ -734,36 +765,43 @@ void ItemMover::OnKey(bool up, BYTE key, LPARAM lParam, bool* block)  {
 	if (!up && (key == HealKey || key == ManaKey || key == JuvKey)) {
 		int idx = key == JuvKey ? 2 : key == ManaKey ? 1 : 0;
 		std::string startChars = POTIONS[idx];
+		bool shiftState = ((GetKeyState(VK_LSHIFT) & 0x80) || (GetKeyState(VK_RSHIFT) & 0x80));
+		bool giveToMerc = shiftState && (key == HealKey || key == JuvKey) && D2CLIENT_GetMercUnit() != NULL;
 		char minPotion = 127;
+		char minBeltPotion = 127;
 		DWORD minItemId = 0;
+		DWORD minBeltItemId = 0;
 		bool isBelt = false;
 		for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
 			if (pItem->pItemData->ItemLocation == STORAGE_INVENTORY ||
 				pItem->pItemData->ItemLocation == STORAGE_NULL && pItem->pItemData->NodePage == NODEPAGE_BELTSLOTS) {
 				char* code = D2COMMON_GetItemText(pItem->dwTxtFileNo)->szCode;
-				if (code[0] == startChars[0] && code[1] == startChars[1] && code[2] < minPotion) {
-					minPotion = code[2];
-					minItemId = pItem->dwUnitId;
-					isBelt = pItem->pItemData->NodePage == NODEPAGE_BELTSLOTS;
+				if (code[0] == startChars[0] && code[1] == startChars[1]) {
+					bool itemIsBelt = pItem->pItemData->NodePage == NODEPAGE_BELTSLOTS;
+					if (code[2] < minPotion) {
+						minPotion = code[2];
+						minItemId = pItem->dwUnitId;
+						isBelt = itemIsBelt;
+					}
+					if (itemIsBelt && code[2] < minBeltPotion) {
+						minBeltPotion = code[2];
+						minBeltItemId = pItem->dwUnitId;
+					}
 				}
 			}
-			//char *code = D2COMMON_GetItemText(pItem->dwTxtFileNo)->szCode;
-			//if (code[0] == 'b' && code[1] == 'o' && code[2] == 'x') {
-			//	// Hack to pick up cube to fix cube-in-cube problem
-			//	BYTE PacketDataCube[5] = {0x19,0,0,0,0};
-			//	*reinterpret_cast<int*>(PacketDataCube + 1) = pItem->dwUnitId;
-			//	D2NET_SendPacket(5, 1, PacketDataCube);
-			//	break;
-			//}
+		}
+		if (giveToMerc && minBeltItemId > 0) {
+			minItemId = minBeltItemId;
+			isBelt = true;
 		}
 		if (minItemId > 0) {
-			if (isBelt){
+			if (isBelt || giveToMerc) {
 				BYTE PacketData[13] = { 0x26, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 				*reinterpret_cast<int*>(PacketData + 1) = minItemId;
+				*reinterpret_cast<int*>(PacketData + 5) = giveToMerc ? 1 : 0;
 				D2NET_SendPacket(13, 0, PacketData);
 			}
 			else{
-				//PrintText(1, "Sending packet %d, %d, %d", minItemId, unit->pPath->xPos, unit->pPath->yPos);
 				BYTE PacketData[13] = { 0x20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 				*reinterpret_cast<int*>(PacketData + 1) = minItemId;
 				*reinterpret_cast<WORD*>(PacketData + 5) = (WORD)unit->pPath->xPos;
@@ -873,6 +911,85 @@ void ItemMover::OnKey(bool up, BYTE key, LPARAM lParam, bool* block)  {
 	}
 }
 
+// Monster drops that are "yours" for the pickup timer arrive as 0x9d, not 0x9c.
+// Stock BH 2.1 only packet-hides 0x9c NEW/OLD_GROUND.
+// Never hide DROP (0x02): that is the client ack for putting an item on the
+// ground. Blocking it leaves the item on cursor and freezes the character.
+static bool ItemActionIsWorldSpawn(unsigned int action) {
+	return action == ITEM_ACTION_NEW_GROUND
+		|| action == ITEM_ACTION_OLD_GROUND;
+}
+
+static void FilterIgnoredGroundItemPacket(BYTE* packet, bool* block, unsigned int skipItemId) {
+	if (!(*BH::MiscToggles2)["Advanced Item Display"].state) {
+		return;
+	}
+	bool success = true;
+	ItemInfo item = {};
+	ParseItem((unsigned char*)packet, &item, &success);
+	if (!success) {
+		return;
+	}
+	if (!item.ground) {
+		return;
+	}
+	if (!ItemActionIsWorldSpawn(item.action)) {
+		return;
+	}
+	if (skipItemId != 0 && item.id == skipItemId) {
+		return;
+	}
+	// First stopProcessing ItemDisplay line wins. A later GEM>0/RUNE>0 %NAME%
+	// catch-all must not un-hide an earlier %NL%.
+	if (FirstDecisiveItemDisplayRuleIsHide(NULL, &item)) {
+		*block = true;
+		return;
+	}
+	bool showOnMap = false;
+	bool noTracking = false;
+	auto pingLevel = -1;
+	auto color = UNDEFINED_COLOR;
+
+	for (vector<Rule*>::iterator it = MapRuleList.begin(); it != MapRuleList.end(); it++) {
+		if ((*it)->Evaluate(NULL, &item)) {
+			if ((*it)->action.pingLevel > Item::GetPingLevel()) continue;
+			auto action_color = (*it)->action.notifyColor;
+			if (action_color != UNDEFINED_COLOR && (action_color != DEAD_COLOR || color == UNDEFINED_COLOR))
+				color = action_color;
+			showOnMap = true;
+			noTracking = (*it)->action.noTracking;
+			pingLevel = (*it)->action.pingLevel;
+			if ((*it)->action.stopProcessing) break;
+		}
+	}
+	if (showOnMap && !(*BH::MiscToggles2)["Item Detailed Notifications"].state) {
+		if (!noTracking && !IsTown(GetPlayerArea()) && pingLevel >= 0 && (unsigned int)pingLevel <= Item::GetTrackerPingLevel()) {
+			ScreenInfo::AddDrop(item.name.c_str(), item.x, item.y);
+		}
+		if (color == UNDEFINED_COLOR) {
+			color = ItemColorFromQuality(item.quality);
+		}
+		if ((*BH::MiscToggles2)["Item Drop Notifications"].state &&
+				item.action == ITEM_ACTION_NEW_GROUND &&
+				color != DEAD_COLOR
+			 ) {
+			PrintText(color, "%s%s",
+					item.name.c_str(),
+					(*BH::MiscToggles2)["Verbose Notifications"].state ? " \377c5drop" : ""
+					);
+		}
+		if ((*BH::MiscToggles2)["Item Close Notifications"].state &&
+				item.action == ITEM_ACTION_OLD_GROUND &&
+				color != DEAD_COLOR
+			 ) {
+			PrintText(color, "%s%s",
+					item.name.c_str(),
+					(*BH::MiscToggles2)["Verbose Notifications"].state ? " \377c5close" : ""
+					);
+		}
+	}
+}
+
 void ItemMover::OnGamePacketRecv(BYTE* packet, bool* block) {
 	switch (packet[0])
 	{
@@ -894,6 +1011,7 @@ void ItemMover::OnGamePacketRecv(BYTE* packet, bool* block) {
 		case 0x9c:
 		{
 			// We get this packet after placing an item in a container or on the ground
+			unsigned int skipItemId = 0;
 			if (FirstInit) {
 				BYTE action = packet[1];
 				unsigned int itemId = *(unsigned int*)&packet[4];
@@ -907,107 +1025,44 @@ void ItemMover::OnGamePacketRecv(BYTE* packet, bool* block) {
 				// Clear ActivePacket if itemId matches
 				if (itemId == ActivePacket.itemId && ActivePacket.startTicks > 0) {
 					//PrintText(1, "Placed item id %d", itemId);
+					skipItemId = itemId;
 					ActivePacket.itemId = 0;
 					ActivePacket.x = 0;
 					ActivePacket.y = 0;
 					ActivePacket.startTicks = 0;
 					ActivePacket.destination = 0;
+				} else if (ActivePacket.startTicks > 0) {
+					skipItemId = ActivePacket.itemId;
 				}
 				Unlock();
 			}
 
-			if ((*BH::MiscToggles2)["Advanced Item Display"].state) {
-				bool success = true;
-				ItemInfo item = {};
-				ParseItem((unsigned char*)packet, &item, &success);
-				//PrintText(1, "Item packet: %s, %s, %X, %d, %d", item.name.c_str(), item.code, item.attrs->flags, item.sockets, GetDefense(&item));
-				if ((item.action == ITEM_ACTION_NEW_GROUND || item.action == ITEM_ACTION_OLD_GROUND) && success) {
-					bool showOnMap = false;
-					bool nameWhitelisted = false;
-					bool noTracking = false;
-					auto pingLevel = -1;
-					auto color = UNDEFINED_COLOR;
-
-					for (vector<Rule*>::iterator it = MapRuleList.begin(); it != MapRuleList.end(); it++) {
-						if ((*it)->Evaluate(NULL, &item)) {
-							nameWhitelisted = true;
-							// skip map and notification if ping level requirement is not met
-							if ((*it)->action.pingLevel > Item::GetPingLevel()) continue;
-							auto action_color = (*it)->action.notifyColor;
-							// never overwrite color with an undefined color. never overwrite a defined color with dead color.
-							if (action_color != UNDEFINED_COLOR && (action_color != DEAD_COLOR || color == UNDEFINED_COLOR))
-								color = action_color;
-							showOnMap = true;
-							noTracking = (*it)->action.noTracking;
-							pingLevel = (*it)->action.pingLevel;
-							// break unless %CONTINUE% is used
-							if ((*it)->action.stopProcessing) break;
-						}
-					}
-					// Don't block items that have a white-listed name
-					for (vector<Rule*>::iterator it = DoNotBlockRuleList.begin(); it != DoNotBlockRuleList.end(); it++) {
-						if ((*it)->Evaluate(NULL, &item)) {
-							nameWhitelisted = true;
-							break;
-						}
-					}
-					//PrintText(1, "Item on ground: %s, %s, %s, %X", item.name.c_str(), item.code, item.attrs->category.c_str(), item.attrs->flags);
-					if(showOnMap && !(*BH::MiscToggles2)["Item Detailed Notifications"].state) {
-						if (!noTracking && !IsTown(GetPlayerArea()) && pingLevel >= 0 && (unsigned int)pingLevel <= Item::GetTrackerPingLevel()) {
-							ScreenInfo::AddDrop(item.name.c_str(), item.x, item.y);
-						}
-						if (color == UNDEFINED_COLOR) {
-							color = ItemColorFromQuality(item.quality);
-						}
-						if ((*BH::MiscToggles2)["Item Drop Notifications"].state &&
-								item.action == ITEM_ACTION_NEW_GROUND &&
-								color != DEAD_COLOR
-							 ) {
-							PrintText(color, "%s%s",
-									item.name.c_str(),
-									(*BH::MiscToggles2)["Verbose Notifications"].state ? " \377c5drop" : ""
-									);
-						}
-						if ((*BH::MiscToggles2)["Item Close Notifications"].state &&
-								item.action == ITEM_ACTION_OLD_GROUND &&
-								color != DEAD_COLOR
-							 ) {
-							PrintText(color, "%s%s",
-									item.name.c_str(),
-									(*BH::MiscToggles2)["Verbose Notifications"].state ? " \377c5close" : ""
-									);
-						}
-					}
-					else if (!showOnMap && !nameWhitelisted) {
-						for (vector<Rule*>::iterator it = IgnoreRuleList.begin(); it != IgnoreRuleList.end(); it++) {
-							if ((*it)->Evaluate(NULL, &item)) {
-								*block = true;
-								//PrintText(1, "Blocking item: %s, %s, %d", item.name.c_str(), item.code, item.amount);
-								break;
-							}
-						}
-					}
-				}
-			}
+			FilterIgnoredGroundItemPacket(packet, block, skipItemId);
 			break;
 		}
 	case 0x9d:
 		{
 			// We get this packet after picking up an item
+			unsigned int skipItemId = 0;
 			if (FirstInit) {
 				BYTE action = packet[1];
 				unsigned int itemId = *(unsigned int*)&packet[4];
 				Lock();
 				if (itemId == ActivePacket.itemId) {
 					//PrintText(2, "Picked up item id %d", itemId);
+					skipItemId = itemId;
 					if (ActivePacket.destination == STORAGE_NULL) {
 						PutItemOnGround();
 					} else if (!stackDropOnItem) {
 						PutItemInContainer();
 					}
+				} else if (ActivePacket.startTicks > 0) {
+					skipItemId = ActivePacket.itemId;
 				}
 				Unlock();
 			}
+			// Owned ground drops (killer pickup timer) are 0x9d, not 0x9c.
+			FilterIgnoredGroundItemPacket(packet, block, skipItemId);
 			break;
 		}
 	default:
@@ -1543,6 +1598,135 @@ bool ItemMover::IsAutoStackableItem(UnitAny* item) {
 		return false;
 	}
 	return IsKnownStackableCode(txt->szCode);
+}
+
+UnitAny* ItemMover::FindMatchingStackInLocation(UnitAny* unit, UnitAny* source, int destLocation) {
+	if (!unit || !unit->pInventory || !source) {
+		return NULL;
+	}
+	ItemText* sourceText = D2COMMON_GetItemText(source->dwTxtFileNo);
+	if (!sourceText || !sourceText->szCode || !IsKnownStackableCode(sourceText->szCode)) {
+		return NULL;
+	}
+
+	UnitAny* best = NULL;
+	int bestAmount = -1;
+	for (UnitAny *pItem = unit->pInventory->pFirstItem; pItem; pItem = pItem->pItemData->pNextInvItem) {
+		if (!pItem || pItem == source || !pItem->pItemData || pItem->dwUnitId == source->dwUnitId) {
+			continue;
+		}
+		if (pItem->pItemData->ItemLocation != destLocation) {
+			continue;
+		}
+		ItemText* txt = D2COMMON_GetItemText(pItem->dwTxtFileNo);
+		if (!txt || !txt->szCode ||
+		    txt->szCode[0] != sourceText->szCode[0] ||
+		    txt->szCode[1] != sourceText->szCode[1] ||
+		    txt->szCode[2] != sourceText->szCode[2]) {
+			continue;
+		}
+		int amount = GetItemStackAmount(pItem);
+		if (amount < 1 || amount >= AUTO_STACK_MAX) {
+			continue;
+		}
+		if (amount > bestAmount) {
+			bestAmount = amount;
+			best = pItem;
+		}
+	}
+	return best;
+}
+
+void ItemMover::ProcessClickStackStep() {
+	if (clickStackDestination == 0 && !stackDropOnItem) {
+		return;
+	}
+
+	UnitAny* unit = D2CLIENT_GetPlayerUnit();
+	if (!unit || !unit->pInventory) {
+		stackDropOnItem = false;
+		clickStackDestination = 0;
+		return;
+	}
+
+	ULONGLONG currentTick = BHGetTickCount();
+	Lock();
+	bool busy = (ActivePacket.startTicks > 0);
+	ULONGLONG packetStart = ActivePacket.startTicks;
+	DWORD packetItemId = ActivePacket.itemId;
+	Unlock();
+
+	UnitAny* cursorItem = D2CLIENT_GetCursorItem();
+
+	if (busy) {
+		if (cursorItem != NULL && cursorItem->dwUnitId == packetItemId && stackDropOnItem) {
+			if ((currentTick - packetStart) < 50) {
+				return;
+			}
+			DWORD targetId = stackTargetItemId;
+			stackDropOnItem = false;
+			lastClickStackTick = currentTick;
+			StackCursorItemOnTarget(cursorItem->dwUnitId, targetId);
+			Lock();
+			ActivePacket.itemId = 0;
+			ActivePacket.x = 0;
+			ActivePacket.y = 0;
+			ActivePacket.startTicks = 0;
+			ActivePacket.destination = 0;
+			Unlock();
+			return;
+		}
+		if ((currentTick - packetStart) > 3000) {
+			Lock();
+			ActivePacket.itemId = 0;
+			ActivePacket.x = 0;
+			ActivePacket.y = 0;
+			ActivePacket.startTicks = 0;
+			ActivePacket.destination = 0;
+			Unlock();
+			stackDropOnItem = false;
+			clickStackDestination = 0;
+		}
+		return;
+	}
+
+	if (clickStackDestination == 0) {
+		return;
+	}
+
+	if (cursorItem == NULL) {
+		clickStackDestination = 0;
+		return;
+	}
+
+	if (lastClickStackTick != 0 && (currentTick - lastClickStackTick) < 150) {
+		return;
+	}
+
+	if (!Init()) {
+		return;
+	}
+
+	UnitAny* dropTarget = FindMatchingStackInLocation(unit, cursorItem, clickStackDestination);
+	if (dropTarget) {
+		lastClickStackTick = currentTick;
+		StackCursorItemOnTarget(cursorItem->dwUnitId, dropTarget->dwUnitId);
+		return;
+	}
+
+	ItemText* cursorText = D2COMMON_GetItemText(cursorItem->dwTxtFileNo);
+	if (!cursorText) {
+		clickStackDestination = 0;
+		return;
+	}
+
+	int invUI = D2CLIENT_GetUIState(UI_INVENTORY);
+	int stashUI = D2CLIENT_GetUIState(UI_STASH);
+	LoadInventory(unit, STORAGE_INVENTORY, -1, -1, false, false, stashUI, invUI);
+	if (FindDestination(clickStackDestination, cursorItem->dwUnitId, cursorText->xSize, cursorText->ySize)) {
+		PutItemInContainer();
+	}
+	clickStackDestination = 0;
 }
 
 bool ItemMover::MoveItemOntoStack(UnitAny* source, UnitAny* target) {
@@ -3158,6 +3342,7 @@ void ItemMover::OnGameExit() {
 	ActivePacket.startTicks = 0;
 	ActivePacket.destination = 0;
 	stackDropOnItem = false;
+	clickStackDestination = 0;
 	goldPickupQueue.clear();
 	previousHP = 0;
 	damageTakenTick = 0;
@@ -3323,6 +3508,15 @@ void ParseItem(const unsigned char *data, ItemInfo *item, bool *success) {
 
 		if (item->identified) {
 			switch(item->quality) {
+			case ITEM_QUALITY_NORMAL:
+				// Tome/scroll spell id. The engine keys this on item type, not
+				// stackable+useable; R1 crafting mats (prisms, cubes, orbs) are
+				// stackable+useable and carry no such field.
+				if (item->attrs->category == "book" || item->attrs->category == "scro") {
+					reader.read(5);
+				}
+				break;
+
 			case ITEM_QUALITY_INFERIOR:
 				item->prefix = reader.read(3);
 				break;
@@ -3384,32 +3578,29 @@ void ParseItem(const unsigned char *data, ItemInfo *item, bool *success) {
 		item->isArmor = (item->attrs->flags & ITEM_GROUP_ALLARMOR) > 0;
 		item->isWeapon = (item->attrs->flags & ITEM_GROUP_ALLWEAPON) > 0;
 
+		// Defense, durability and socket count are stored with their ItemStatCost
+		// Save Bits / Save Add, not fixed widths. R1 armorclass is 12 bits + 401
+		// (vanilla 11 + 10). Current durability is only written when max
+		// durability is non-zero; every R1 weapon has nodurability=1, so reading
+		// it unconditionally slipped 9 bits and the stat list became garbage.
 		if (item->isArmor) {
-			item->defense = reader.read(11) - 10;
+			StatProperties *ac = GetStatProperties(STAT_DEFENSE);
+			item->defense = reader.read(ac->saveBits) - ac->saveAdd;
 		}
 
-		/*if(entry.throwable)
-		{
-			reader.read(9);
-			reader.read(17);
-		} else */
-		//special case: indestructible phase blade
-		if (item->code[0] == '7' && item->code[1] == 'c' && item->code[2] == 'r') {
-			reader.read(8);
-		} else if (item->isArmor || item->isWeapon) {
-			item->maxDurability = reader.read(8);
+		if (item->isArmor || item->isWeapon) {
+			StatProperties *maxDur = GetStatProperties(STAT_MAXDURABILITY);
+			item->maxDurability = reader.read(maxDur->saveBits) - maxDur->saveAdd;
 			item->indestructible = item->maxDurability == 0;
-			/*if (!item->indestructible) {
-				item->durability = reader.read(8);
-				reader.readBool();
-			}*/
-			//D2Hackit always reads it, hmmm. Appears to work.
-			item->durability = reader.read(8);
-			reader.readBool();
+			if (!item->indestructible) {
+				StatProperties *dur = GetStatProperties(STAT_DURABILITY);
+				item->durability = reader.read(dur->saveBits) - dur->saveAdd;
+			}
 		}
 
 		if (item->hasSockets) {
-			item->sockets = (BYTE)reader.read(4);
+			StatProperties *sock = GetStatProperties(STAT_SOCKETS);
+			item->sockets = (BYTE)(reader.read(sock->saveBits) - sock->saveAdd);
 		}
 
 		if (!item->identified) {
@@ -3417,9 +3608,6 @@ void ParseItem(const unsigned char *data, ItemInfo *item, bool *success) {
 		}
 
 		if (item->attrs->stackable) {
-			if (item->attrs->useable) {
-				reader.read(5);
-			}
 			item->amount = reader.read(9);
 		}
 
@@ -3427,7 +3615,14 @@ void ParseItem(const unsigned char *data, ItemInfo *item, bool *success) {
 			unsigned long set_mods = reader.read(5);
 		}
 
+		// A layout mismatch walks past the packet and turns random bytes into
+		// stats, which then satisfy show rules. Fail the parse instead.
+		const std::size_t packetBits = messageSize * 8;
 		while (true) {
+			if (reader.offset + 9 > packetBits) {
+				*success = false;
+				break;
+			}
 			unsigned long stat_id = reader.read(9);
 			if (stat_id == 0x1ff) {
 				break;
@@ -3467,14 +3662,14 @@ bool ProcessStat(unsigned int stat, BitReader &reader, ItemProperty &itemProp) {
 		switch (stat) {
 			case STAT_CLASSSKILLS:
 			{
-				itemProp.characterClass = reader.read(saveParamBits);
+				itemProp.characterClass = itemProp.param = reader.read(saveParamBits);
 				itemProp.value = reader.read(saveBits);
 				return true;
 			}
 			case STAT_NONCLASSSKILL:
 			case STAT_SINGLESKILL:
 			{
-				itemProp.skill = reader.read(saveParamBits);
+				itemProp.skill = itemProp.param = reader.read(saveParamBits);
 				itemProp.value = reader.read(saveBits);
 				return true;
 			}
@@ -3486,7 +3681,7 @@ bool ProcessStat(unsigned int stat, BitReader &reader, ItemProperty &itemProp) {
 			}
 			case STAT_AURA:
 			{
-				itemProp.skill = reader.read(saveParamBits);
+				itemProp.skill = itemProp.param = reader.read(saveParamBits);
 				itemProp.value = reader.read(saveBits);
 				return true;
 			}
@@ -3514,6 +3709,8 @@ bool ProcessStat(unsigned int stat, BitReader &reader, ItemProperty &itemProp) {
 				itemProp.level = reader.read(6);
 				itemProp.skill = reader.read(10);
 				itemProp.skillChance = reader.read(saveBits);
+				itemProp.param = (itemProp.skill << 6) | itemProp.level;
+				itemProp.value = itemProp.skillChance;
 				return true;
 			}
 			case STAT_CHARGED:
@@ -3534,8 +3731,10 @@ bool ProcessStat(unsigned int stat, BitReader &reader, ItemProperty &itemProp) {
 				return true;
 			}
 			default:
-				reader.read(saveParamBits);
-				reader.read(saveBits);
+				// R1 adds param stats (gain-*, att/anykill procs, aura-norm) that fall here.
+				// Keep them, or STAT/MULTI rules read 0 on the ground packet.
+				itemProp.param = reader.read(saveParamBits);
+				itemProp.value = reader.read(saveBits) - saveAdd;
 				return true;
 		}
 	}
@@ -3557,24 +3756,28 @@ bool ProcessStat(unsigned int stat, BitReader &reader, ItemProperty &itemProp) {
 		{
 			itemProp.minimum = reader.read(saveBits);
 			itemProp.maximum = reader.read(GetStatProperties(STAT_MAXIMUMFIREDAMAGE)->saveBits);
+			itemProp.value = itemProp.minimum;
 			return true;
 		}
 		case STAT_MINIMUMLIGHTNINGDAMAGE:
 		{
 			itemProp.minimum = reader.read(saveBits);
 			itemProp.maximum = reader.read(GetStatProperties(STAT_MAXIMUMLIGHTNINGDAMAGE)->saveBits);
+			itemProp.value = itemProp.minimum;
 			return true;
 		}
 		case STAT_MINIMUMMAGICALDAMAGE:
 		{
 			itemProp.minimum = reader.read(saveBits);
 			itemProp.maximum = reader.read(GetStatProperties(STAT_MAXIMUMMAGICALDAMAGE)->saveBits);
+			itemProp.value = itemProp.minimum;
 			return true;
 		}
 		case STAT_MINIMUMCOLDDAMAGE:
 		{
 			itemProp.minimum = reader.read(saveBits);
 			itemProp.maximum = reader.read(GetStatProperties(STAT_MAXIMUMCOLDDAMAGE)->saveBits);
+			itemProp.value = itemProp.minimum;
 			itemProp.length = reader.read(GetStatProperties(STAT_COLDDAMAGELENGTH)->saveBits);
 			return true;
 		}
@@ -3582,6 +3785,7 @@ bool ProcessStat(unsigned int stat, BitReader &reader, ItemProperty &itemProp) {
 		{
 			itemProp.minimum = reader.read(saveBits);
 			itemProp.maximum = reader.read(GetStatProperties(STAT_MAXIMUMPOISONDAMAGE)->saveBits);
+			itemProp.value = itemProp.minimum;
 			itemProp.length = reader.read(GetStatProperties(STAT_POISONDAMAGELENGTH)->saveBits);
 			return true;
 		}

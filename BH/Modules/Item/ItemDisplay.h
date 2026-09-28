@@ -42,6 +42,10 @@ struct ItemProperty {
 
 	unsigned int skillChance;
 
+	// ItemStatCost param as D2COMMON_GetUnitStat's layer sees it, so MULTI-<stat>,<param>
+	// matches the same way on the ground packet as on the unit. Procs: skill << 6 | level.
+	unsigned int param;
+
 	unsigned int perLevel;
 };
 
@@ -675,6 +679,13 @@ struct Rule {
 	}
 };
 
+// First non-CONTINUE matching ItemDisplay line wins, same as names.
+// Blank %NL% / empty-colon hides still packet-hide even if a later
+// catch-all like `GEM>0: %NAME%` would have been a DoNotBlock whitelist.
+bool ActionHasMapPing(const Action &action);
+bool ActionIsBlankHide(const Action &action);
+bool FirstDecisiveItemDisplayRuleIsHide(UnitItemInfo *uInfo, ItemInfo *info);
+
 class ItemDescLookupCache : public RuleLookupCache<string> {
 	string make_cached_T(UnitItemInfo *uInfo) override;
 	string to_str(const string &name) override;
@@ -740,6 +751,7 @@ BYTE GetOperation(string *op);
 inline bool IntegerCompare(unsigned int Lvalue, int operation, unsigned int Rvalue);
 void GetItemName(UnitItemInfo *uInfo, string &name);
 void SubstituteNameVariables(UnitItemInfo *uInfo, string &name, const string &action_name);
+bool IsHiddenDisplayStat(int stat);
 int GetDefense(ItemInfo *item);
 BYTE GetAffixLevel(BYTE ilvl, BYTE qlvl, BYTE mlvl);
 BYTE GetRequiredLevel(UnitAny* item);

@@ -42,7 +42,7 @@ struct StatProperties {
 	std::string name;
 	BYTE saveBits;
 	BYTE saveParamBits;
-	BYTE saveAdd;
+	unsigned short saveAdd; // R1 armorclass Save Add is 401
 	BYTE op;
 	BYTE sendParamBits;
 	unsigned short ID;

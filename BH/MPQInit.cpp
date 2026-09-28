@@ -1076,7 +1076,8 @@ void InitializeMPQData() {
 				StatProperties *mbits = new StatProperties();
 				mbits->name.assign("missing_id");
 				mbits->ID = missing;
-				mbits->sendParamBits = mbits->saveBits = mbits->saveAdd = mbits->saveParamBits = mbits->op = 0;
+				mbits->sendParamBits = mbits->saveBits = mbits->saveParamBits = mbits->op = 0;
+				mbits->saveAdd = 0;
 				AllStatList.push_back(mbits);
 				StatMap[mbits->name] = mbits;
 			}
@@ -1087,7 +1088,7 @@ void InitializeMPQData() {
 			bits->ID = id;
 			bits->sendParamBits = (BYTE)std::strtoul((*d)["Send Param Bits"].c_str(), &end, 10);
 			bits->saveBits = (BYTE)std::strtoul((*d)["Save Bits"].c_str(), &end, 10);
-			bits->saveAdd = (BYTE)std::strtoul((*d)["Save Add"].c_str(), &end, 10);
+			bits->saveAdd = (unsigned short)std::strtoul((*d)["Save Add"].c_str(), &end, 10);
 			bits->saveParamBits = (BYTE)std::strtoul((*d)["Save Param Bits"].c_str(), &end, 10);
 			bits->op = (BYTE)std::strtoul((*d)["op"].c_str(), &end, 10);
 			AllStatList.push_back(bits);

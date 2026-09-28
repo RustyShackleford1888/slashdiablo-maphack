@@ -31,7 +31,12 @@ class Bnet : public Module {
 		static std::string lastDesc;
 		static std::regex reg;
 		unsigned int* defaultGsIndex;
+		unsigned int* defaultPlayersIndex;
+		bool pendingDefaultPlayers;
+		DWORD defaultPlayersJoinTick;
 		static string defaultGsString;
+
+		void TrySendDefaultPlayersCommand();
 
 	public:
 		bool* followLeader;

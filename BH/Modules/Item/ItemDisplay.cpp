@@ -75,6 +75,36 @@ vector<Rule*> DoNotBlockRuleList;
 vector<Rule*> IgnoreRuleList;
 BYTE LastConditionType;
 
+std::string without_invis_chars(const std::string &name);
+
+bool ActionHasMapPing(const Action &action) {
+	return action.colorOnMap != UNDEFINED_COLOR ||
+		action.borderColor != UNDEFINED_COLOR ||
+		action.dotColor != UNDEFINED_COLOR ||
+		action.pxColor != UNDEFINED_COLOR ||
+		action.lineColor != UNDEFINED_COLOR;
+}
+
+bool ActionIsBlankHide(const Action &action) {
+	return action.stopProcessing &&
+		!ActionHasMapPing(action) &&
+		without_invis_chars(action.name).length() == 0 &&
+		without_invis_chars(action.description).length() == 0;
+}
+
+bool FirstDecisiveItemDisplayRuleIsHide(UnitItemInfo *uInfo, ItemInfo *info) {
+	for (vector<Rule*>::const_iterator it = RuleList.begin(); it != RuleList.end(); it++) {
+		if (!(*it)->Evaluate(uInfo, info)) {
+			continue;
+		}
+		if (!(*it)->action.stopProcessing) {
+			continue;
+		}
+		return ActionIsBlankHide((*it)->action);
+	}
+	return false;
+}
+
 TrueCondition *trueCondition = new TrueCondition();
 FalseCondition *falseCondition = new FalseCondition();
 
@@ -163,16 +193,21 @@ BYTE RuneNumberFromItemCode(char *code){
 	return (BYTE)(((code[1] - '0') * 10) + code[2] - '0');
 }
 
-// Find the item description. This code is called only when there's a cache miss
+// Find the item description. This code is called only when there's a cache miss.
+// If several matching rules have {}, use only the last one that loaded.
 string ItemDescLookupCache::make_cached_T(UnitItemInfo *uInfo) {
 	string new_name;
+	const string *last_description = NULL;
 	for (vector<Rule*>::const_iterator it = this->RuleList.begin(); it != this->RuleList.end(); it++) {
 		if ((*it)->Evaluate(uInfo, NULL)) {
-			SubstituteNameVariables(uInfo, new_name, (*it)->action.description);
+			last_description = &(*it)->action.description;
 			if ((*it)->action.stopProcessing) {
 				break;
 			}
 		}
+	}
+	if (last_description) {
+		SubstituteNameVariables(uInfo, new_name, *last_description);
 	}
 	return new_name;
 }
@@ -189,6 +224,13 @@ string ItemDescLookupCache::to_str(const string &name) {
 
 // Find the item name. This code is called only when there's a cache miss
 string ItemNameLookupCache::make_cached_T(UnitItemInfo *uInfo, const string &name) {
+	// Only blank GROUND leftovers. Blanking inventory/cursor names after a
+	// click-pickup made hidden items undroppable and froze the character.
+	// Item mode 3 = on ground (0 stored, 1 equip, 2 belt, 4 cursor, 5 dropping).
+	if (uInfo && uInfo->item && uInfo->item->dwMode == 3 &&
+			FirstDecisiveItemDisplayRuleIsHide(uInfo, NULL)) {
+		return "";
+	}
 	string new_name(name);
 	for (vector<Rule*>::const_iterator it = this->RuleList.begin(); it != this->RuleList.end(); it++) {
 		if ((*it)->Evaluate(uInfo, NULL)) {
@@ -197,25 +239,6 @@ string ItemNameLookupCache::make_cached_T(UnitItemInfo *uInfo, const string &nam
 				break;
 			}
 		}
-	}
-	// if the item is on the ignore list and not the map list, warn the user that this item is normally blocked
-	bool blocked = ignore_cache.Get(uInfo);
-	vector<Action> actions = map_action_cache.Get(uInfo);
-	if (blocked) {
-		bool has_map_action = false;
-		for (auto &action : actions) {
-			if (action.colorOnMap != UNDEFINED_COLOR ||
-				action.borderColor != UNDEFINED_COLOR ||
-				action.dotColor != UNDEFINED_COLOR ||
-				action.pxColor != UNDEFINED_COLOR ||
-				action.lineColor != UNDEFINED_COLOR) {
-				has_map_action = true;
-				break;
-			}
-					
-		}
-		bool whitelisted = do_not_block_cache.Get(uInfo);
-		if (!has_map_action && !whitelisted) return new_name + " [blocked]";
 	}
 	return new_name;
 }
@@ -259,6 +282,19 @@ bool IgnoreLookupCache::make_cached_T(UnitItemInfo *uInfo) {
 
 string IgnoreLookupCache::to_str(const bool &ignore) {
 	return ignore ? "blocked" : "not blocked";
+}
+
+// Resurgence internal flags. %STAT-#% and stash export should omit these.
+bool IsHiddenDisplayStat(int stat) {
+	switch (stat) {
+	case 241: // Chest Roll
+	case 283: // Corrupt
+	case 284: // Hallow
+	case 468: // Gamble
+		return true;
+	default:
+		return false;
+	}
 }
 
 // least recently used cache for storing a limited number of item names
@@ -362,7 +398,7 @@ void SubstituteNameVariables(UnitItemInfo *uInfo, string &name, const string &ac
 		while (std::regex_search(name, stat_match, stat_reg)) {
 			int stat = stoi(stat_match[1].str(), nullptr, 10);
 			statVal[0] = '\0';
-			if (stat <= (int)STAT_MAX) {
+			if (stat <= (int)STAT_MAX && !IsHiddenDisplayStat(stat)) {
 				auto value = D2COMMON_GetUnitStat(item, stat, 0);
 				// Hp and mana need adjusting
 				if (stat == 7 || stat == 9)
@@ -503,6 +539,13 @@ std::string without_invis_chars(const std::string &name) {
 		removeSubstrs(wo_invis_chars, "%" + colors[n].key + "%");
 	}
 	removeSubstrs(wo_invis_chars, " ");
+	// %NL% is a line-wrap token, not a visible name. Leaving it here made
+	// `ItemDisplay[hp1]: %NL%` look like a whitelist (DoNotBlock + NameRule),
+	// so 0x9c never packet-hid the drop and the ground click-ghost stayed.
+	// Strip it only for the blank-name test. `%NAME%%NL%foo` still has a name.
+	removeSubstrs(wo_invis_chars, "%NL%");
+	removeSubstrs(wo_invis_chars, "\n");
+	removeSubstrs(wo_invis_chars, "\r");
 	return wo_invis_chars;
 }
 
@@ -1761,8 +1804,9 @@ bool ItemStatCondition::EvaluateInternalFromPacket(ItemInfo *info, Condition *ar
 		}
 		return IntegerCompare(num, operation, targetStat);
 	default:
+		// itemStat2 is the MULTI param; STAT<n> passes 0 and sums every param.
 		for (vector<ItemProperty>::iterator prop = info->properties.begin(); prop < info->properties.end(); prop++) {
-			if (prop->stat == itemStat) {
+			if (prop->stat == itemStat && (itemStat2 == 0 || prop->param == itemStat2)) {
 				num += prop->value;
 			}
 		}

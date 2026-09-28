@@ -72,7 +72,7 @@ bool checkFlag(UnitAny* pItem, DWORD flag){
 }
 
 JSONObject* StashExport::getStatEntry(WORD statId, WORD statId2, DWORD statVal, DWORD min, DWORD max){
-	if (!statVal)
+	if (!statVal || IsHiddenDisplayStat(statId))
 		return nullptr;
 	int hi = statVal >> 8;
 	int lo = statVal & 0xff;
