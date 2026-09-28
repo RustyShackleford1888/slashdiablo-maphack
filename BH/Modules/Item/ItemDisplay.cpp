@@ -418,7 +418,7 @@ void SubstituteNameVariables(UnitItemInfo *uInfo, string &name, const string &ac
 		while (std::regex_search(name, stat_match, stat_reg)) {
 			int stat = stoi(stat_match[1].str(), nullptr, 10);
 			statVal[0] = '\0';
-			if (stat <= (int)STAT_MAX) {
+			if (stat <= (int)STAT_MAX && !IsHiddenDisplayStat(stat)) {
 
 				DWORD value = 0;
 				Stat aStatList[256] = { NULL };
