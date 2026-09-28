@@ -55,6 +55,7 @@ class Maphack : public Module {
 		bool cheaterLightLast;
 		bool justJoinedGame;
 		std::ofstream drop_stream;
+		bool use_drop_stream;
 
 		// Resurgence S→C 0x4B: server-authoritative player tile for desync ghost.
 		bool hasServerPos;

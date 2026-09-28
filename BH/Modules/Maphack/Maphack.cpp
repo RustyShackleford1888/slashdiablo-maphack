@@ -269,7 +269,20 @@ for (const auto& entry : auraColorsString) {
 	BH::config->ReadToggle("Show Automap On Join", "None", false, Toggles["Show Automap On Join"]);
 	BH::config->ReadToggle("Skip NPC Quest Messages", "None", true, Toggles["Skip NPC Quest Messages"]);
 
+	BH::config->ReadBoolean("Write Notifications To File", use_drop_stream);
+
 	BH::config->ReadInt("Minimap Max Ghost", automapDraw.maxGhost);
+
+	// keeping this simple for now, is only enabled by a non-ui config bool
+	if (use_drop_stream && !drop_stream.is_open()) {
+		drop_stream.open("bh_active_drops", std::ios_base::app);
+	}
+	if (!use_drop_stream && drop_stream.is_open()) {
+		drop_stream.close();
+	}
+	if (drop_stream.fail()) {
+		cout << "Failed operation on bh_active_drops" << endl;
+	}
 }
 
 void Maphack::ResetRevealed() {
@@ -449,13 +462,6 @@ void Maphack::OnLoad() {
 	options.push_back("Act");
 	options.push_back("Level");
 	new Combohook(cheaterTab, 100, cheaterY, 70, &revealType, options);
-
-	if (!drop_stream.is_open()) {
-		drop_stream.open("bh_active_drops", std::ios_base::app);
-	}
-	if (drop_stream.fail()) {
-		cout << "Failed to open bh_active_drops" << endl;
-	}
 }
 
 void Maphack::OnKey(bool up, BYTE key, LPARAM lParam, bool* block) {
