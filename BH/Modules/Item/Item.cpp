@@ -69,6 +69,21 @@ Patch* itemNamePatch = new Patch(Call, D2CLIENT, { 0x92366, 0x96736 }, (int)Item
 Patch* itemPropertiesPatch = new Patch(Jump, D2CLIENT, { 0x5612C, 0x2E3FC }, (int)GetProperties_Interception, 6);
 Patch* itemPropertyStringDamagePatch = new Patch(Call, D2CLIENT, { 0x55D7B, 0x2E04B }, (int)GetItemPropertyStringDamage_Interception, 5);
 Patch* itemPropertyStringPatch = new Patch(Call, D2CLIENT, { 0x55D9D, 0x2E06D }, (int) GetItemPropertyString_Interception, 5);
+// Replaces "mov eax, [ebp+60h]; test eax, eax" at the start of the socketed-stat merge.
+// 1.13c: D2Client+0x55C15  1.13d: D2Client+0x2DEE5. Returning +0x4B skips the merge loop.
+Patch* skipSocketedStatMergePatch = new Patch(Call, D2CLIENT, { 0x55C15, 0x2DEE5 }, (int)SkipSocketedStatMerge_Intercept, 5);
+// Inventory hover draws the finished tooltip here. ecx is the wide string.
+// The property builder is only the stat block; set lines are concatenated later,
+// so the socket list has to be added on this call, just before the text is drawn.
+// 1.13c buffer is 0x800 wchars. 1.13d: D2Client+0x9775B.
+Patch* tooltipSocketStatsPatch1 = new Patch(Call, D2CLIENT, { 0x9338B, 0x9775B }, (int)TooltipDraw_Intercept_800, 5);
+// Second hover layout. Both sites draw the same 0x400-wchar buffer.
+// 1.13d: D2Client+0x97F89 and D2Client+0x988FA.
+Patch* tooltipSocketStatsPatch2 = new Patch(Call, D2CLIENT, { 0x93BB9, 0x97F89 }, (int)TooltipDraw_Intercept_400, 5);
+Patch* tooltipSocketStatsPatch3 = new Patch(Call, D2CLIENT, { 0x9452A, 0x988FA }, (int)TooltipDraw_Intercept_400, 5);
+// D2Win tooltip draw thunk replaced by the patches above. Set in OnLoad.
+static DWORD tooltipDrawAddr = 0;
+static int tooltipTextCap = 0x400;
 Patch* viewInvPatch1 = new Patch(Call, D2CLIENT, { 0x953E2, 0x997B2 }, (int)ViewInventoryPatch1_ASM, 6);
 Patch* viewInvPatch2 = new Patch(Call, D2CLIENT, { 0x94AB4, 0x98E84 }, (int)ViewInventoryPatch2_ASM, 6);
 Patch* viewInvPatch3 = new Patch(Call, D2CLIENT, { 0x93A6F, 0x97E3F }, (int)ViewInventoryPatch3_ASM, 5);
@@ -95,9 +110,16 @@ void Item::OnLoad() {
 	permShowItems4->Install();
 	permShowItems5->Install();
 
+	tooltipDrawAddr = (DWORD)Patch::GetDllOffset(D2CLIENT,
+		D2Version::GetGameVersionID() == VERSION_113d ? 0xD2A4 : 0xD3B4);
+
 	itemPropertiesPatch->Install();
 	itemPropertyStringDamagePatch->Install();
 	itemPropertyStringPatch->Install();
+	skipSocketedStatMergePatch->Install();
+	tooltipSocketStatsPatch1->Install();
+	tooltipSocketStatsPatch2->Install();
+	tooltipSocketStatsPatch3->Install();
 
 	if (Toggles["Show Ethereal"].state || Toggles["Show Sockets"].state || Toggles["Show iLvl"].state || Toggles["Color Mod"].state ||
 		Toggles["Show Rune Numbers"].state || Toggles["Alt Item Style"].state || Toggles["Shorten Item Names"].state || Toggles["Advanced Item Display"].state)
@@ -218,6 +240,7 @@ void Item::LoadConfig() {
 	BH::config->ReadToggle("Allow Unknown Items", "None", false, Toggles["Allow Unknown Items"]);
 	BH::config->ReadToggle("Suppress Invalid Stats", "None", false, Toggles["Suppress Invalid Stats"]);
 	BH::config->ReadToggle("Always Show Item Stat Ranges", "None", true, Toggles["Always Show Item Stat Ranges"]);
+	BH::config->ReadToggle("Separate Socketed Stats", "VK_SHIFT", false, Toggles["Separate Socketed Stats"]);
 	BH::config->ReadInt("Filter Level", filterLevelSetting);
 	BH::config->ReadInt("Ping Level", pingLevelSetting);
 	BH::config->ReadInt("Run Details Ping Level", trackerPingLevelSetting);
@@ -311,6 +334,10 @@ void Item::DrawSettings() {
 	new Checkhook(settingsTab, 4, y, &Toggles["Always Show Item Stat Ranges"].state, "Always Show Item Stat Ranges");
 	new Keyhook(settingsTab, keyhook_x, y+2, &Toggles["Always Show Item Stat Ranges"].toggle, "");
 	y += 15;
+
+	new Checkhook(settingsTab, 4, y, &Toggles["Separate Socketed Stats"].state, "Separate Socketed Stats");
+	new Keyhook(settingsTab, keyhook_x, y+2, &Toggles["Separate Socketed Stats"].toggle, "");
+	y += 15;
 	
 	new Checkhook(settingsTab, 4, y, &Toggles["Advanced Item Display"].state, "Advanced Item Display");
 	new Keyhook(settingsTab, keyhook_x, y+2, &Toggles["Advanced Item Display"].toggle, "");
@@ -369,6 +396,10 @@ void Item::OnUnload() {
 	itemPropertiesPatch->Remove();
 	itemPropertyStringDamagePatch->Remove();
 	itemPropertyStringPatch->Remove();
+	skipSocketedStatMergePatch->Remove();
+	tooltipSocketStatsPatch1->Remove();
+	tooltipSocketStatsPatch2->Remove();
+	tooltipSocketStatsPatch3->Remove();
 	viewInvPatch1->Remove();
 	viewInvPatch2->Remove();
 	viewInvPatch3->Remove();
@@ -436,6 +467,9 @@ void Item::OnKey(bool up, BYTE key, LPARAM lParam, bool* block) {
 	}
 	for (map<string,Toggle>::iterator it = Toggles.begin(); it != Toggles.end(); it++) {
 		if (key == (*it).second.toggle) {
+			// Hold this key to preview socketed stats. Releasing it restores the normal tooltip.
+			if ((*it).first == "Separate Socketed Stats")
+				continue;
 			*block = true;
 			if (up) {
 				(*it).second.state = !(*it).second.state;
@@ -792,11 +826,277 @@ static ItemsTxt* GetArmorText(UnitAny* pItem) {
 	return NULL;
 }
 
-void __stdcall Item::OnProperties(wchar_t * wTxt)
+bool Item::SocketStatsSplitActive() {
+	unsigned int key = Toggles["Separate Socketed Stats"].toggle;
+	if (key != 0 && (GetKeyState(key) & 0x8000) != 0)
+		return true;
+	return Toggles["Separate Socketed Stats"].state;
+}
+
+// Set while GetItemDesc is building a socketed gem/rune/jewel, so that call
+// does not try to split sockets again.
+static int g_buildingSocketedDesc = 0;
+
+// ebp in the tooltip builder is the item whose stats are being merged.
+// Return 1 to skip folding socketed units into that description.
+static int __declspec(noinline) __cdecl ShouldSkipSocketedStatMerge(UnitAny* pItem) {
+	if (g_buildingSocketedDesc || !Item::SocketStatsSplitActive())
+		return 0;
+	if (!pItem || pItem->dwType != UNIT_ITEM || !pItem->pItemData)
+		return 0;
+	// Runeword mods live on the item itself. The socketed runes are not a separate stat block.
+	if (pItem->pItemData->dwFlags & ITEM_RUNEWORD)
+		return 0;
+	if (!pItem->pInventory || !pItem->pInventory->pFirstItem)
+		return 0;
+	return 1;
+}
+
+// D2CLIENT GetItemDesc: ecx = item, edi = destination, stack = (item, newlines, 0).
+void __declspec(naked) __fastcall D2CLIENT_GetItemDesc(UnitAny* /*pItem*/, wchar_t* /*buffer*/) {
+	__asm {
+		push edi
+		mov edi, edx
+		push 0
+		push 1
+		push ecx
+		call D2CLIENT_GetItemDesc_I
+		pop edi
+		ret
+	}
+}
+
+static void TrimTrailingNewlines(wchar_t* text) {
+	size_t len = wcslen(text);
+	while (len > 0 && (text[len - 1] == L'\n' || text[len - 1] == L'\r' || text[len - 1] == L' '))
+		text[--len] = 0;
+}
+
+// The hover tooltip buffer is stored bottom-to-top: the item name is the last
+// line, and the game draws the last line at the top. Lines appended here are
+// inserted at the front of that buffer, so the first line written is the
+// visual bottom.
+static void DropFirstTooltipLine(wchar_t* text) {
+	wchar_t* nl = wcschr(text, L'\n');
+	if (!nl) {
+		text[0] = 0;
+		return;
+	}
+	memmove(text, nl + 1, (wcslen(nl + 1) + 1) * sizeof(wchar_t));
+}
+
+static void AppendTooltipLine(wchar_t* block, int blockCap, const wchar_t* line) {
+	int used = (int)wcslen(block);
+	int lineLen = (int)wcslen(line);
+	if (used + lineLen + 2 >= blockCap)
+		return;
+	memcpy(block + used, line, lineLen * sizeof(wchar_t));
+	block[used + lineLen] = L'\n';
+	block[used + lineLen + 1] = 0;
+}
+
+// One displayed socketed mod. Lines with the same wording and the same number
+// of values are added together ("+20% Enhanced Damage" and "+45%" become "+65%").
+struct SocketStatGroup {
+	std::wstring templ;
+	std::wstring plain;
+	std::wstring rangeColor;
+	std::vector<int> sums;
+	std::vector<char> hadPlus;
+	int count;
+	bool canCombine;
+};
+
+static bool ParseSocketStatLine(const wchar_t* src, SocketStatGroup& group) {
+	group.templ.clear();
+	group.plain.clear();
+	group.rangeColor.clear();
+	group.sums.clear();
+	group.hadPlus.clear();
+	group.count = 1;
+	bool sawParen = false;
+	for (int i = 0; src[i]; ) {
+		if (src[i] == 0x00FF && src[i + 1] == L'c' && src[i + 2] != 0) {
+			if (src[i + 3] == L'[')
+				group.rangeColor.assign(src + i, 3);
+			i += 3;
+			continue;
+		}
+		wchar_t c = src[i];
+		if (c == L'(')
+			sawParen = true;
+		bool signedNum = (c == L'+' || c == L'-') && src[i + 1] >= L'0' && src[i + 1] <= L'9';
+		if (signedNum || (c >= L'0' && c <= L'9')) {
+			bool plus = signedNum && c == L'+';
+			int sign = (signedNum && c == L'-') ? -1 : 1;
+			if (signedNum) {
+				group.plain.push_back(c);
+				i++;
+			}
+			int val = 0;
+			int digits = 0;
+			while (src[i] >= L'0' && src[i] <= L'9' && digits < 9) {
+				val = val * 10 + (src[i] - L'0');
+				group.plain.push_back(src[i]);
+				i++;
+				digits++;
+			}
+			group.sums.push_back(sign * val);
+			group.hadPlus.push_back(plus ? 1 : 0);
+			group.templ.push_back(L'\x01');
+			continue;
+		}
+		group.plain.push_back(c);
+		group.templ.push_back(c);
+		i++;
+	}
+	// Skill charges put several numbers inside parentheses and must stay separate.
+	// A single per-level value still adds.
+	group.canCombine = !group.sums.empty() && !(sawParen && group.sums.size() > 1);
+	return !group.plain.empty();
+}
+
+static std::wstring RebuildSocketStatLine(const SocketStatGroup& group) {
+	if (group.count <= 1 || !group.canCombine)
+		return group.plain;
+	std::wstring out;
+	int ni = 0;
+	for (wchar_t c : group.templ) {
+		if (c != L'\x01') {
+			out.push_back(c);
+			continue;
+		}
+		int value = group.sums[ni];
+		if (group.hadPlus[ni] && value >= 0)
+			out.push_back(L'+');
+		wchar_t num[16];
+		swprintf_s(num, L"%d", value);
+		out += num;
+		ni++;
+	}
+	return out;
+}
+
+static std::wstring ColorSocketStatLine(const std::wstring& plain, const std::wstring& rangeColor, const std::wstring& blue) {
+	size_t bracket = plain.find(L'[');
+	if (bracket == std::wstring::npos || rangeColor.empty())
+		return blue + plain;
+	return blue + plain.substr(0, bracket) + rangeColor + plain.substr(bracket) + blue;
+}
+
+static void AppendSeparatedSocketedStats(wchar_t* wTxt, UnitAny* pItem, int textCap) {
+	const int kMaxSockets = 6;
+	if (!wTxt || textCap < 32 || !Item::SocketStatsSplitActive())
+		return;
+	if (!pItem || pItem->dwType != UNIT_ITEM || !pItem->pItemData || !pItem->pInventory)
+		return;
+	if (pItem->pItemData->dwFlags & ITEM_RUNEWORD)
+		return;
+
+	wchar_t descs[kMaxSockets][0x401];
+	int count = 0;
+
+	g_buildingSocketedDesc++;
+	for (UnitAny* sock = pItem->pInventory->pFirstItem; sock && count < kMaxSockets; ) {
+		UnitAny* next = (sock->pItemData) ? sock->pItemData->pNextInvItem : nullptr;
+		descs[count][0] = 0;
+		D2CLIENT_GetItemDesc(sock, descs[count]);
+		TrimTrailingNewlines(descs[count]);
+		if (descs[count][0] != 0)
+			count++;
+		sock = next;
+	}
+	g_buildingSocketedDesc--;
+
+	if (count == 0)
+		return;
+
+	std::vector<SocketStatGroup> groups;
+	for (int d = 0; d < count; ++d) {
+		wchar_t* line = descs[d];
+		while (line && *line) {
+			wchar_t* nl = wcschr(line, L'\n');
+			if (nl)
+				*nl = 0;
+			SocketStatGroup parsed;
+			if (ParseSocketStatLine(line, parsed)) {
+				SocketStatGroup* found = nullptr;
+				for (SocketStatGroup& group : groups) {
+					if (group.canCombine && group.templ == parsed.templ && group.sums.size() == parsed.sums.size()) {
+						found = &group;
+						break;
+					}
+				}
+				if (found) {
+					for (size_t n = 0; n < parsed.sums.size(); ++n) {
+						found->sums[n] += parsed.sums[n];
+						if (parsed.hadPlus[n])
+							found->hadPlus[n] = 1;
+					}
+					found->count++;
+				}
+				else {
+					groups.push_back(parsed);
+				}
+			}
+			line = nl ? nl + 1 : nullptr;
+		}
+	}
+	if (groups.empty())
+		return;
+
+	// First line in the block is the visual bottom, so write the last combined
+	// stat first. The header is kept in its own buffer so trimming cannot eat it.
+	wchar_t stats[8192];
+	stats[0] = 0;
+	std::wstring blue = GetColorCode(TextColor::Blue);
+	for (int i = (int)groups.size() - 1; i >= 0; --i) {
+		std::wstring plain = RebuildSocketStatLine(groups[i]);
+		std::wstring colored = ColorSocketStatLine(plain, groups[i].rangeColor, blue);
+		AppendTooltipLine(stats, 8192, colored.c_str());
+	}
+	wchar_t tail[192];
+	tail[0] = 0;
+	std::wstring header = GetColorCode(TextColor::Gold) + L"Socketed Stats:" + GetColorCode(TextColor::White);
+	AppendTooltipLine(tail, 192, header.c_str());
+	AppendTooltipLine(tail, 192, L"");
+
+	// D2Win drops the hover text at 0x400 wchars. Drop extra stat lines first.
+	int maxLen = textCap - 1;
+	if (maxLen > 0x3FF)
+		maxLen = 0x3FF;
+	while (stats[0] && (int)wcslen(stats) + (int)wcslen(tail) + (int)wcslen(wTxt) + 1 > maxLen)
+		DropFirstTooltipLine(stats);
+	while (wTxt[0] && wcschr(wTxt, L'\n') && (int)wcslen(tail) + (int)wcslen(wTxt) + 1 > maxLen)
+		DropFirstTooltipLine(wTxt);
+	while (stats[0] && (int)wcslen(stats) + (int)wcslen(tail) + (int)wcslen(wTxt) + 1 > maxLen)
+		DropFirstTooltipLine(stats);
+
+	int aLen = (int)wcslen(wTxt);
+	int statsLen = (int)wcslen(stats);
+	int tailLen = (int)wcslen(tail);
+	if (tailLen == 0 || aLen + statsLen + tailLen + 1 > maxLen)
+		return;
+	memmove(wTxt + statsLen + tailLen, wTxt, (aLen + 1) * sizeof(wchar_t));
+	memcpy(wTxt, stats, statsLen * sizeof(wchar_t));
+	memcpy(wTxt + statsLen, tail, tailLen * sizeof(wchar_t));
+}
+
+static void __stdcall AppendSocketedToHoveredTooltip(wchar_t* text) {
+	if (g_buildingSocketedDesc)
+		return;
+	UnitAny* hovered = p_D2CLIENT_SelectedInvItem ? *p_D2CLIENT_SelectedInvItem : nullptr;
+	AppendSeparatedSocketedStats(text, hovered, tooltipTextCap);
+}
+
+void __stdcall Item::OnProperties(wchar_t * wTxt, UnitAny* pDescItem)
 {
+	if (g_buildingSocketedDesc)
+		return;
+
 	const int MAXLEN = 1024;
 	static wchar_t wDesc[128];// a buffer for converting the description
-	UnitAny* pItem = *p_D2CLIENT_SelectedInvItem;
+	UnitAny* pItem = pDescItem ? pDescItem : *p_D2CLIENT_SelectedInvItem;
 	UnitItemInfo uInfo;
 	if (!pItem || pItem->dwType != UNIT_ITEM || CreateUnitItemInfo(&uInfo, pItem)) {
 		return; // unknown item code
@@ -1331,10 +1631,67 @@ __declspec(naked) void __fastcall GetProperties_Interception()
 {
 	__asm
 	{
+		mov edx, dword ptr [esp + 0x80C] // item passed to GetItemDesc
+		push edx
 		push eax
 		call Item::OnProperties
 		add esp, 0x808
 		ret 12
+	}
+}
+
+// Called in place of "mov eax, [ebp+60h]; test eax, eax".
+// When splitting, return to the instruction the original je would have taken (return + 0x4B).
+void __declspec(naked) SkipSocketedStatMerge_Intercept()
+{
+	__asm {
+		push ecx
+		push edx
+		push ebp
+		call ShouldSkipSocketedStatMerge
+		add esp, 4
+		pop edx
+		pop ecx
+		test eax, eax
+		jz original
+		add dword ptr [esp], 0x4B
+		ret
+	original:
+		mov eax, dword ptr [ebp + 0x60]
+		test eax, eax
+		ret
+	}
+}
+
+// Replaces the call that draws a finished hover tooltip. ecx is the wide string.
+void __declspec(naked) TooltipDraw_Intercept()
+{
+	__asm {
+		push eax
+		push ecx
+		push edx
+		push ecx
+		call AppendSocketedToHoveredTooltip
+		pop edx
+		pop ecx
+		pop eax
+		jmp dword ptr [tooltipDrawAddr]
+	}
+}
+
+void __declspec(naked) TooltipDraw_Intercept_800()
+{
+	__asm {
+		mov dword ptr [tooltipTextCap], 0x800
+		jmp TooltipDraw_Intercept
+	}
+}
+
+void __declspec(naked) TooltipDraw_Intercept_400()
+{
+	__asm {
+		mov dword ptr [tooltipTextCap], 0x400
+		jmp TooltipDraw_Intercept
 	}
 }
 

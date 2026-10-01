@@ -87,7 +87,7 @@ class Item : public Module {
 
 		static void __fastcall ItemNamePatch(wchar_t *name, UnitAny *item);
 		static void OrigGetItemName(UnitAny *item, string &itemName, char *code);
-		static void __stdcall OnProperties(wchar_t *wTxt);
+		static void __stdcall OnProperties(wchar_t *wTxt, UnitAny *pItem);
 		static BOOL __stdcall OnDamagePropertyBuild(UnitAny* pItem, DamageStats* pDmgStats, int nStat, wchar_t* wOut);
 		static void __stdcall OnPropertyBuild(wchar_t* wOut, int nStat, UnitAny* pItem, int nStatParam);
 
@@ -96,6 +96,7 @@ class Item : public Module {
 		static BOOL PermShowItemsPatch3();
 
 		static UnitAny* GetViewUnit();
+		static bool SocketStatsSplitActive();
 
 		static unsigned int GetFilterLevel() { return filterLevelSetting; }
 		static unsigned int GetPingLevel() { return pingLevelSetting; }
@@ -105,6 +106,9 @@ class Item : public Module {
 
 void ItemName_Interception();
 void __fastcall GetProperties_Interception();
+void SkipSocketedStatMerge_Intercept();
+void TooltipDraw_Intercept_800();
+void TooltipDraw_Intercept_400();
 void GetItemPropertyStringDamage_Interception();
 void GetItemPropertyString_Interception();
 void ViewInventoryPatch1_ASM();
