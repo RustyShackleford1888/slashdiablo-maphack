@@ -84,6 +84,30 @@ Patch* tooltipSocketStatsPatch3 = new Patch(Call, D2CLIENT, { 0x9452A, 0x988FA }
 // D2Win tooltip draw thunk replaced by the patches above. Set in OnLoad.
 static DWORD tooltipDrawAddr = 0;
 static int tooltipTextCap = 0x400;
+// Hover text is capped by D2Win. Extra lines stay on later pages instead of being dropped.
+static DWORD g_tooltipPageUnitId = 0;
+static DWORD g_tooltipPageType = 0xFFFFFFFF;
+static int g_tooltipPage = 0;
+static int g_tooltipPageCount = 1;
+
+static bool PageHoveredTooltip(bool up, BYTE key, LPARAM lParam, bool* block) {
+	if (key != VK_LEFT && key != VK_RIGHT)
+		return false;
+	if (g_tooltipPageCount <= 1)
+		return false;
+	UnitAny* hovered = p_D2CLIENT_SelectedInvItem ? *p_D2CLIENT_SelectedInvItem : nullptr;
+	if (!hovered || hovered->dwUnitId != g_tooltipPageUnitId || hovered->dwType != g_tooltipPageType)
+		return false;
+	*block = true;
+	// Bit 30 is set when the key was already down, so holding it does not skip pages.
+	if (up || (lParam & (1 << 30)))
+		return true;
+	if (key == VK_RIGHT && g_tooltipPage + 1 < g_tooltipPageCount)
+		g_tooltipPage++;
+	else if (key == VK_LEFT && g_tooltipPage > 0)
+		g_tooltipPage--;
+	return true;
+}
 Patch* viewInvPatch1 = new Patch(Call, D2CLIENT, { 0x953E2, 0x997B2 }, (int)ViewInventoryPatch1_ASM, 6);
 Patch* viewInvPatch2 = new Patch(Call, D2CLIENT, { 0x94AB4, 0x98E84 }, (int)ViewInventoryPatch2_ASM, 6);
 Patch* viewInvPatch3 = new Patch(Call, D2CLIENT, { 0x93A6F, 0x97E3F }, (int)ViewInventoryPatch3_ASM, 5);
@@ -443,6 +467,8 @@ void Item::OnLoop() {
 }
 
 void Item::OnKey(bool up, BYTE key, LPARAM lParam, bool* block) {
+	if (PageHoveredTooltip(up, key, lParam, block))
+		return;
 	if (key == announceStatKey) {
 		*block = true;
 		if (up) return;
@@ -872,109 +898,20 @@ static void TrimTrailingNewlines(wchar_t* text) {
 		text[--len] = 0;
 }
 
-// The hover tooltip buffer is stored bottom-to-top: the item name is the last
-// line, and the game draws the last line at the top. Lines appended here are
-// inserted at the front of that buffer, so the first line written is the
-// visual bottom.
-static void DropFirstTooltipLine(wchar_t* text) {
-	wchar_t* nl = wcschr(text, L'\n');
-	if (!nl) {
-		text[0] = 0;
-		return;
-	}
-	memmove(text, nl + 1, (wcslen(nl + 1) + 1) * sizeof(wchar_t));
-}
-
-static void AppendTooltipLine(wchar_t* block, int blockCap, const wchar_t* line) {
-	int used = (int)wcslen(block);
-	int lineLen = (int)wcslen(line);
-	if (used + lineLen + 2 >= blockCap)
-		return;
-	memcpy(block + used, line, lineLen * sizeof(wchar_t));
-	block[used + lineLen] = L'\n';
-	block[used + lineLen + 1] = 0;
-}
-
-// One displayed socketed mod. Lines with the same wording and the same number
-// of values are added together ("+20% Enhanced Damage" and "+45%" become "+65%").
-struct SocketStatGroup {
-	std::wstring templ;
-	std::wstring plain;
-	std::wstring rangeColor;
-	std::vector<int> sums;
-	std::vector<char> hadPlus;
-	int count;
-	bool canCombine;
-};
-
-static bool ParseSocketStatLine(const wchar_t* src, SocketStatGroup& group) {
-	group.templ.clear();
-	group.plain.clear();
-	group.rangeColor.clear();
-	group.sums.clear();
-	group.hadPlus.clear();
-	group.count = 1;
-	bool sawParen = false;
+// Stat lines are drawn blue. A color code sitting on '[' is the stat-range color and stays.
+static void StripSocketStatColors(const wchar_t* src, std::wstring& plain, std::wstring& rangeColor) {
+	plain.clear();
+	rangeColor.clear();
 	for (int i = 0; src[i]; ) {
 		if (src[i] == 0x00FF && src[i + 1] == L'c' && src[i + 2] != 0) {
 			if (src[i + 3] == L'[')
-				group.rangeColor.assign(src + i, 3);
+				rangeColor.assign(src + i, 3);
 			i += 3;
 			continue;
 		}
-		wchar_t c = src[i];
-		if (c == L'(')
-			sawParen = true;
-		bool signedNum = (c == L'+' || c == L'-') && src[i + 1] >= L'0' && src[i + 1] <= L'9';
-		if (signedNum || (c >= L'0' && c <= L'9')) {
-			bool plus = signedNum && c == L'+';
-			int sign = (signedNum && c == L'-') ? -1 : 1;
-			if (signedNum) {
-				group.plain.push_back(c);
-				i++;
-			}
-			int val = 0;
-			int digits = 0;
-			while (src[i] >= L'0' && src[i] <= L'9' && digits < 9) {
-				val = val * 10 + (src[i] - L'0');
-				group.plain.push_back(src[i]);
-				i++;
-				digits++;
-			}
-			group.sums.push_back(sign * val);
-			group.hadPlus.push_back(plus ? 1 : 0);
-			group.templ.push_back(L'\x01');
-			continue;
-		}
-		group.plain.push_back(c);
-		group.templ.push_back(c);
+		plain.push_back(src[i]);
 		i++;
 	}
-	// Skill charges put several numbers inside parentheses and must stay separate.
-	// A single per-level value still adds.
-	group.canCombine = !group.sums.empty() && !(sawParen && group.sums.size() > 1);
-	return !group.plain.empty();
-}
-
-static std::wstring RebuildSocketStatLine(const SocketStatGroup& group) {
-	if (group.count <= 1 || !group.canCombine)
-		return group.plain;
-	std::wstring out;
-	int ni = 0;
-	for (wchar_t c : group.templ) {
-		if (c != L'\x01') {
-			out.push_back(c);
-			continue;
-		}
-		int value = group.sums[ni];
-		if (group.hadPlus[ni] && value >= 0)
-			out.push_back(L'+');
-		wchar_t num[16];
-		swprintf_s(num, L"%d", value);
-		out += num;
-		ni++;
-	}
-	return out;
 }
 
 static std::wstring ColorSocketStatLine(const std::wstring& plain, const std::wstring& rangeColor, const std::wstring& blue) {
@@ -984,26 +921,106 @@ static std::wstring ColorSocketStatLine(const std::wstring& plain, const std::ws
 	return blue + plain.substr(0, bracket) + rangeColor + plain.substr(bracket) + blue;
 }
 
-static void AppendSeparatedSocketedStats(wchar_t* wTxt, UnitAny* pItem, int textCap) {
+struct TipLine {
+	std::wstring text;
+	bool socketHeader;
+	bool socketStat;
+	int socketGroup;
+};
+
+static void RememberTooltipItem(UnitAny* item) {
+	DWORD id = item ? item->dwUnitId : 0;
+	DWORD type = item ? item->dwType : 0xFFFFFFFF;
+	if (id != g_tooltipPageUnitId || type != g_tooltipPageType) {
+		g_tooltipPageUnitId = id;
+		g_tooltipPageType = type;
+		g_tooltipPage = 0;
+		g_tooltipPageCount = 1;
+	}
+}
+
+static int TooltipCharLimit(int textCap) {
+	int maxLen = textCap - 1;
+	if (maxLen > 0x3FF)
+		maxLen = 0x3FF;
+	// The old fit check kept one wchar of slack under the 0x400 draw reject.
+	return maxLen - 1;
+}
+
+static int JoinedTooltipLen(const std::vector<std::wstring>& lines) {
+	int len = 0;
+	for (const std::wstring& line : lines)
+		len += (int)line.size();
+	if (!lines.empty())
+		len += (int)lines.size() - 1;
+	return len;
+}
+
+static void SplitTooltipLines(const wchar_t* text, std::vector<std::wstring>& bottomFirst) {
+	bottomFirst.clear();
+	if (!text || !text[0])
+		return;
+	const wchar_t* p = text;
+	while (*p) {
+		const wchar_t* nl = wcschr(p, L'\n');
+		if (!nl) {
+			bottomFirst.emplace_back(p);
+			break;
+		}
+		bottomFirst.emplace_back(p, nl);
+		p = nl + 1;
+	}
+}
+
+// Visual bottom is the start of the string. topToBottom[0] is the item name.
+static void WriteTooltipTopToBottom(wchar_t* wTxt, int textCap, const std::vector<std::wstring>& topToBottom) {
+	std::wstring out;
+	for (int i = (int)topToBottom.size() - 1; i >= 0; --i) {
+		if (!out.empty())
+			out.push_back(L'\n');
+		out += topToBottom[i];
+	}
+	if (textCap < 1)
+		return;
+	if ((int)out.size() >= textCap)
+		out.resize(textCap - 1);
+	wcscpy_s(wTxt, textCap, out.c_str());
+}
+
+static std::wstring TooltipPagerText(int page, int count) {
+	std::wstring gold = GetColorCode(TextColor::Gold);
+	std::wstring white = GetColorCode(TextColor::White);
+	std::wstring text;
+	if (page > 0)
+		text += gold + L"< ";
+	text += white + std::to_wstring(page + 1) + L"/" + std::to_wstring(count);
+	if (page + 1 < count)
+		text += L" " + gold + L">";
+	text += white;
+	return text;
+}
+
+static void CollectSocketedTooltipLines(UnitAny* pItem, std::vector<TipLine>& extra) {
 	const int kMaxSockets = 6;
-	if (!wTxt || textCap < 32 || !Item::SocketStatsSplitActive())
+	if (!Item::SocketStatsSplitActive())
 		return;
 	if (!pItem || pItem->dwType != UNIT_ITEM || !pItem->pItemData || !pItem->pInventory)
 		return;
 	if (pItem->pItemData->dwFlags & ITEM_RUNEWORD)
 		return;
 
+	UnitAny* socks[kMaxSockets];
 	wchar_t descs[kMaxSockets][0x401];
 	int count = 0;
 
 	g_buildingSocketedDesc++;
 	for (UnitAny* sock = pItem->pInventory->pFirstItem; sock && count < kMaxSockets; ) {
 		UnitAny* next = (sock->pItemData) ? sock->pItemData->pNextInvItem : nullptr;
+		socks[count] = sock;
 		descs[count][0] = 0;
 		D2CLIENT_GetItemDesc(sock, descs[count]);
 		TrimTrailingNewlines(descs[count]);
-		if (descs[count][0] != 0)
-			count++;
+		count++;
 		sock = next;
 	}
 	g_buildingSocketedDesc--;
@@ -1011,82 +1028,236 @@ static void AppendSeparatedSocketedStats(wchar_t* wTxt, UnitAny* pItem, int text
 	if (count == 0)
 		return;
 
-	std::vector<SocketStatGroup> groups;
-	for (int d = 0; d < count; ++d) {
-		wchar_t* line = descs[d];
-		while (line && *line) {
-			wchar_t* nl = wcschr(line, L'\n');
-			if (nl)
-				*nl = 0;
-			SocketStatGroup parsed;
-			if (ParseSocketStatLine(line, parsed)) {
-				SocketStatGroup* found = nullptr;
-				for (SocketStatGroup& group : groups) {
-					if (group.canCombine && group.templ == parsed.templ && group.sums.size() == parsed.sums.size()) {
-						found = &group;
-						break;
-					}
-				}
-				if (found) {
-					for (size_t n = 0; n < parsed.sums.size(); ++n) {
-						found->sums[n] += parsed.sums[n];
-						if (parsed.hadPlus[n])
-							found->hadPlus[n] = 1;
-					}
-					found->count++;
-				}
-				else {
-					groups.push_back(parsed);
-				}
-			}
-			line = nl ? nl + 1 : nullptr;
-		}
-	}
-	if (groups.empty())
-		return;
-
-	// First line in the block is the visual bottom, so write the last combined
-	// stat first. The header is kept in its own buffer so trimming cannot eat it.
-	wchar_t stats[8192];
-	stats[0] = 0;
-	std::wstring blue = GetColorCode(TextColor::Blue);
-	for (int i = (int)groups.size() - 1; i >= 0; --i) {
-		std::wstring plain = RebuildSocketStatLine(groups[i]);
-		std::wstring colored = ColorSocketStatLine(plain, groups[i].rangeColor, blue);
-		AppendTooltipLine(stats, 8192, colored.c_str());
-	}
-	wchar_t tail[192];
-	tail[0] = 0;
+	// Each socket stays together: its name, then its own stats. Nothing is added together.
 	std::wstring header = GetColorCode(TextColor::Gold) + L"Socketed Stats:" + GetColorCode(TextColor::White);
-	AppendTooltipLine(tail, 192, header.c_str());
-	AppendTooltipLine(tail, 192, L"");
+	std::wstring white = GetColorCode(TextColor::White);
+	std::wstring blue = GetColorCode(TextColor::Blue);
+	std::vector<TipLine> items;
+	for (int d = 0; d < count; ++d) {
+		int before = (int)items.size();
+		// The gap stays with this socket, so a page break does not leave the name behind.
+		items.push_back({ L"", false, true, d });
 
-	// D2Win drops the hover text at 0x400 wchars. Drop extra stat lines first.
-	int maxLen = textCap - 1;
-	if (maxLen > 0x3FF)
-		maxLen = 0x3FF;
-	while (stats[0] && (int)wcslen(stats) + (int)wcslen(tail) + (int)wcslen(wTxt) + 1 > maxLen)
-		DropFirstTooltipLine(stats);
-	while (wTxt[0] && wcschr(wTxt, L'\n') && (int)wcslen(tail) + (int)wcslen(wTxt) + 1 > maxLen)
-		DropFirstTooltipLine(wTxt);
-	while (stats[0] && (int)wcslen(stats) + (int)wcslen(tail) + (int)wcslen(wTxt) + 1 > maxLen)
-		DropFirstTooltipLine(stats);
+		wchar_t nameBuf[256];
+		nameBuf[0] = 0;
+		D2CLIENT_GetItemName(socks[d], nameBuf, 256);
+		TrimTrailingNewlines(nameBuf);
+		std::vector<std::wstring> nameLines;
+		SplitTooltipLines(nameBuf, nameLines);
+		for (const std::wstring& nameLine : nameLines) {
+			std::wstring plain;
+			std::wstring ignored;
+			StripSocketStatColors(nameLine.c_str(), plain, ignored);
+			if (!plain.empty())
+				items.push_back({ white + plain, false, true, d });
+		}
 
-	int aLen = (int)wcslen(wTxt);
-	int statsLen = (int)wcslen(stats);
-	int tailLen = (int)wcslen(tail);
-	if (tailLen == 0 || aLen + statsLen + tailLen + 1 > maxLen)
+		std::vector<std::wstring> statLines;
+		SplitTooltipLines(descs[d], statLines);
+		for (const std::wstring& statLine : statLines) {
+			std::wstring plain;
+			std::wstring rangeColor;
+			StripSocketStatColors(statLine.c_str(), plain, rangeColor);
+			if (plain.empty())
+				continue;
+			items.push_back({ ColorSocketStatLine(plain, rangeColor, blue), false, true, d });
+		}
+		if ((int)items.size() == before + 1)
+			items.pop_back();
+	}
+	if (items.empty())
 		return;
-	memmove(wTxt + statsLen + tailLen, wTxt, (aLen + 1) * sizeof(wchar_t));
-	memcpy(wTxt, stats, statsLen * sizeof(wchar_t));
-	memcpy(wTxt + statsLen, tail, tailLen * sizeof(wchar_t));
+
+	extra.push_back({ L"", false, false, -1 });
+	extra.push_back({ header, true, false, -1 });
+	extra.insert(extra.end(), items.begin(), items.end());
+}
+
+static void FitHoveredTooltip(wchar_t* wTxt, int textCap, const std::vector<TipLine>& extra) {
+	if (!wTxt || textCap < 32)
+		return;
+	int maxChars = TooltipCharLimit(textCap);
+	if (maxChars < 16)
+		return;
+
+	std::vector<std::wstring> bottomFirst;
+	SplitTooltipLines(wTxt, bottomFirst);
+
+	std::vector<TipLine> visual;
+	visual.reserve(bottomFirst.size() + extra.size());
+	for (int i = (int)bottomFirst.size() - 1; i >= 0; --i)
+		visual.push_back({ bottomFirst[i], false, false, -1 });
+	int originalCount = (int)visual.size();
+	visual.insert(visual.end(), extra.begin(), extra.end());
+	if (visual.empty()) {
+		g_tooltipPage = 0;
+		g_tooltipPageCount = 1;
+		return;
+	}
+
+	std::vector<std::wstring> all;
+	all.reserve(visual.size());
+	for (const TipLine& line : visual)
+		all.push_back(line.text);
+	if (JoinedTooltipLen(all) <= maxChars) {
+		g_tooltipPage = 0;
+		g_tooltipPageCount = 1;
+		if (!extra.empty())
+			WriteTooltipTopToBottom(wTxt, textCap, all);
+		return;
+	}
+
+	// Reserve the longest pager ("< 99/99 >") so a page never crosses the draw limit.
+	int pagerReserve = (int)TooltipPagerText(1, 99).size();
+	std::wstring continuedHeader = GetColorCode(TextColor::Gold) + L"Socketed Stats Continued:" + GetColorCode(TextColor::White);
+	std::wstring firstHeader = GetColorCode(TextColor::Gold) + L"Socketed Stats:" + GetColorCode(TextColor::White);
+
+	std::vector<int> statIdx;
+	for (int i = originalCount; i < (int)visual.size(); ++i) {
+		if (visual[i].socketStat)
+			statIdx.push_back(i);
+	}
+
+	// Socketed overflow keeps the item tooltip on every page and only pages the socketed mods.
+	if (!statIdx.empty() && originalCount > 0) {
+		auto fixedCost = [&](int baseLines) {
+			int len = 0;
+			int n = 0;
+			for (int i = 0; i < baseLines; ++i) {
+				len += (int)visual[i].text.size();
+				n++;
+			}
+			if (n > 1)
+				len += n - 1;
+			// blank line, header, and pager
+			return len + 3 + (int)continuedHeader.size() + pagerReserve;
+		};
+		int baseLines = originalCount;
+		while (baseLines > 1 && fixedCost(baseLines) >= maxChars)
+			baseLines--;
+
+		int statBudget = maxChars - fixedCost(baseLines);
+		if (statBudget < 1)
+			statBudget = 1;
+
+		struct SocketBlock {
+			std::vector<int> lines;
+			int cost;
+		};
+		std::vector<SocketBlock> blocks;
+		for (int idx : statIdx) {
+			if (blocks.empty() || visual[blocks.back().lines.back()].socketGroup != visual[idx].socketGroup) {
+				SocketBlock block;
+				block.cost = 0;
+				blocks.push_back(block);
+			}
+			blocks.back().lines.push_back(idx);
+			blocks.back().cost += 1 + (int)visual[idx].text.size();
+		}
+
+		std::vector<std::vector<int>> pages;
+		std::vector<int> cur;
+		int used = 0;
+		for (SocketBlock& block : blocks) {
+			// A single socket that cannot fit on a page keeps its name and drops only its own trailing stats.
+			while (block.lines.size() > 1 && block.cost > statBudget) {
+				int last = block.lines.back();
+				block.cost -= 1 + (int)visual[last].text.size();
+				block.lines.pop_back();
+			}
+			if (block.lines.empty())
+				continue;
+			if (!cur.empty() && used + block.cost > statBudget) {
+				pages.push_back(cur);
+				cur.clear();
+				used = 0;
+			}
+			cur.insert(cur.end(), block.lines.begin(), block.lines.end());
+			used += block.cost;
+		}
+		if (!cur.empty())
+			pages.push_back(cur);
+		if (pages.empty())
+			pages.push_back(std::vector<int>());
+
+		if (g_tooltipPage >= (int)pages.size())
+			g_tooltipPage = (int)pages.size() - 1;
+		if (g_tooltipPage < 0)
+			g_tooltipPage = 0;
+		g_tooltipPageCount = (int)pages.size();
+
+		std::vector<std::wstring> show;
+		for (int i = 0; i < baseLines; ++i)
+			show.push_back(visual[i].text);
+		show.push_back(L"");
+		show.push_back(g_tooltipPage == 0 ? firstHeader : continuedHeader);
+		for (int idx : pages[g_tooltipPage])
+			show.push_back(visual[idx].text);
+		show.push_back(TooltipPagerText(g_tooltipPage, (int)pages.size()));
+		WriteTooltipTopToBottom(wTxt, textCap, show);
+		return;
+	}
+
+	int bodyStart = originalCount > 0 ? 1 : 0;
+	int pinnedLen = bodyStart == 1 ? (int)visual[0].text.size() : 0;
+	int bodyBudget = maxChars - pinnedLen - (bodyStart == 1 ? 1 : 0) - pagerReserve;
+	if (bodyBudget < 1)
+		bodyBudget = 1;
+
+	std::vector<std::vector<int>> pages;
+	std::vector<int> cur;
+	int used = 0;
+	for (int i = bodyStart; i < (int)visual.size(); ++i) {
+		int cost = 1 + (int)visual[i].text.size();
+		if (cost > bodyBudget) {
+			int keep = bodyBudget - 1;
+			if (keep < 0)
+				keep = 0;
+			visual[i].text.resize(keep);
+			cost = 1 + (int)visual[i].text.size();
+		}
+		if (cost > bodyBudget)
+			continue;
+		if (!cur.empty() && used + cost > bodyBudget) {
+			pages.push_back(cur);
+			cur.clear();
+			used = 0;
+		}
+		cur.push_back(i);
+		used += cost;
+	}
+	if (!cur.empty())
+		pages.push_back(cur);
+	if (pages.empty())
+		pages.push_back(std::vector<int>());
+
+	if (g_tooltipPage >= (int)pages.size())
+		g_tooltipPage = (int)pages.size() - 1;
+	if (g_tooltipPage < 0)
+		g_tooltipPage = 0;
+	g_tooltipPageCount = (int)pages.size();
+
+	std::vector<std::wstring> show;
+	if (bodyStart == 1)
+		show.push_back(visual[0].text);
+	for (int idx : pages[g_tooltipPage])
+		show.push_back(visual[idx].text);
+	show.push_back(TooltipPagerText(g_tooltipPage, (int)pages.size()));
+
+	while (JoinedTooltipLen(show) > maxChars && show.size() > 2)
+		show.erase(show.end() - 2);
+	WriteTooltipTopToBottom(wTxt, textCap, show);
 }
 
 static void __stdcall AppendSocketedToHoveredTooltip(wchar_t* text) {
 	if (g_buildingSocketedDesc)
 		return;
 	UnitAny* hovered = p_D2CLIENT_SelectedInvItem ? *p_D2CLIENT_SelectedInvItem : nullptr;
-	AppendSeparatedSocketedStats(text, hovered, tooltipTextCap);
+	RememberTooltipItem(hovered);
+	std::vector<TipLine> extra;
+	if (hovered)
+		CollectSocketedTooltipLines(hovered, extra);
+	FitHoveredTooltip(text, tooltipTextCap, extra);
 }
 
 void __stdcall Item::OnProperties(wchar_t * wTxt, UnitAny* pDescItem)
