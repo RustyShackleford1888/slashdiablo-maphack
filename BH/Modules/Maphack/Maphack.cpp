@@ -1149,14 +1149,32 @@ void Maphack::RevealAct(int act) {
 	if (!pAct || !pAct->pMisc)
 		return;
 
-	// Iterate every level for the given act.
-	for (int level = actIds[act - 1]; level < actIds[act]; level++) {
+	auto revealOne = [&](int level) {
 		Level* pLevel = GetLevel(pAct, level);
 		if (!pLevel)
-			continue;
+			return;
 		if (!pLevel->pRoom2First)
 			D2COMMON_InitLevel(pLevel);
 		RevealLevel(pLevel);
+	};
+
+	// Iterate every vanilla level for the given act.
+	for (int level = actIds[act - 1]; level < actIds[act]; level++)
+		revealOne(level);
+
+	// Cube recipes with output "Red Portal=<id>" target Levels.txt rows past
+	// the vanilla act ranges (Id >= 137). Those rows still belong to an act.
+	if (p_D2COMMON_sgptDataTable && *p_D2COMMON_sgptDataTable) {
+		sgptDataTable* table = *p_D2COMMON_sgptDataTable;
+		if (table->pLevelsTxt && table->dwLevelsRecs > (DWORD)actIds[5]) {
+			DWORD count = table->dwLevelsRecs;
+			if (count > 255)
+				count = 255;
+			for (DWORD level = (DWORD)actIds[5]; level < count; level++) {
+				if (table->pLevelsTxt[level].nAct == (BYTE)(act - 1))
+					revealOne((int)level);
+			}
+		}
 	}
 
 	InitLayer(player->pPath->pRoom1->pRoom2->pLevel->dwLevelNo);

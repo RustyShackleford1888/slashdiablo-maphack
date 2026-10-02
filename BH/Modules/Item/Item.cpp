@@ -244,7 +244,11 @@ void Item::AnnounceHoveredItemStats() {
 	}
 }
 
+static void ClearIronGolemSlot(UnitAny* live);
+
 void Item::OnGameJoin() {
+	ClearIronGolemSlot(nullptr);
+	viewingUnit = NULL;
 	// reset the item name cache upon joining games
 	// (GUIDs not unique across games)
 	ResetCaches();
@@ -446,6 +450,243 @@ void Item::OnUnload() {
 	ItemDisplay::UninitializeItemRules();
 }
 
+static const DWORD kInventorySignature = 0x01020304;
+static int g_golemSlotIndex = -1;
+static UnitAny* g_golemItem = nullptr;
+void __fastcall D2CLIENT_GetItemDesc(UnitAny* pItem, wchar_t* buffer);
+
+static bool IsGearInspectTarget(UnitAny* unit) {
+	if (!unit || unit->dwMode == 0 || unit->dwMode == 17)
+		return false;
+	if (unit->dwType == UNIT_PLAYER)
+		return true;
+	if (unit->dwType != UNIT_MONSTER)
+		return false;
+	DWORD id = unit->dwTxtFileNo;
+	return id == 291 || id == 357 || id == 418; // Iron Golem, Valkyrie, Shadow Master
+}
+
+// Unsummon highlights your iron golem without always making GetSelectedUnit return it.
+static UnitAny* IronGolemUnderCursor() {
+	UnitAny* player = D2CLIENT_GetPlayerUnit();
+	if (!player || !player->pAct || !player->pAct->pRoom1 || !p_D2CLIENT_MouseX || !p_D2CLIENT_MouseY)
+		return nullptr;
+
+	int mouseX = (int)*p_D2CLIENT_MouseX;
+	int mouseY = (int)*p_D2CLIENT_MouseY;
+	UnitAny* best = nullptr;
+	int bestScore = 0x7fffffff;
+
+	for (Room1* room = player->pAct->pRoom1; room; room = room->pRoomNext) {
+		for (UnitAny* unit = room->pUnitFirst; unit; unit = unit->pListNext) {
+			if (unit->dwType != UNIT_MONSTER || unit->dwTxtFileNo != 291 || !unit->pPath)
+				continue;
+			if (!IsGearInspectTarget(unit))
+				continue;
+
+			long x = D2CLIENT_GetUnitX(unit);
+			long y = D2CLIENT_GetUnitY(unit);
+			D2COMMON_MapToAbsScreen(&x, &y);
+			x -= (long)D2CLIENT_GetMouseXOffset();
+			y -= (long)D2CLIENT_GetMouseYOffset();
+
+			int dx = mouseX - (int)x;
+			int dy = mouseY - (int)y;
+			// Screen point is the feet. The sprite sits above that.
+			if (dx < -70 || dx > 70 || dy < -130 || dy > 30)
+				continue;
+
+			int score = dx * dx + dy * dy;
+			if (unit->dwOwnerType == UNIT_PLAYER && unit->dwOwnerId == player->dwUnitId)
+				score -= 20000;
+			if (score < bestScore) {
+				bestScore = score;
+				best = unit;
+			}
+		}
+	}
+	return best;
+}
+
+static UnitAny** IronGolemBodySlots(UnitAny* golem, int* count) {
+	*count = 0;
+	if (!golem || !golem->pInventory)
+		return nullptr;
+	Inventory* inv = golem->pInventory;
+	if (inv->dwSignature != kInventorySignature || !inv->pStores || inv->dwStoresCount < 1)
+		return nullptr;
+
+	InventoryStore* grid = &inv->pStores[0];
+	// Body locations are a 13 by 1 grid. Anything else is not the paper doll.
+	if (!grid->pArray || grid->Width != 13 || grid->Height != 1)
+		return nullptr;
+	*count = 13;
+	return (UnitAny**)grid->pArray;
+}
+
+static UnitAny* IronGolemSourceItem(UnitAny* golem) {
+	if (!golem || !golem->pInventory)
+		return nullptr;
+	Inventory* inv = golem->pInventory;
+	for (UnitAny* item = inv->pFirstItem; item; ) {
+		if (item->dwType == UNIT_ITEM)
+			return item;
+		if (!item->pItemData)
+			break;
+		item = item->pItemData->pNextInvItem;
+	}
+	if (inv->pCursorItem && inv->pCursorItem->dwType == UNIT_ITEM)
+		return inv->pCursorItem;
+	return nullptr;
+}
+
+static bool IronGolemItemInBodySlot(UnitAny* golem, UnitAny* item, int* slotOut) {
+	int count = 0;
+	UnitAny** slots = IronGolemBodySlots(golem, &count);
+	if (!slots || !item)
+		return false;
+	for (int i = 1; i < count; ++i) {
+		if (slots[i] == item) {
+			if (slotOut)
+				*slotOut = i;
+			return true;
+		}
+	}
+	return false;
+}
+
+// Only clears a slot this inspect session filled. A null unit means the golem is already gone.
+static void ClearIronGolemSlot(UnitAny* live) {
+	if (g_golemSlotIndex >= 0 && g_golemItem && live) {
+		int count = 0;
+		UnitAny** slots = IronGolemBodySlots(live, &count);
+		if (slots && g_golemSlotIndex < count && slots[g_golemSlotIndex] == g_golemItem)
+			slots[g_golemSlotIndex] = nullptr;
+	}
+	g_golemSlotIndex = -1;
+	g_golemItem = nullptr;
+}
+
+// The paper doll draws body-grid slots. The golem item is often only in the inventory list.
+static void ShowIronGolemItem(UnitAny* golem) {
+	UnitAny* item = IronGolemSourceItem(golem);
+	int count = 0;
+	UnitAny** slots = IronGolemBodySlots(golem, &count);
+	if (!item || !slots) {
+		ClearIronGolemSlot(golem);
+		return;
+	}
+
+	int found = -1;
+	for (int i = 1; i < count; ++i) {
+		if (slots[i] == item) {
+			found = i;
+			break;
+		}
+	}
+	if (found >= 0) {
+		if (g_golemSlotIndex >= 0 && g_golemSlotIndex != found)
+			ClearIronGolemSlot(golem);
+		return;
+	}
+
+	int slot = 0;
+	if (item->pItemData) {
+		int body = item->pItemData->BodyLocation;
+		if (body >= 1 && body < count && !slots[body])
+			slot = body;
+	}
+	if (!slot) {
+		const int prefer[] = {
+			EQUIP_BODY, EQUIP_RIGHT_PRIMARY, EQUIP_LEFT_PRIMARY,
+			EQUIP_HEAD, EQUIP_FEET, EQUIP_GLOVES, EQUIP_BELT
+		};
+		for (int i = 0; i < (int)(sizeof(prefer) / sizeof(prefer[0])); ++i) {
+			int body = prefer[i];
+			if (body < count && !slots[body]) {
+				slot = body;
+				break;
+			}
+		}
+	}
+	if (!slot || slots[slot])
+		return;
+
+	if (g_golemSlotIndex >= 0 && g_golemSlotIndex != slot)
+		ClearIronGolemSlot(golem);
+
+	slots[slot] = item;
+	g_golemSlotIndex = slot;
+	g_golemItem = item;
+}
+
+static UnitAny* LiveViewUnit(UnitAny* unit) {
+	if (!unit)
+		return nullptr;
+	UnitAny* live = D2CLIENT_FindServerSideUnit(unit->dwUnitId, unit->dwType);
+	if (!live)
+		live = D2CLIENT_FindClientSideUnit(unit->dwUnitId, unit->dwType);
+	return live;
+}
+
+static void DrawIronGolemFallback(UnitAny* unit) {
+	if (!unit || unit->dwType != UNIT_MONSTER || unit->dwTxtFileNo != 291)
+		return;
+	if (!D2CLIENT_GetUIState(0x01))
+		return;
+
+	UnitAny* item = IronGolemSourceItem(unit);
+	if (item && IronGolemItemInBodySlot(unit, item, nullptr))
+		return;
+
+	int x = *p_D2CLIENT_PanelOffsetX + 160 + 320;
+	int y = 190;
+	DWORD oldFont = D2WIN_SetTextSize(1);
+	if (!item) {
+		const wchar_t* missing = L"No item";
+		DWORD width = 0;
+		DWORD height = 0;
+		D2WIN_GetTextSize((wchar_t*)missing, &width, &height);
+		D2WIN_DrawText((wchar_t*)missing, x - (int)width / 2, y, White, 0);
+		D2WIN_SetTextSize(oldFont);
+		return;
+	}
+
+	wchar_t name[256];
+	name[0] = 0;
+	D2CLIENT_GetItemName(item, name, 256);
+	if (name[0]) {
+		DWORD width = 0;
+		DWORD height = 0;
+		D2WIN_GetTextSize(name, &width, &height);
+		D2WIN_DrawText(name, x - (int)width / 2, y, Gold, 0);
+		y += 16;
+	}
+
+	wchar_t desc[0x400];
+	desc[0] = 0;
+	D2CLIENT_GetItemDesc(item, desc);
+	wchar_t* line = desc;
+	int lines = 0;
+	while (*line && lines < 14) {
+		wchar_t* nl = wcschr(line, L'\n');
+		if (nl)
+			*nl = 0;
+		if (line[0]) {
+			DWORD width = 0;
+			DWORD height = 0;
+			D2WIN_GetTextSize(line, &width, &height);
+			D2WIN_DrawText(line, x - (int)width / 2, y, White, 0);
+			y += 13;
+			lines++;
+		}
+		if (!nl)
+			break;
+		line = nl + 1;
+	}
+	D2WIN_SetTextSize(oldFont);
+}
+
 void Item::OnLoop() {
 	ResetPatches();
 	static unsigned int localFilterLevel = 0;
@@ -459,20 +700,27 @@ void Item::OnLoop() {
 		ResetCaches();
 		localPingLevel = pingLevelSetting;
 	}
-	if (!D2CLIENT_GetUIState(0x01))
+	if (!D2CLIENT_GetUIState(0x01)) {
+		ClearIronGolemSlot(LiveViewUnit(viewingUnit));
 		viewingUnit = NULL;
+	}
 	
 	if (Toggles["Advanced Item Display"].state) {
 		ItemDisplay::InitializeItemRules();
 	}
 
 	if (viewingUnit && viewingUnit->dwUnitId) {
-		if (!viewingUnit->pInventory){
-			viewingUnit = NULL;
-			D2CLIENT_SetUIVar(0x01, 1, 0);			
-		} else if (!D2CLIENT_FindServerSideUnit(viewingUnit->dwUnitId, viewingUnit->dwType)) {
+		UnitAny* live = LiveViewUnit(viewingUnit);
+		if (!live || !live->pInventory) {
+			ClearIronGolemSlot(nullptr);
 			viewingUnit = NULL;
 			D2CLIENT_SetUIVar(0x01, 1, 0);
+		} else {
+			viewingUnit = live;
+			if (live->dwType == UNIT_MONSTER && live->dwTxtFileNo == 291)
+				ShowIronGolemItem(live);
+			else
+				ClearIronGolemSlot(live);
 		}
 	}
 }
@@ -491,14 +739,14 @@ void Item::OnKey(bool up, BYTE key, LPARAM lParam, bool* block) {
 		if (up)
 			return;
 		UnitAny* selectedUnit = D2CLIENT_GetSelectedUnit();
-		if (selectedUnit && selectedUnit->dwMode != 0 && selectedUnit->dwMode != 17 && ( // Alive
-					selectedUnit->dwType == 0 ||					// Player
-					selectedUnit->dwTxtFileNo == 291 ||		// Iron Golem
-					selectedUnit->dwTxtFileNo == 357 ||		// Valkerie
-					selectedUnit->dwTxtFileNo == 418)) {	// Shadow Master
+		if (!IsGearInspectTarget(selectedUnit))
+			selectedUnit = IronGolemUnderCursor();
+		if (IsGearInspectTarget(selectedUnit)) {
 			viewingUnit = selectedUnit;
 			if (!D2CLIENT_GetUIState(0x01))
 				D2CLIENT_SetUIVar(0x01, 0, 0);
+			if (selectedUnit->dwType == UNIT_MONSTER && selectedUnit->dwTxtFileNo == 291)
+				ShowIronGolemItem(selectedUnit);
 			return;
 		}
 	}
@@ -1474,6 +1722,7 @@ static void DrawSocketCards(const std::vector<std::vector<std::wstring>>& cards)
 }
 
 void Item::OnDraw() {
+	DrawIronGolemFallback(viewingUnit);
 	// Hold shows them beside the item tooltip. Release removes them until the key is held again.
 	if (!SocketTooltipsActive())
 		return;
@@ -2005,12 +2254,26 @@ RunesTxt* GetRunewordTxtById(int rwId)
 
 UnitAny* Item::GetViewUnit ()
 {
-	UnitAny* view = (viewingUnit) ? viewingUnit : D2CLIENT_GetPlayerUnit();
-	if (view->dwUnitId == D2CLIENT_GetPlayerUnit()->dwUnitId)
-		return D2CLIENT_GetPlayerUnit();
+	UnitAny* player = D2CLIENT_GetPlayerUnit();
+	UnitAny* view = viewingUnit ? viewingUnit : player;
+	if (!view)
+		return player;
+	// Monster and player ids are separate and overlap. Match type as well.
+	if (player && view->dwType == player->dwType && view->dwUnitId == player->dwUnitId)
+		return player;
 
-	Drawing::Texthook::Draw(*p_D2CLIENT_PanelOffsetX + 160 + 320, 300, Drawing::Center, 0, White, "%s", viewingUnit->pPlayerData->szName);
-	return viewingUnit;
+	if (viewingUnit && viewingUnit->dwType == UNIT_PLAYER && viewingUnit->pPlayerData) {
+		Drawing::Texthook::Draw(*p_D2CLIENT_PanelOffsetX + 160 + 320, 300, Drawing::Center, 0, White, "%s", viewingUnit->pPlayerData->szName);
+	} else if (viewingUnit) {
+		wchar_t* wname = D2CLIENT_GetUnitName(viewingUnit);
+		char name[128];
+		name[0] = 0;
+		if (wname)
+			WideCharToMultiByte(CODE_PAGE, 0, wname, -1, name, sizeof(name), NULL, NULL);
+		if (name[0])
+			Drawing::Texthook::Draw(*p_D2CLIENT_PanelOffsetX + 160 + 320, 300, Drawing::Center, 0, White, "%s", name);
+	}
+	return viewingUnit ? viewingUnit : view;
 }
 
 void __declspec(naked) ItemName_Interception()
