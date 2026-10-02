@@ -81,6 +81,7 @@ class Item : public Module {
 		void OnGameJoin();
 
 		void OnLoop();
+		void OnDraw();
 		void OnKey(bool up, BYTE key, LPARAM lParam, bool* block);
 		void OnLeftClick(bool up, unsigned int x, unsigned int y, bool* block);
 		std::map<string, Toggle>* GetToggles() { return &Toggles; }
@@ -97,6 +98,7 @@ class Item : public Module {
 
 		static UnitAny* GetViewUnit();
 		static bool SocketStatsSplitActive();
+		static bool SocketTooltipsActive();
 
 		static unsigned int GetFilterLevel() { return filterLevelSetting; }
 		static unsigned int GetPingLevel() { return pingLevelSetting; }

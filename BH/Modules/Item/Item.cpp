@@ -89,6 +89,13 @@ static DWORD g_tooltipPageUnitId = 0;
 static DWORD g_tooltipPageType = 0xFFFFFFFF;
 static int g_tooltipPage = 0;
 static int g_tooltipPageCount = 1;
+// Parent hover tooltip box, measured while that tooltip is built. 0 tick means it is not showing.
+static int g_itemTipW = 0;
+static int g_itemTipH = 0;
+static int g_itemTipFont = 0;
+static DWORD g_itemTipTick = 0;
+// Checked: the separate tooltip. Unchecked: the same stats on the item tooltip.
+static bool g_socketStatsOnTooltip = false;
 
 static bool PageHoveredTooltip(bool up, BYTE key, LPARAM lParam, bool* block) {
 	if (key != VK_LEFT && key != VK_RIGHT)
@@ -265,6 +272,7 @@ void Item::LoadConfig() {
 	BH::config->ReadToggle("Suppress Invalid Stats", "None", false, Toggles["Suppress Invalid Stats"]);
 	BH::config->ReadToggle("Always Show Item Stat Ranges", "None", true, Toggles["Always Show Item Stat Ranges"]);
 	BH::config->ReadToggle("Separate Socketed Stats", "VK_SHIFT", false, Toggles["Separate Socketed Stats"]);
+	BH::config->ReadBoolean("Socketed Stats On Tooltip", g_socketStatsOnTooltip);
 	BH::config->ReadInt("Filter Level", filterLevelSetting);
 	BH::config->ReadInt("Ping Level", pingLevelSetting);
 	BH::config->ReadInt("Run Details Ping Level", trackerPingLevelSetting);
@@ -359,8 +367,11 @@ void Item::DrawSettings() {
 	new Keyhook(settingsTab, keyhook_x, y+2, &Toggles["Always Show Item Stat Ranges"].toggle, "");
 	y += 15;
 
-	new Checkhook(settingsTab, 4, y, &Toggles["Separate Socketed Stats"].state, "Separate Socketed Stats");
+	new Checkhook(settingsTab, 4, y, &Toggles["Separate Socketed Stats"].state, "Split Socketed Stats");
 	new Keyhook(settingsTab, keyhook_x, y+2, &Toggles["Separate Socketed Stats"].toggle, "");
+	y += 13;
+
+	new Checkhook(settingsTab, 22, y, &g_socketStatsOnTooltip, "Show Beside the Item");
 	y += 15;
 	
 	new Checkhook(settingsTab, 4, y, &Toggles["Advanced Item Display"].state, "Advanced Item Display");
@@ -493,7 +504,7 @@ void Item::OnKey(bool up, BYTE key, LPARAM lParam, bool* block) {
 	}
 	for (map<string,Toggle>::iterator it = Toggles.begin(); it != Toggles.end(); it++) {
 		if (key == (*it).second.toggle) {
-			// Hold this key to preview socketed stats. Releasing it restores the normal tooltip.
+			// Hold these keys to preview socketed stats. Releasing restores the normal tooltip.
 			if ((*it).first == "Separate Socketed Stats")
 				continue;
 			*block = true;
@@ -859,6 +870,10 @@ bool Item::SocketStatsSplitActive() {
 	return Toggles["Separate Socketed Stats"].state;
 }
 
+bool Item::SocketTooltipsActive() {
+	return g_socketStatsOnTooltip && SocketStatsSplitActive();
+}
+
 // Set while GetItemDesc is building a socketed gem/rune/jewel, so that call
 // does not try to split sockets again.
 static int g_buildingSocketedDesc = 0;
@@ -1035,8 +1050,9 @@ static void CollectSocketedTooltipLines(UnitAny* pItem, std::vector<TipLine>& ex
 	std::vector<TipLine> items;
 	for (int d = 0; d < count; ++d) {
 		int before = (int)items.size();
-		// The gap stays with this socket, so a page break does not leave the name behind.
-		items.push_back({ L"", false, true, d });
+		// Later sockets keep a gap above the name. The first one sits on the line under the header.
+		if (d > 0)
+			items.push_back({ L"", false, true, d });
 
 		wchar_t nameBuf[256];
 		nameBuf[0] = 0;
@@ -1062,7 +1078,7 @@ static void CollectSocketedTooltipLines(UnitAny* pItem, std::vector<TipLine>& ex
 				continue;
 			items.push_back({ ColorSocketStatLine(plain, rangeColor, blue), false, true, d });
 		}
-		if ((int)items.size() == before + 1)
+		if (d > 0 && (int)items.size() == before + 1)
 			items.pop_back();
 	}
 	if (items.empty())
@@ -1191,8 +1207,13 @@ static void FitHoveredTooltip(wchar_t* wTxt, int textCap, const std::vector<TipL
 			show.push_back(visual[i].text);
 		show.push_back(L"");
 		show.push_back(g_tooltipPage == 0 ? firstHeader : continuedHeader);
-		for (int idx : pages[g_tooltipPage])
+		bool skipLeadingBlank = true;
+		for (int idx : pages[g_tooltipPage]) {
+			if (skipLeadingBlank && visual[idx].text.empty())
+				continue;
+			skipLeadingBlank = false;
 			show.push_back(visual[idx].text);
+		}
 		show.push_back(TooltipPagerText(g_tooltipPage, (int)pages.size()));
 		WriteTooltipTopToBottom(wTxt, textCap, show);
 		return;
@@ -1255,9 +1276,215 @@ static void __stdcall AppendSocketedToHoveredTooltip(wchar_t* text) {
 	UnitAny* hovered = p_D2CLIENT_SelectedInvItem ? *p_D2CLIENT_SelectedInvItem : nullptr;
 	RememberTooltipItem(hovered);
 	std::vector<TipLine> extra;
-	if (hovered)
+	// The tooltip hotkey draws each socket beside the item instead of on this box.
+	bool socketCards = Item::SocketTooltipsActive();
+	if (hovered && !socketCards)
 		CollectSocketedTooltipLines(hovered, extra);
 	FitHoveredTooltip(text, tooltipTextCap, extra);
+	if (!socketCards || !text || !text[0]) {
+		g_itemTipTick = 0;
+		return;
+	}
+	DWORD previousFont = D2WIN_SetTextSize(0);
+	D2WIN_SetTextSize(previousFont);
+	g_itemTipFont = (int)previousFont;
+	DWORD width = 0;
+	DWORD height = 0;
+	D2WIN_GetTextSize(text, &width, &height);
+	g_itemTipW = (int)width;
+	g_itemTipH = (int)height;
+	g_itemTipTick = GetTickCount();
+}
+
+static void BuildSocketCards(UnitAny* pItem, std::vector<std::vector<std::wstring>>& cards) {
+	cards.clear();
+	const int kMaxSockets = 6;
+	if (!pItem || pItem->dwType != UNIT_ITEM || !pItem->pItemData || !pItem->pInventory)
+		return;
+	if (pItem->pItemData->dwFlags & ITEM_RUNEWORD)
+		return;
+
+	UnitAny* socks[kMaxSockets];
+	wchar_t descs[kMaxSockets][0x401];
+	int count = 0;
+
+	g_buildingSocketedDesc++;
+	for (UnitAny* sock = pItem->pInventory->pFirstItem; sock && count < kMaxSockets; ) {
+		UnitAny* next = (sock->pItemData) ? sock->pItemData->pNextInvItem : nullptr;
+		socks[count] = sock;
+		descs[count][0] = 0;
+		D2CLIENT_GetItemDesc(sock, descs[count]);
+		TrimTrailingNewlines(descs[count]);
+		count++;
+		sock = next;
+	}
+	g_buildingSocketedDesc--;
+
+	std::wstring white = GetColorCode(TextColor::White);
+	std::wstring blue = GetColorCode(TextColor::Blue);
+	for (int d = 0; d < count; ++d) {
+		std::vector<std::wstring> lines;
+		wchar_t nameBuf[256];
+		nameBuf[0] = 0;
+		D2CLIENT_GetItemName(socks[d], nameBuf, 256);
+		TrimTrailingNewlines(nameBuf);
+		std::vector<std::wstring> nameLines;
+		SplitTooltipLines(nameBuf, nameLines);
+		for (const std::wstring& nameLine : nameLines) {
+			std::wstring plain;
+			std::wstring ignored;
+			StripSocketStatColors(nameLine.c_str(), plain, ignored);
+			if (!plain.empty())
+				lines.push_back(white + plain);
+		}
+
+		std::vector<std::wstring> statLines;
+		SplitTooltipLines(descs[d], statLines);
+		// The description string starts at the bottom stat. Walk it backward so the first mod is under the name.
+		for (int i = (int)statLines.size() - 1; i >= 0; --i) {
+			std::wstring plain;
+			std::wstring rangeColor;
+			StripSocketStatColors(statLines[i].c_str(), plain, rangeColor);
+			if (plain.empty())
+				continue;
+			lines.push_back(ColorSocketStatLine(plain, rangeColor, blue));
+		}
+		if (!lines.empty())
+			cards.push_back(lines);
+	}
+}
+
+// d2gl copies a hovered player or merc name into a 50-character buffer and skips the box.
+static bool FramedTooltipWouldSwallow() {
+	UnitAny* unit = D2CLIENT_GetSelectedUnit();
+	if (!unit)
+		return false;
+	if (unit->dwType == 0)
+		return true;
+	if (unit->dwType == 1) {
+		DWORD id = unit->dwTxtFileNo;
+		if (id == 0x10F || id == 0x152 || id == 0x167 || id == 0x420 || id == 0x231)
+			return true;
+	}
+	return false;
+}
+
+static void DrawSocketCards(const std::vector<std::vector<std::wstring>>& cards) {
+	const int kGap = 8;
+
+	// Same font the item tooltip was just measured with.
+	DWORD oldFont = D2WIN_SetTextSize(g_itemTipFont);
+
+	int screenW = p_D2CLIENT_ScreenSizeX ? *p_D2CLIENT_ScreenSizeX : 800;
+	int screenH = p_D2CLIENT_ScreenSizeY ? *p_D2CLIENT_ScreenSizeY : 600;
+	if (screenW < 100)
+		screenW = 800;
+	if (screenH < 100)
+		screenH = 600;
+
+	// The hover tooltip is centered on these anchors. CursorHoverX sits 16 bytes after them.
+	DWORD* hoverX = p_D2CLIENT_CursorHoverX;
+	int xAbove = (int)hoverX[-4];
+	int yBottom = (int)hoverX[-3];
+	int xBelow = (int)hoverX[-2];
+	int yTop = (int)hoverX[-1];
+	int boxW = g_itemTipW + 8;
+	int centerX;
+	int bottomY;
+	if (yBottom - g_itemTipH > 0) {
+		centerX = xAbove;
+		bottomY = yBottom + 2;
+	} else {
+		centerX = xBelow;
+		bottomY = yTop + g_itemTipH + 2;
+	}
+	int tipLeft = centerX - boxW / 2;
+	int tipRight = tipLeft + boxW;
+	int tipTop = bottomY - g_itemTipH - 4;
+	if (tipTop < 2)
+		tipTop = 2;
+
+	// Reading order. d2gl's framed tooltip draws the first line at the bottom, so the
+	// string passed to DrawFramedText is this list reversed.
+	std::vector<std::wstring> lines;
+	lines.push_back(GetColorCode(TextColor::Gold) + L"Socketed Stats:");
+	for (const std::vector<std::wstring>& socketLines : cards) {
+		for (const std::wstring& line : socketLines)
+			lines.push_back(line);
+	}
+
+	std::wstring text;
+	for (int i = (int)lines.size() - 1; i >= 0; --i) {
+		if (!text.empty())
+			text.push_back(L'\n');
+		text += lines[i];
+	}
+
+	// Measure last so d2gl's last framed-text height is this block, not a single line.
+	DWORD textW = 0;
+	DWORD textH = 0;
+	D2WIN_GetTextSize((wchar_t*)text.c_str(), &textW, &textH);
+	if (textW == 0 || textH == 0) {
+		D2WIN_SetTextSize(oldFont);
+		return;
+	}
+
+	// d2gl's inventory tooltip is this string in a box padded 10px wide and 5px tall.
+	int panelW = (int)textW + 20;
+	int panelH = (int)textH + 10;
+	int leftRoom = tipLeft - kGap - 2;
+	int rightRoom = screenW - 2 - (tipRight + kGap);
+	bool placeLeft = leftRoom >= rightRoom;
+	int inner = placeLeft ? tipLeft - kGap : tipRight + kGap;
+	int x = placeLeft ? inner - panelW : inner;
+	int y = tipTop;
+	if (y + panelH > screenH - 5)
+		y = screenH - 5 - panelH;
+	if (y < 5)
+		y = 5;
+
+	if (!FramedTooltipWouldSwallow()) {
+		// DrawFramedText is centered on x, and the box bottom sits on y.
+		// d2gl then paints the same quality gradient and border as the item tooltip.
+		int drawX = x + panelW / 2;
+		int drawY = y + panelH;
+		if (drawY == 32)
+			drawY = 33;
+		D2WIN_DrawFramedText(text.c_str(), drawX, drawY, 0, 1);
+		D2WIN_SetTextSize(oldFont);
+		return;
+	}
+
+	Drawing::Boxhook::Draw(x, y, panelW, panelH, 0, Drawing::BTOneFourth);
+	int textY = y;
+	int lineCount = (int)lines.size();
+	int lineStep = (int)textH / (lineCount > 0 ? lineCount : 1);
+	if (lineStep < 1)
+		lineStep = 1;
+	for (const std::wstring& line : lines) {
+		if (!line.empty()) {
+			DWORD lw = 0;
+			DWORD lh = 0;
+			D2WIN_GetTextSize((wchar_t*)line.c_str(), &lw, &lh);
+			D2WIN_DrawText(line.c_str(), x + (panelW - (int)lw) / 2, textY + lineStep, White, 0);
+		}
+		textY += lineStep;
+	}
+	D2WIN_SetTextSize(oldFont);
+}
+
+void Item::OnDraw() {
+	// Hold shows them beside the item tooltip. Release removes them until the key is held again.
+	if (!SocketTooltipsActive())
+		return;
+	if (g_itemTipTick == 0 || GetTickCount() - g_itemTipTick > 150)
+		return;
+	UnitAny* hovered = p_D2CLIENT_SelectedInvItem ? *p_D2CLIENT_SelectedInvItem : nullptr;
+	if (!hovered)
+		return;
+	std::vector<std::vector<std::wstring>> cards;
+	BuildSocketCards(hovered, cards);
+	DrawSocketCards(cards);
 }
 
 void __stdcall Item::OnProperties(wchar_t * wTxt, UnitAny* pDescItem)
