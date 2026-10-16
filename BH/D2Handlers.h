@@ -13,6 +13,6 @@ BOOL ChatPacketRecv(DWORD dwSize,BYTE* pPacket);
 BOOL __fastcall RealmPacketRecv(BYTE* pPacket);
 DWORD __fastcall GamePacketRecv(BYTE* pPacket, DWORD dwSize);
 
-DWORD __fastcall GameInput(wchar_t* wMsg);
+DWORD __fastcall GameInput(wchar_t* wMsg, char* packet);
 DWORD __fastcall ChannelInput(wchar_t* wMsg);
 BOOL __fastcall ChatHandler(char* user, char* msg);

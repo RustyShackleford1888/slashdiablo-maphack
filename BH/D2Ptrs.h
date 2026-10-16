@@ -487,6 +487,8 @@ FUNCPTR(D2CMP, DeleteCellFile, void __stdcall, (CellFile *cellfile), -10106, -10
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 FUNCPTR(D2LANG, GetLocaleText, wchar_t* __fastcall, (WORD nLocaleTxtNo), -10003, -10004)
+// Key lookup, e.g. "Desc-zab" -> the wide description. 1.13c ordinal 10011.
+FUNCPTR(D2LANG, GetStringByReferenceString, wchar_t* __fastcall, (const char* szKey), -10011, -10011)
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////

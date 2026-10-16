@@ -2,6 +2,7 @@
 #include "../../BH.h"
 #include "../../D2Ptrs.h"
 #include "../../D2Stubs.h"
+#include "../ItemLink/ItemLink.h"
 
 void ChatColor::Init() {
 	
@@ -68,8 +69,10 @@ void ChatColor::OnChatPacketRecv(BYTE* packet, bool* block) {
 			UpdateInGame();
 			if (replace && inGame) {
 				*block = true;
-
-				Print(color, "%s | %s", from, message);
+				// ItemLink removes the blob first. A //c follow-up is
+				// "*chat1 | [Name] continued" plus the blob, and is not drawn.
+				if (!ItemLink_FilterWhisperText(const_cast<char*>(message)))
+					Print(color, "%s | %s", from, message);
 			}
 		}
 	}

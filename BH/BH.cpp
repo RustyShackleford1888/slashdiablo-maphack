@@ -150,6 +150,7 @@ void BH::Initialize()
 	new Glossary();
 	new StatsPoints();
 	new SkillsPoints();
+	new ItemLink();
 
 	BnetInts = ((Bnet*)moduleManager->Get("bnet"))->GetInts();
 	BnetBools = ((Bnet*)moduleManager->Get("bnet"))->GetBools();

@@ -817,8 +817,13 @@ void __fastcall Item::ItemNamePatch(wchar_t *name, UnitAny *item)
 	//string test3 = test_code;
 	//itemName += " {" + test3 + "}";
 
-	MultiByteToWideChar(CODE_PAGE, MB_PRECOMPOSED, itemName.c_str(), itemName.length(), name, itemName.length());
-	name[itemName.length()] = 0;  // null-terminate the string since MultiByteToWideChar doesn't
+	// Callers pass buffers as small as 256 wchars and this patch used to ignore that.
+	int n = (int)itemName.length();
+	if (n > 255)
+		n = 255;
+	if (n > 0)
+		MultiByteToWideChar(CODE_PAGE, MB_PRECOMPOSED, itemName.c_str(), n, name, n);
+	name[n] = 0;
 	delete[] szName;
 }
 
@@ -1101,6 +1106,8 @@ void Item::OrigGetItemName(UnitAny *item, string &itemName, char *code)
 
 static ItemsTxt* GetArmorText(UnitAny* pItem) {
 	ItemText* itemTxt = D2COMMON_GetItemText(pItem->dwTxtFileNo);
+	if (!itemTxt || !p_D2COMMON_ArmorTxt || !*p_D2COMMON_ArmorTxt)
+		return NULL;
 	int armorTxtRecords = *p_D2COMMON_ArmorTxtRecords;
 	for (int i = 0; i < armorTxtRecords; i++) {
 		ItemsTxt* armorTxt = &(*p_D2COMMON_ArmorTxt)[i];
@@ -1773,6 +1780,7 @@ void __stdcall Item::OnProperties(wchar_t * wTxt, UnitAny* pDescItem)
 		bool spawned_with_ed = false;
 		aLen = wcslen(wTxt);
 		ItemsTxt* armorTxt = GetArmorText(pItem);
+		if (armorTxt) {
 		DWORD base = D2COMMON_GetBaseStatSigned(pItem, STAT_DEFENSE, 0); // includes eth bonus if applicable
 		DWORD min = armorTxt->dwminac; // min of non-eth base
 		DWORD max_no_ed = armorTxt->dwmaxac; // max of non-eth base
@@ -1802,6 +1810,7 @@ void __stdcall Item::OnProperties(wchar_t * wTxt, UnitAny* pDescItem)
 					ebugged ? L"\377c5 Ebug" : L"",
 					GetColorCode(TextColor::White).c_str()
 					);
+		}
 		}
 	}
 
@@ -1985,9 +1994,10 @@ void __stdcall Item::OnPropertyBuild(wchar_t* wOut, int nStat, UnitAny* pItem, i
 	switch (pItem->pItemData->dwQuality) {
 	case ITEM_QUALITY_SET:
 	{
-		SetItemsTxt * pTxt = &(*p_D2COMMON_sgptDataTable)->pSetItemsTxt[pItem->pItemData->dwFileIndex];
-		if (!pTxt)
+		sgptDataTable* table = p_D2COMMON_sgptDataTable ? *p_D2COMMON_sgptDataTable : NULL;
+		if (!table || !table->pSetItemsTxt || pItem->pItemData->dwFileIndex >= table->dwSetItemsRecs)
 			break;
+		SetItemsTxt * pTxt = &table->pSetItemsTxt[pItem->pItemData->dwFileIndex];
 		stat = GetItemsTxtStatByMod(pTxt->hStats, 9 + 10, nStat, nStatParam);
 		if (stat)
 			all_stat = GetAllStatModifier(pTxt->hStats, 9 + 10, nStat, stat);
@@ -1995,10 +2005,10 @@ void __stdcall Item::OnPropertyBuild(wchar_t* wOut, int nStat, UnitAny* pItem, i
 	case ITEM_QUALITY_UNIQUE:
 	{
 		if (pItem->pItemData->dwQuality == ITEM_QUALITY_UNIQUE) {
-			UniqueItemsTxt * pTxt = &(*p_D2COMMON_sgptDataTable)->pUniqueItemsTxt[pItem->pItemData->dwFileIndex];
-			if (pTxt == nullptr) {
+			sgptDataTable* table = p_D2COMMON_sgptDataTable ? *p_D2COMMON_sgptDataTable : NULL;
+			if (!table || !table->pUniqueItemsTxt || pItem->pItemData->dwFileIndex >= table->dwUniqItemsRecs)
 				break;
-			}
+			UniqueItemsTxt * pTxt = &table->pUniqueItemsTxt[pItem->pItemData->dwFileIndex];
 
 			stat = GetItemsTxtStatByMod(pTxt->hStats, 12, nStat, nStatParam);
 

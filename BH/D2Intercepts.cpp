@@ -120,6 +120,7 @@ void __declspec(naked) GameInput_Interception(void)
 	__asm {
 		pushad
 		mov ecx, ebx
+		mov edx, esi
 		call GameInput
 		cmp eax, -1
 		popad

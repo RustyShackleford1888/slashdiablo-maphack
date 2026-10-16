@@ -18,3 +18,4 @@
 #include "Modules\Glossary\Glossary.h"
 #include "Modules\StatsPoints\StatsPoints.h"
 #include "Modules\SkillsPoints\SkillsPoints.h"
+#include "Modules\ItemLink\ItemLink.h"

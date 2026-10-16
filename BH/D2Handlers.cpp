@@ -4,6 +4,7 @@
 #include "Drawing/Advanced/Colorhook/Colorhook.h"
 #include "Modules/StatsPoints/StatsPoints.h"
 #include "Modules/SkillsPoints/SkillsPoints.h"
+#include "Modules/ItemLink/ItemLink.h"
 
 #include <iterator>
 
@@ -105,6 +106,11 @@ LONG WINAPI GameWindowEvent(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 		__raise BH::moduleManager->OnRightClick(true, mouseX, mouseY, &blockEvent);
 	}
 
+	if (uMsg == WM_KEYDOWN && wParam == VK_BACK && D2CLIENT_GetUIState(0x05)) {
+		if (ItemLink_Backspace())
+			return NULL;
+	}
+
 	if (!D2CLIENT_GetUIState(0x05)) {
 		if (uMsg == WM_KEYDOWN) {
 			if (Drawing::Hook::KeyClick(false, wParam, lParam))
@@ -143,10 +149,12 @@ BOOL __fastcall RealmPacketRecv(BYTE* pPacket) {
 }
 
 DWORD __fastcall GamePacketRecv(BYTE* pPacket, DWORD dwSize) {
+	bool hideContinued = false;
 	switch(pPacket[0])
 	{
 		case 0xAE: if(!BH::cGuardLoaded) return false; break;
 		case 0x26: {
+			hideContinued = ItemLink_PrepareGameChat(pPacket, dwSize);
 			char* pName = (char*)pPacket+10;
 			char* pMessage = (char*)pPacket + strlen(pName) + 11;
 			bool blockMessage = false;
@@ -155,11 +163,17 @@ DWORD __fastcall GamePacketRecv(BYTE* pPacket, DWORD dwSize) {
 	}
 	bool blockPacket = false;
 	__raise BH::moduleManager->OnGamePacketRecv(pPacket, &blockPacket);
+	// Chat types above 0x12 are ignored by the client, so the line is not drawn.
+	// The blob was already saved. This also covers "//c continued" and "/f m continued".
+	if (hideContinued)
+		pPacket[1] = 0x13;
 	return !blockPacket;
 }
 
-DWORD __fastcall GameInput(wchar_t* wMsg)
+DWORD __fastcall GameInput(wchar_t* wMsg, char* packet)
 {
+	if (wMsg && !(wcslen(wMsg) > 1 && wMsg[0] == L'.'))
+		ItemLink_ExpandOutgoing(wMsg, packet);
 	bool hasCmd = wcslen(wMsg) > 1 && wMsg[0] == '.';
 	if(hasCmd)
 	{
