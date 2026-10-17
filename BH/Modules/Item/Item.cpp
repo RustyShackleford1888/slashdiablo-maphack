@@ -64,6 +64,9 @@ unsigned int Item::pingLevelSetting = 0;
 unsigned int Item::trackerPingLevelSetting = -1;
 int Item::statRangeColor = TextColor::DarkGreen;
 UnitAny* Item::viewingUnit;
+DWORD Item::viewingUnitId = 0;
+DWORD Item::viewingUnitType = 0;
+bool Item::viewingActive = false;
 
 Patch* itemNamePatch = new Patch(Call, D2CLIENT, { 0x92366, 0x96736 }, (int)ItemName_Interception, 6);
 Patch* itemPropertiesPatch = new Patch(Jump, D2CLIENT, { 0x5612C, 0x2E3FC }, (int)GetProperties_Interception, 6);
@@ -248,7 +251,7 @@ static void ClearIronGolemSlot(UnitAny* live);
 
 void Item::OnGameJoin() {
 	ClearIronGolemSlot(nullptr);
-	viewingUnit = NULL;
+	RememberView(nullptr);
 	// reset the item name cache upon joining games
 	// (GUIDs not unique across games)
 	ResetCaches();
@@ -620,13 +623,38 @@ static void ShowIronGolemItem(UnitAny* golem) {
 	g_golemItem = item;
 }
 
-static UnitAny* LiveViewUnit(UnitAny* unit) {
-	if (!unit)
+void Item::RememberView(UnitAny* unit) {
+	viewingUnit = unit;
+	if (!unit || unit->dwType > UNIT_TILE) {
+		viewingActive = false;
+		viewingUnitId = 0;
+		viewingUnitType = 0;
+		viewingUnit = NULL;
+		return;
+	}
+	viewingActive = true;
+	viewingUnitId = unit->dwUnitId;
+	viewingUnitType = unit->dwType;
+}
+
+// The saved pointer dies when that player leaves. Look them up by the id
+// recorded while they were still in the game.
+UnitAny* Item::ResolveView() {
+	if (!viewingActive || viewingUnitType > UNIT_TILE)
 		return nullptr;
-	UnitAny* live = D2CLIENT_FindServerSideUnit(unit->dwUnitId, unit->dwType);
+	UnitAny* live = D2CLIENT_FindServerSideUnit(viewingUnitId, viewingUnitType);
 	if (!live)
-		live = D2CLIENT_FindClientSideUnit(unit->dwUnitId, unit->dwType);
+		live = D2CLIENT_FindClientSideUnit(viewingUnitId, viewingUnitType);
+	if (live)
+		viewingUnit = live;
 	return live;
+}
+
+void Item::CloseInspect() {
+	ClearIronGolemSlot(nullptr);
+	RememberView(nullptr);
+	if (D2CLIENT_GetUIState(0x01))
+		D2CLIENT_SetUIVar(0x01, 1, 0);
 }
 
 static void DrawIronGolemFallback(UnitAny* unit) {
@@ -701,20 +729,19 @@ void Item::OnLoop() {
 		localPingLevel = pingLevelSetting;
 	}
 	if (!D2CLIENT_GetUIState(0x01)) {
-		ClearIronGolemSlot(LiveViewUnit(viewingUnit));
-		viewingUnit = NULL;
+		if (viewingActive)
+			ClearIronGolemSlot(nullptr);
+		RememberView(nullptr);
 	}
 	
 	if (Toggles["Advanced Item Display"].state) {
 		ItemDisplay::InitializeItemRules();
 	}
 
-	if (viewingUnit && viewingUnit->dwUnitId) {
-		UnitAny* live = LiveViewUnit(viewingUnit);
+	if (viewingActive && D2CLIENT_GetUIState(0x01)) {
+		UnitAny* live = ResolveView();
 		if (!live || !live->pInventory) {
-			ClearIronGolemSlot(nullptr);
-			viewingUnit = NULL;
-			D2CLIENT_SetUIVar(0x01, 1, 0);
+			CloseInspect();
 		} else {
 			viewingUnit = live;
 			if (live->dwType == UNIT_MONSTER && live->dwTxtFileNo == 291)
@@ -742,7 +769,7 @@ void Item::OnKey(bool up, BYTE key, LPARAM lParam, bool* block) {
 		if (!IsGearInspectTarget(selectedUnit))
 			selectedUnit = IronGolemUnderCursor();
 		if (IsGearInspectTarget(selectedUnit)) {
-			viewingUnit = selectedUnit;
+			RememberView(selectedUnit);
 			if (!D2CLIENT_GetUIState(0x01))
 				D2CLIENT_SetUIVar(0x01, 0, 0);
 			if (selectedUnit->dwType == UNIT_MONSTER && selectedUnit->dwTxtFileNo == 291)
@@ -767,7 +794,7 @@ void Item::OnKey(bool up, BYTE key, LPARAM lParam, bool* block) {
 void Item::OnLeftClick(bool up, unsigned int x, unsigned int y, bool* block) {
 	if (up)
 		return;
-	if (D2CLIENT_GetUIState(0x01) && viewingUnit != NULL && x >= 400)
+	if (D2CLIENT_GetUIState(0x01) && viewingActive && x >= 400)
 		*block = true;
 }
 
@@ -1729,7 +1756,7 @@ static void DrawSocketCards(const std::vector<std::vector<std::wstring>>& cards)
 }
 
 void Item::OnDraw() {
-	DrawIronGolemFallback(viewingUnit);
+	DrawIronGolemFallback(ResolveView());
 	// Hold shows them beside the item tooltip. Release removes them until the key is held again.
 	if (!SocketTooltipsActive())
 		return;
@@ -2265,17 +2292,19 @@ RunesTxt* GetRunewordTxtById(int rwId)
 UnitAny* Item::GetViewUnit ()
 {
 	UnitAny* player = D2CLIENT_GetPlayerUnit();
-	UnitAny* view = viewingUnit ? viewingUnit : player;
+	UnitAny* view = ResolveView();
+	if (!view)
+		view = player;
 	if (!view)
 		return player;
 	// Monster and player ids are separate and overlap. Match type as well.
 	if (player && view->dwType == player->dwType && view->dwUnitId == player->dwUnitId)
 		return player;
 
-	if (viewingUnit && viewingUnit->dwType == UNIT_PLAYER && viewingUnit->pPlayerData) {
-		Drawing::Texthook::Draw(*p_D2CLIENT_PanelOffsetX + 160 + 320, 300, Drawing::Center, 0, White, "%s", viewingUnit->pPlayerData->szName);
-	} else if (viewingUnit) {
-		wchar_t* wname = D2CLIENT_GetUnitName(viewingUnit);
+	if (view->dwType == UNIT_PLAYER && view->pPlayerData) {
+		Drawing::Texthook::Draw(*p_D2CLIENT_PanelOffsetX + 160 + 320, 300, Drawing::Center, 0, White, "%s", view->pPlayerData->szName);
+	} else {
+		wchar_t* wname = D2CLIENT_GetUnitName(view);
 		char name[128];
 		name[0] = 0;
 		if (wname)
@@ -2283,7 +2312,7 @@ UnitAny* Item::GetViewUnit ()
 		if (name[0])
 			Drawing::Texthook::Draw(*p_D2CLIENT_PanelOffsetX + 160 + 320, 300, Drawing::Center, 0, White, "%s", name);
 	}
-	return viewingUnit ? viewingUnit : view;
+	return view;
 }
 
 void __declspec(naked) ItemName_Interception()

@@ -58,6 +58,12 @@ class Item : public Module {
 		static unordered_set<string> no_ilvl_codes;
 		unsigned int showPlayer;
 		static UnitAny* viewingUnit;
+		static DWORD viewingUnitId;
+		static DWORD viewingUnitType;
+		static bool viewingActive;
+		static void RememberView(UnitAny* unit);
+		static UnitAny* ResolveView();
+		static void CloseInspect();
 		Drawing::UITab* settingsTab;
 		static unsigned int filterLevelSetting;
 		static unsigned int pingLevelSetting;
