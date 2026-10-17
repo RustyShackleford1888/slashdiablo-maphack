@@ -3711,7 +3711,11 @@ void ItemLink::OnOOGDraw() {
 void ItemLink::OnLeftClick(bool up, unsigned int x, unsigned int y, bool* block) {
 	if (up || !block)
 		return;
-	if (!(GetKeyState(VK_CONTROL) & 0x8000))
+	// Alt+click. Ctrl sells to a vendor and Shift moves between stash and inventory.
+	bool alt = (GetKeyState(VK_MENU) & 0x8000) != 0;
+	bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+	bool shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+	if (!alt || ctrl || shift)
 		return;
 	if (D2CLIENT_GetCursorItem())
 		return;
